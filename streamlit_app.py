@@ -204,12 +204,16 @@ st.markdown("""
 
   /* ── Lead table (per-row st.columns) ── */
   .th {
-    background:#F1F5F9; padding:11px 12px; font-size:10.5px; font-weight:700;
-    color:#475569; text-transform:uppercase; letter-spacing:0.7px;
-    border-top:2px solid #94A3B8; border-bottom:2px solid #94A3B8;
+    background:linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+    padding:14px 14px; font-size:11.5px; font-weight:700;
+    color:#F8FAFC; text-transform:uppercase; letter-spacing:1.1px;
+    border-bottom:3px solid #2563EB;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    min-height:44px; display:flex; align-items:center;
+    min-height:52px; display:flex; align-items:center;
+    box-shadow:inset 0 -1px 0 rgba(255,255,255,0.05);
   }
+  .th.th-first { border-top-left-radius:10px; }
+  .th.th-last  { border-top-right-radius:10px; }
   .td {
     background:#fff; padding:10px 12px; font-size:13px; color:#1E293B;
     border-bottom:1px solid #E2E8F0;
@@ -508,8 +512,10 @@ else:
 
     # Header row
     hdr = st.columns(R)
-    for c, lbl in zip(hdr, HDR):
-        c.markdown(f"<div class='th'>{lbl}</div>", unsafe_allow_html=True)
+    last_i = len(HDR) - 1
+    for i, (c, lbl) in enumerate(zip(hdr, HDR)):
+        extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
+        c.markdown(f"<div class='th{extra}'>{lbl}</div>", unsafe_allow_html=True)
 
     # Data rows
     for ri, (_, row) in enumerate(filtered.iterrows()):
