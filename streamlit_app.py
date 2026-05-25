@@ -441,6 +441,37 @@ st.markdown("""
     box-shadow:0 0 0 3px rgba(37,99,235,0.15) !important;
   }
 
+  /* ── Uniform filter-row labels & control heights ── */
+  /* Label above every filter control */
+  [data-testid="stContainer"] label[data-testid="stWidgetLabel"],
+  [data-testid="stContainer"] [data-testid="stWidgetLabel"] > div {
+    font-size:11px !important; font-weight:700 !important;
+    color:var(--slate) !important; text-transform:uppercase !important;
+    letter-spacing:0.7px !important;
+    margin-bottom:6px !important;
+  }
+  /* All inputs (date/text/select) — 44px tall, same border style */
+  [data-testid="stContainer"] div[data-baseweb="input"] > div,
+  [data-testid="stContainer"] div[data-baseweb="select"] > div,
+  [data-testid="stContainer"] .stDateInput > div > div {
+    background:#FFFFFF !important;
+    border:1px solid var(--line) !important;
+    border-radius:10px !important;
+    min-height:44px !important;
+  }
+  [data-testid="stContainer"] input,
+  [data-testid="stContainer"] .stDateInput input {
+    height:42px !important; font-size:13.5px !important;
+  }
+  /* Radio pill row — match the 44px height of the other inputs */
+  [data-testid="stContainer"] div[role="radiogroup"] {
+    height:44px !important;
+    padding:5px !important;
+  }
+  [data-testid="stContainer"] div[role="radiogroup"] > label {
+    height:34px !important; display:inline-flex !important; align-items:center !important;
+  }
+
   /* Refresh + Export buttons in section header row — light style */
   [data-testid="stDownloadButton"] > button {
     background:#FFFFFF !important; color:#0F172A !important;
@@ -568,21 +599,20 @@ st.markdown(f"""
 # Filters
 # --------------------------------------------------------------------------- #
 with st.container(border=True):
-    fc1, fc2, fc3 = st.columns([1.2, 1.4, 1.4])
+    fc1, fc2, fc3 = st.columns([1.5, 1.6, 1.6], gap="medium")
     with fc1:
         _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
         section = st.radio(
-            "Section",
+            "View",
             ["Today's Lead", "Missed Follow Up's"],
             format_func=lambda s: f"{_section_emoji[s]}  {s}",
             horizontal=True,
-            label_visibility="collapsed",
         )
     with fc2:
         min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
         max_pd = df_all["purchase_date"].dropna().max() or today
         date_range = st.date_input(
-            "Lead Date range",
+            "Lead Date Range",
             value=(min_pd, max_pd),
             min_value=min_pd,
             max_value=max_pd,
