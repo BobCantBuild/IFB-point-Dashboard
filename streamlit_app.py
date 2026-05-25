@@ -335,13 +335,13 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 
 # col widths in proportional units — total ≈ 16.4 (maps to 1640px page)
-#         fu    id    name  date   machine  phone  email   status  appt   int    rem   action
-RATIOS = [2.2,  0.6,  1.1,  0.95,  2.0,   1.05,  1.75,   1.1,    1.0,   1.3,   2.0,  0.6]
+#         fu    id    name  date   machine  phone  email   status  appt   int    rem   edit  save
+RATIOS = [2.2,  0.6,  1.1,  0.95,  2.0,   1.05,  1.75,   1.1,    1.0,   1.3,   2.0,  0.5,  0.5]
 LABELS = ["Customer Follow-Up","ID","Name","Purchase Date",
           "Machine Type","Phone","Email",
-          "Status","Next Appt","Interested?","Remarks",""]
+          "Status","Next Appt","Interested?","Remarks","",""]
 
-N = len(RATIOS)
+N = len(RATIOS)  # 13 columns (0-10 data, 11 edit, 12 save)
 OUTER = "#94A3B8"
 INNER = "#E2E8F0"
 HEAD_BG = "#F1F5F9"
@@ -433,30 +433,34 @@ else:
             with dc[10]:
                 nr = st.text_input("Remarks", value=cur_r,
                     key=f"r_{cid}", label_visibility="collapsed")
+            # col 11 = Cancel (✕),  col 12 = Save (💾)
             with dc[11]:
-                sv, cx = st.columns(2)
-                with sv:
-                    if st.button("💾", key=f"sv_{cid}", help="Save"):
-                        update_row(cid,
-                            None if ns=="—" else ns,
-                            na if isinstance(na, date) else None,
-                            None if ni=="—" else ni,
-                            nr.strip() or None)
-                        st.session_state["editing_cid"] = None
-                        st.rerun()
-                with cx:
-                    if st.button("✕", key=f"cx_{cid}", help="Cancel"):
-                        st.session_state["editing_cid"] = None
-                        st.rerun()
+                if st.button("✕", key=f"cx_{cid}", help="Cancel",
+                             use_container_width=True):
+                    st.session_state["editing_cid"] = None
+                    st.rerun()
+            with dc[12]:
+                if st.button("💾", key=f"sv_{cid}", help="Save",
+                             use_container_width=True):
+                    update_row(cid,
+                        None if ns == "—" else ns,
+                        na if isinstance(na, date) else None,
+                        None if ni == "—" else ni,
+                        nr.strip() or None)
+                    st.session_state["editing_cid"] = None
+                    st.rerun()
         else:
             ap_s = cur_a.strftime("%d/%m/%Y") if cur_a else "—"
-            _cell(dc[7],  _safe(cur_s, "—"), bg,            last=is_end)
-            _cell(dc[8],  ap_s,              bg,            last=is_end)
-            _cell(dc[9],  _safe(cur_i, "—"), bg,            last=is_end)
+            _cell(dc[7],  _safe(cur_s, "—"), bg,             last=is_end)
+            _cell(dc[8],  ap_s,              bg,             last=is_end)
+            _cell(dc[9],  _safe(cur_i, "—"), bg,             last=is_end)
             _cell(dc[10], _safe(cur_r, "—"), bg, right=True, last=is_end)
+            # col 11 = Edit (✏️),  col 12 = Save (empty in view mode)
             with dc[11]:
                 if section == "Today's Lead":
                     if st.button("✏️", key=f"ed_{cid}",
                                  help="Edit row", use_container_width=True):
                         st.session_state["editing_cid"] = cid
                         st.rerun()
+            with dc[12]:
+                pass  # save column is empty until row is in edit mode
