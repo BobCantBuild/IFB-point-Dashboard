@@ -104,10 +104,10 @@ st.set_page_config(page_title="IFB Point Dashboard", layout="wide", page_icon=":
 st.markdown("""
 <style>
   /* ── Page base ── */
-  .stApp { background:#F1F5F9; overflow-x:auto; }
+  .stApp { background:#F1F5F9; overflow-x:hidden; }
   .block-container {
     padding-top:1.4rem; padding-bottom:2rem;
-    width:1640px !important; min-width:1640px !important; max-width:1640px !important;
+    width:100% !important; max-width:1640px !important;
   }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
@@ -130,7 +130,7 @@ st.markdown("""
   }
 
   /* ── Stats ── */
-  .stats-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:nowrap; align-items:stretch; }
+  .stats-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:stretch; }
   .stat-solo {
     background:#fff; border:1px solid #E2E8F0; border-radius:14px;
     padding:20px 22px; min-width:130px; flex-shrink:0;
@@ -141,10 +141,10 @@ st.markdown("""
   .s-sub   { font-size:11px; color:#CBD5E1; margin-top:5px; }
   .stat-group {
     background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:16px 18px; flex:1; min-width:0; box-shadow:0 1px 4px rgba(0,0,0,.06);
+    padding:16px 18px; flex:1 1 320px; min-width:320px; box-shadow:0 1px 4px rgba(0,0,0,.06);
   }
   .g-label { font-size:11px; font-weight:600; color:#94A3B8; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
-  .g-inner { display:flex; gap:8px; flex-wrap:nowrap; }
+  .g-inner { display:flex; gap:8px; flex-wrap:wrap; }
   .sub-stat { flex:1; border-radius:8px; padding:10px 8px; text-align:center; background:#F8FAFC; border:1px solid #E2E8F0; }
   .ss-val   { font-size:22px; font-weight:800; line-height:1; color:#0F172A; }
   .ss-lbl   { font-size:10px; color:#64748B; margin-top:4px; }
