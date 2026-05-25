@@ -563,6 +563,26 @@ if len(filtered) == 0:
         unsafe_allow_html=True,
     )
 else:
+    # ── Pagination ──────────────────────────────────────────────────────────
+    PAGE_SIZE = 30
+    total_rows  = len(filtered)
+    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    # reset page if filters changed the row count below current page's range
+    pg_sig_key = f"pg_sig_{section}"
+    sig = (section, total_rows, tuple(filtered["customer_id"].head(3).tolist()))
+    if st.session_state.get(pg_sig_key) != sig:
+        st.session_state[pg_sig_key] = sig
+        st.session_state["page_num"] = 1
+
+    st.session_state.setdefault("page_num", 1)
+    page = max(1, min(st.session_state["page_num"], total_pages))
+    st.session_state["page_num"] = page
+
+    start = (page - 1) * PAGE_SIZE
+    end   = min(start + PAGE_SIZE, total_rows)
+    page_df = filtered.iloc[start:end]
+
     # column ratios:  edit  follow-up  id    name  date  machine  phone  email  status  appt  int   remarks
     R   = [0.4,      2.7,       0.45, 1.25, 0.95, 1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
     HDR = ["",       "Customer Follow-Up", "ID", "Customer Name", "Purchase Date",
@@ -592,7 +612,7 @@ else:
         return f"<span class='chip slate'>{s}</span>"
 
     # Data rows
-    for ri, (_, row) in enumerate(filtered.iterrows()):
+    for ri, (_, row) in enumerate(page_df.iterrows()):
         cid = int(row["customer_id"])
         cols = st.columns(R)
 
@@ -626,11 +646,31 @@ else:
             unsafe_allow_html=True,
         )
 
-    # caption
-    cap = ("Click the ✏️ icon on any row to open the edit dialog."
-           if not read_only else
-           "Switch to Today's Lead to edit records.")
-    st.markdown(
-        f"<div style='padding:10px 2px 0;color:#64748B;font-size:12.5px;'>{cap}</div>",
-        unsafe_allow_html=True,
-    )
+    # ── Pagination bar ──────────────────────────────────────────────────────
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
+    with pc1:
+        if st.button("⟵  Previous", key="pg_prev",
+                     use_container_width=True, disabled=(page <= 1)):
+            st.session_state["page_num"] = page - 1
+            st.rerun()
+    with pc2:
+        cap = ("Click the ✏️ icon on any row to open the edit dialog."
+               if not read_only else
+               "Switch to Today's Lead to edit records.")
+        showing_from = start + 1 if total_rows else 0
+        st.markdown(
+            f"<div style='text-align:center;padding:10px 0;color:#475569;"
+            f"font-size:13px;font-weight:600;'>"
+            f"Showing <b>{showing_from}–{end}</b> of <b>{total_rows}</b> "
+            f"&nbsp;·&nbsp; Page <b>{page}</b> of <b>{total_pages}</b>"
+            f"</div>"
+            f"<div style='text-align:center;color:#94A3B8;font-size:12px;"
+            f"margin-top:-4px;'>{cap}</div>",
+            unsafe_allow_html=True,
+        )
+    with pc3:
+        if st.button("Next  ⟶", key="pg_next",
+                     use_container_width=True, disabled=(page >= total_pages)):
+            st.session_state["page_num"] = page + 1
+            st.rerun()
