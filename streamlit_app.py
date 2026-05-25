@@ -202,49 +202,61 @@ st.markdown("""
   }
   .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
 
-  /* ── Lead table (per-row st.columns) ── */
+  /* ── Lead table (per-row st.columns) — clean minimal style ── */
   .th {
-    background:linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%);
-    padding:14px 14px 14px 26px;
-    font-size:11.5px; font-weight:800;
-    color:#0F172A; text-transform:uppercase; letter-spacing:1.3px;
-    border-bottom:1px solid #94A3B8;
-    border-right:1px solid #CBD5E1;
+    background:#FFFFFF;
+    padding:16px 14px;
+    font-size:12px; font-weight:500;
+    color:#94A3B8; letter-spacing:0;
+    border-bottom:1px solid #F1F5F9;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     min-height:50px; display:flex; align-items:center;
-    position:relative;
   }
-  .th::before {
-    content:''; position:absolute; left:12px; top:50%;
-    width:5px; height:5px; border-radius:50%;
-    background:#2563EB; transform:translateY(-50%);
-    box-shadow:0 0 0 2px rgba(37,99,235,0.18);
-  }
-  .th:empty::before { display:none; }
-  .th.th-first { border-top-left-radius:10px; }
-  .th.th-last  { border-top-right-radius:10px; border-right:none; }
+  .th.th-first { border-top-left-radius:14px; justify-content:center; }
+  .th.th-last  { border-top-right-radius:14px; }
+
   .td {
-    background:#fff; padding:10px 12px; font-size:13px; color:#1E293B;
-    border-bottom:1px solid #E2E8F0;
+    background:#FFFFFF; padding:20px 14px;
+    font-size:13.5px; color:#1E293B; font-weight:400;
+    border-bottom:1px solid #F1F5F9;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    min-height:44px; display:flex; align-items:center;
+    min-height:64px; display:flex; align-items:center;
   }
-  .td.alt    { background:#F8FAFC; }
-  .td.wrap   { white-space:normal; word-break:break-word; }
-  .td.muted  { color:#94A3B8; justify-content:center; }
-  .td.icon   { justify-content:center; padding:0; }
+  .td.alt    { background:#FFFFFF; }     /* no alternating — all white */
+  .td.wrap   { white-space:normal; word-break:break-word; line-height:1.4; }
+  .td.muted  { color:#CBD5E1; justify-content:center; }
+  .td.icon   { justify-content:center; padding:14px 0; }
   .td.center { justify-content:center; }
 
-  /* Edit-icon button (only inside the table, distinguished by single-char label) */
+  /* Status/Interested chips with colored dots */
+  .chip {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:13.5px; color:#1E293B;
+  }
+  .chip::before {
+    content:''; width:8px; height:8px; border-radius:50%;
+    background:#CBD5E1;
+  }
+  .chip.green::before  { background:#16A34A; }
+  .chip.red::before    { background:#DC2626; }
+  .chip.slate::before  { background:#94A3B8; }
+
+  /* Pencil edit button — circular outlined icon button */
   .stButton > button[kind="secondary"] {
-    background:#fff !important; color:#2563EB !important;
-    border:1px solid #E2E8F0 !important;
-    height:44px !important; min-height:44px !important;
-    padding:0 !important; font-size:16px !important; border-radius:0 !important;
-    border-bottom:1px solid #E2E8F0 !important;
+    background:#FFFFFF !important; color:#94A3B8 !important;
+    border:1.5px solid #E2E8F0 !important;
+    height:38px !important; min-height:38px !important;
+    width:38px !important; min-width:38px !important;
+    padding:0 !important; font-size:14px !important;
+    border-radius:50% !important;
+    margin:0 auto !important;
+    line-height:1 !important;
+    transition:all .15s ease;
   }
   .stButton > button[kind="secondary"]:hover {
-    background:#EFF6FF !important; border-color:#2563EB !important;
+    background:#EFF6FF !important; color:#2563EB !important;
+    border-color:#2563EB !important;
+    transform:scale(1.05);
   }
 
   /* Kill row gaps so cell + button line up perfectly */
@@ -526,37 +538,46 @@ else:
         extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
         c.markdown(f"<div class='th{extra}'>{lbl}</div>", unsafe_allow_html=True)
 
+    def _status_chip(v):
+        s = _safe(v)
+        if s == "Contacted":     return f"<span class='chip green'>{s}</span>"
+        if s == "Not Contacted": return f"<span class='chip red'>{s}</span>"
+        if s == "—":             return "<span class='chip'>—</span>"
+        return f"<span class='chip slate'>{s}</span>"
+
+    def _interest_chip(v):
+        s = _safe(v)
+        if s == "Interested":     return f"<span class='chip green'>{s}</span>"
+        if s == "Not Interested": return f"<span class='chip red'>{s}</span>"
+        if s == "—":              return "<span class='chip'>—</span>"
+        return f"<span class='chip slate'>{s}</span>"
+
     # Data rows
     for ri, (_, row) in enumerate(filtered.iterrows()):
         cid = int(row["customer_id"])
-        alt = " alt" if (ri % 2 == 1) else ""
         cols = st.columns(R)
 
-        # 0 — edit icon button (real st.button → 100% reliable click)
+        # 0 — pencil edit icon (circular outlined button)
         with cols[0]:
             if not read_only:
                 if st.button("✏️", key=f"edit_{cid}",
-                             help=f"Edit lead {cid}",
-                             use_container_width=True):
+                             help=f"Edit lead {cid}"):
                     edit_lead_dialog(row.to_dict())
             else:
-                st.markdown(
-                    f"<div class='td muted{alt}'>—</div>",
-                    unsafe_allow_html=True,
-                )
+                st.markdown("<div class='td muted'>—</div>", unsafe_allow_html=True)
 
         # 1–11 data cells
-        cols[1].markdown(f"<div class='td{alt}'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
-        cols[2].markdown(f"<div class='td center{alt}'>{cid}</div>",                                  unsafe_allow_html=True)
-        cols[3].markdown(f"<div class='td{alt}'><b>{_safe(row.get('customer_name'))}</b></div>",      unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='td{alt}'>{_fmt_date(row.get('purchase_date'))}</div>",         unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='td{alt}'>{_safe(row.get('machine_type'))}</div>",              unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='td{alt}'>{_safe(row.get('phone_number'))}</div>",              unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='td{alt}'>{_safe(row.get('email_id'))}</div>",                  unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='td{alt}'>{_safe(row.get('status'))}</div>",                    unsafe_allow_html=True)
-        cols[9].markdown(f"<div class='td{alt}'>{_fmt_date(row.get('next_appointment'))}</div>",      unsafe_allow_html=True)
-        cols[10].markdown(f"<div class='td{alt}'>{_safe(row.get('interested'))}</div>",               unsafe_allow_html=True)
-        cols[11].markdown(f"<div class='td wrap{alt}'>{_safe(row.get('remarks'))}</div>",             unsafe_allow_html=True)
+        cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",                  unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='td center'>{cid}</div>",                                            unsafe_allow_html=True)
+        cols[3].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>",                unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",                   unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",                        unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",                        unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",                            unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",                       unsafe_allow_html=True)
+        cols[9].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>",                unsafe_allow_html=True)
+        cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",                unsafe_allow_html=True)
+        cols[11].markdown(f"<div class='td wrap'>{_safe(row.get('remarks'))}</div>",                       unsafe_allow_html=True)
 
     # caption
     cap = ("Click the ✏️ icon on any row to open the edit dialog."
