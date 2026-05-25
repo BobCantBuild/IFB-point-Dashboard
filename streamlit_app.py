@@ -618,8 +618,10 @@ else:
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
         cols[11].markdown(
-            f"<div class='td td-last' style='padding-right:56px;margin-right:6px;' "
-            f"title='{_rem_tip}'>{_rem_full}</div>",
+            f"<div class='td td-last' style='padding-right:48px;margin-right:8px;' title='{_rem_tip}'>"
+            f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
