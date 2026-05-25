@@ -418,82 +418,135 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------- #
-# Data table  (st.data_editor — properly aligned, editable)
+# Per-row inline edit table
 # --------------------------------------------------------------------------- #
-st.markdown(
-    'Editable columns: '
-    '<span class="edit-tag">Status</span>'
-    '<span class="edit-tag">Next Appointment</span>'
-    '<span class="edit-tag">Interested / Not Interested</span>'
-    '<span class="edit-tag">Remarks</span>',
-    unsafe_allow_html=True,
-)
-st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-view = filtered[DISPLAY_COLS].copy()
-for _col in ["status", "interested", "remarks"]:
-    view[_col] = view[_col].fillna("Empty")
+# column ratios:  follow-up | id | name | date | machine | phone | email | status | appt | interest | remarks | action
+RATIOS = [1.8, 0.55, 0.9, 0.8, 1.5, 0.85, 1.4, 0.9, 0.85, 1.1, 1.6, 0.55]
+HEADERS = [
+    "Customer Follow-Up", "ID", "Name", "Purchase Date",
+    "Machine Type", "Phone", "Email",
+    "Status", "Next Appt", "Interested?", "Remarks", "",
+]
 
-edited = st.data_editor(
-    view,
-    key=f"editor_{section}",
-    use_container_width=True,
-    hide_index=True,
-    num_rows="fixed",
-    height=max(200, min(800, 60 + len(view) * 45)),
-    column_config={
-        "customer_follow_up": st.column_config.TextColumn(
-            COL_LABELS["customer_follow_up"], disabled=True, width="medium",
-        ),
-        "customer_id": st.column_config.NumberColumn(
-            COL_LABELS["customer_id"], disabled=True, width="small",
-        ),
-        "customer_name": st.column_config.TextColumn(
-            COL_LABELS["customer_name"], disabled=True, width="small",
-        ),
-        "purchase_date": st.column_config.DateColumn(
-            COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small",
-        ),
-        "machine_type": st.column_config.TextColumn(
-            COL_LABELS["machine_type"], disabled=True, width="medium",
-        ),
-        "phone_number": st.column_config.TextColumn(
-            COL_LABELS["phone_number"], disabled=True, width="small",
-        ),
-        "email_id": st.column_config.TextColumn(
-            COL_LABELS["email_id"], disabled=True, width="medium",
-        ),
-        "status": st.column_config.SelectboxColumn(
-            COL_LABELS["status"],
-            options=["Empty"] + STATUS_OPTIONS,
-            required=False, width="medium",
-            help="Click to set contact status",
-        ),
-        "next_appointment": st.column_config.DateColumn(
-            COL_LABELS["next_appointment"],
-            min_value=today, format="DD/MM/YYYY", width="medium",
-            help="Pick a future date",
-        ),
-        "interested": st.column_config.SelectboxColumn(
-            COL_LABELS["interested"],
-            options=["Empty"] + INTEREST_OPTIONS,
-            required=False, width="medium",
-            help="Click to set interest status",
-        ),
-        "remarks": st.column_config.TextColumn(
-            COL_LABELS["remarks"], width="large",
-            help="Type any remarks",
-        ),
-    },
-)
+def _cell(col, value, muted=False):
+    """Render a read-only table cell."""
+    color = "#94A3B8" if muted else "#1E293B"
+    col.markdown(
+        f"<div style='font-size:12.5px;color:{color};padding:6px 2px;"
+        f"line-height:1.4;overflow:hidden;text-overflow:ellipsis;"
+        f"white-space:nowrap'>{value}</div>",
+        unsafe_allow_html=True,
+    )
 
-if section == "Today's Lead":
-    save_col, _ = st.columns([1, 7])
-    with save_col:
-        if st.button("Save changes", type="primary"):
-            n = diff_and_save(filtered, edited)
-            if n:
-                st.success(f"Saved {n} row(s).")
-                st.rerun()
-            else:
-                st.info("No changes detected.")
+def _safe(v, fallback="—"):
+    if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() in ("", "NaT", "nan", "None"):
+        return fallback
+    return str(v)
+
+# ── session state ─────────────────────────────────────────────────────────
+if "editing_cid" not in st.session_state:
+    st.session_state["editing_cid"] = None
+
+# ── table header ──────────────────────────────────────────────────────────
+hdr = st.columns(RATIOS, gap="small")
+for col, lbl in zip(hdr, HEADERS):
+    col.markdown(
+        f"<div style='font-size:11px;font-weight:700;color:#64748B;"
+        f"text-transform:uppercase;letter-spacing:0.7px;"
+        f"padding:4px 2px 8px;border-bottom:2px solid #E2E8F0'>{lbl}</div>",
+        unsafe_allow_html=True,
+    )
+
+# ── data rows ─────────────────────────────────────────────────────────────
+if len(filtered) == 0:
+    st.markdown(
+        "<div style='text-align:center;padding:40px;color:#94A3B8;"
+        "font-size:14px'>No records match your filters.</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    for _, row in filtered.iterrows():
+        cid        = int(row["customer_id"])
+        is_editing = (st.session_state["editing_cid"] == cid)
+
+        cur_status = row["status"]           if pd.notna(row.get("status"))           else None
+        cur_appt   = row["next_appointment"] if pd.notna(row.get("next_appointment")) else None
+        cur_int    = row["interested"]       if pd.notna(row.get("interested"))       else None
+        cur_rem    = str(row["remarks"])     if pd.notna(row.get("remarks")) and row["remarks"] else ""
+
+        cols = st.columns(RATIOS, gap="small")
+
+        # ── always read-only columns ──────────────────────────────────────
+        _cell(cols[0], _safe(row.get("customer_follow_up")))
+        _cell(cols[1], cid, muted=True)
+        _cell(cols[2], _safe(row.get("customer_name")))
+        pd_str = row["purchase_date"].strftime("%d/%m/%Y") if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—"
+        _cell(cols[3], pd_str, muted=True)
+        _cell(cols[4], _safe(row.get("machine_type")))
+        _cell(cols[5], _safe(row.get("phone_number")))
+        _cell(cols[6], _safe(row.get("email_id")))
+
+        # ── editable columns ──────────────────────────────────────────────
+        if is_editing and section == "Today's Lead":
+            with cols[7]:
+                new_status = st.selectbox(
+                    "Status", ["Empty"] + STATUS_OPTIONS,
+                    index=(["Empty"] + STATUS_OPTIONS).index(cur_status)
+                          if cur_status in STATUS_OPTIONS else 0,
+                    key=f"s_{cid}", label_visibility="collapsed",
+                )
+            with cols[8]:
+                new_appt = st.date_input(
+                    "Appt", value=cur_appt if isinstance(cur_appt, date) else None,
+                    min_value=today, key=f"a_{cid}", label_visibility="collapsed",
+                )
+            with cols[9]:
+                new_int = st.selectbox(
+                    "Interested", ["Empty"] + INTEREST_OPTIONS,
+                    index=(["Empty"] + INTEREST_OPTIONS).index(cur_int)
+                          if cur_int in INTEREST_OPTIONS else 0,
+                    key=f"i_{cid}", label_visibility="collapsed",
+                )
+            with cols[10]:
+                new_rem = st.text_input(
+                    "Remarks", value=cur_rem,
+                    key=f"r_{cid}", label_visibility="collapsed",
+                )
+            # save + cancel icons
+            with cols[11]:
+                st.markdown("<div style='padding-top:4px'>", unsafe_allow_html=True)
+                if st.button("💾", key=f"sv_{cid}", help="Save changes"):
+                    update_row(
+                        cid,
+                        None if new_status == "Empty" else new_status,
+                        new_appt if isinstance(new_appt, date) else None,
+                        None if new_int    == "Empty" else new_int,
+                        new_rem.strip() or None,
+                    )
+                    st.session_state["editing_cid"] = None
+                    st.rerun()
+                if st.button("✕", key=f"cx_{cid}", help="Cancel"):
+                    st.session_state["editing_cid"] = None
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        else:
+            _cell(cols[7],  _safe(cur_status,  "Empty"))
+            ap_str = cur_appt.strftime("%d/%m/%Y") if cur_appt and pd.notna(cur_appt) else "Empty"
+            _cell(cols[8],  ap_str, muted=(ap_str == "Empty"))
+            _cell(cols[9],  _safe(cur_int,     "Empty"))
+            _cell(cols[10], _safe(cur_rem,     "—"))
+            with cols[11]:
+                st.markdown("<div style='padding-top:4px'>", unsafe_allow_html=True)
+                if section == "Today's Lead":
+                    if st.button("✏️", key=f"ed_{cid}", help="Edit this row"):
+                        st.session_state["editing_cid"] = cid
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        # thin row divider
+        st.markdown(
+            "<hr style='margin:2px 0;border:none;border-top:1px solid #F1F5F9'>",
+            unsafe_allow_html=True,
+        )
