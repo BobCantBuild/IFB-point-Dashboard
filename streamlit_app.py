@@ -11,15 +11,16 @@ import streamlit as st
 DB_PATH = Path(__file__).parent / "ifb_point.db"
 
 DISPLAY_COLS = [
-    "customer_id", "customer_name", "purchase_date", "machine_type",
-    "phone_number", "email_id", "status", "next_appointment",
-    "interested", "remarks",
+    "customer_id", "customer_name", "purchase_date", "customer_follow_up",
+    "machine_type", "phone_number", "email_id", "status",
+    "next_appointment", "interested", "remarks",
 ]
 
 COL_LABELS = {
     "customer_id": "Customer ID",
     "customer_name": "Customer name",
     "purchase_date": "Purchase Date",
+    "customer_follow_up": "Customer Follow-Up",
     "machine_type": "Machine Type",
     "phone_number": "Phone number",
     "email_id": "Email ID",
@@ -28,6 +29,27 @@ COL_LABELS = {
     "interested": "Interested / Not Interested",
     "remarks": "Remarks",
 }
+
+# Follow-up tiers (label, max days from today, accent colour)
+FOLLOW_UP_TIERS = [
+    ("Post Purchase Delight Call",           2,    "#22d3ee"),   # cyan
+    ("Usage & Experience Feedback Call",     30,   "#a78bfa"),   # violet
+    ("Pre-Warranty Expiry Engagement Call",  1440, "#fb923c"),   # orange  (48 months)
+    ("7-Year Loyalty Upgrade Call",          2520, "#f472b6"),   # pink    (84 months)
+]
+
+def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
+    if purchase_date is None:
+        return None
+    days = (today - purchase_date).days
+    if days <= 2:
+        return "Post Purchase Delight Call"
+    elif days <= 30:                # 2 days – 1 month
+        return "Usage & Experience Feedback Call"
+    elif days <= 1460:              # 1 month – 48 months (4 years)
+        return "Pre-Warranty Expiry Engagement Call"
+    else:                           # 48 months+ → 7-Year Loyalty Upgrade
+        return "7-Year Loyalty Upgrade Call"
 
 STATUS_OPTIONS = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -52,6 +74,10 @@ def load_all() -> pd.DataFrame:
         df = pd.read_sql_query("SELECT * FROM customers", conn)
     df["purchase_date"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date
     df["next_appointment"] = pd.to_datetime(df["next_appointment"], errors="coerce").dt.date
+    _today = date.today()
+    df["customer_follow_up"] = df["purchase_date"].apply(
+        lambda d: compute_follow_up(d, _today)
+    )
     return df
 
 
@@ -216,6 +242,23 @@ CSS = """
   .sec .dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg,#22d3ee,#8b5cf6); box-shadow: 0 0 12px rgba(139,92,246,0.6); }
   .sec h3 { margin: 0; font-size: 18px; font-weight: 700; color: #f1f5f9; }
   .sec .badge { font-size: 11px; padding: 2px 10px; border-radius: 999px; background: rgba(139,92,246,0.18); color: #c4b5fd; font-weight: 600; }
+
+  /* ----- Follow-up strip ----- */
+  .fu-strip {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    margin: 4px 0 16px;
+  }
+  .fu-card {
+    flex: 1; min-width: 180px;
+    border-radius: 12px;
+    padding: 14px 16px;
+    border-width: 1px; border-style: solid;
+    transition: transform .15s ease;
+  }
+  .fu-card:hover { transform: translateY(-2px); }
+  .fu-card .fu-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.85; }
+  .fu-card .fu-count { font-size: 28px; font-weight: 800; margin-top: 4px; }
+  .fu-card .fu-range { font-size: 11px; opacity: 0.6; margin-top: 2px; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -301,7 +344,36 @@ for col, cls, label, value, sub in [
         unsafe_allow_html=True,
     )
 
-st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# Follow-up strip
+# --------------------------------------------------------------------------- #
+FU_COLORS = {
+    "Post Purchase Delight Call":           ("#22d3ee", "#0e3a42"),
+    "Usage & Experience Feedback Call":     ("#a78bfa", "#2d1f52"),
+    "Pre-Warranty Expiry Engagement Call":  ("#fb923c", "#3d1f09"),
+    "7-Year Loyalty Upgrade Call":          ("#f472b6", "#3d0f26"),
+}
+FU_RANGES = {
+    "Post Purchase Delight Call":           "Within 2 days of purchase",
+    "Usage & Experience Feedback Call":     "2 days – 1 month",
+    "Pre-Warranty Expiry Engagement Call":  "1 month – 48 months",
+    "7-Year Loyalty Upgrade Call":          "48 months – 84 months",
+}
+
+fu_counts = df_all["customer_follow_up"].value_counts().to_dict()
+fu_html = '<div class="fu-strip">'
+for label, (fg, bg) in FU_COLORS.items():
+    count = fu_counts.get(label, 0)
+    fu_html += f"""
+    <div class="fu-card" style="background:{bg};border-color:{fg}33;color:{fg}">
+      <div class="fu-label">{label}</div>
+      <div class="fu-count" style="color:{fg}">{count}</div>
+      <div class="fu-range">{FU_RANGES[label]}</div>
+    </div>"""
+fu_html += "</div>"
+st.markdown(fu_html, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Filter panel
@@ -367,10 +439,14 @@ edited = st.data_editor(
     num_rows="fixed",
     height=460,
     column_config={
-        "customer_id":      st.column_config.NumberColumn(COL_LABELS["customer_id"], disabled=True, width="small"),
-        "customer_name":    st.column_config.TextColumn(COL_LABELS["customer_name"], disabled=True, width="small"),
-        "purchase_date":    st.column_config.DateColumn(COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small"),
-        "machine_type":     st.column_config.TextColumn(COL_LABELS["machine_type"], disabled=True, width="medium"),
+        "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], disabled=True, width="small"),
+        "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], disabled=True, width="small"),
+        "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small"),
+        "customer_follow_up": st.column_config.TextColumn(
+            COL_LABELS["customer_follow_up"], disabled=True, width="medium",
+            help="Auto-calculated from Purchase Date",
+        ),
+        "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], disabled=True, width="medium"),
         "phone_number":     st.column_config.TextColumn(COL_LABELS["phone_number"], disabled=True, width="small"),
         "email_id":         st.column_config.TextColumn(COL_LABELS["email_id"], disabled=True, width="medium"),
         "status":           st.column_config.SelectboxColumn(
