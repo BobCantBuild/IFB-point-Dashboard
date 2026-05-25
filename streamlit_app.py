@@ -202,13 +202,53 @@ st.markdown("""
   }
   .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
 
-  /* ── Data editor polish ── */
-  [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+  /* ── Lead table (per-row st.columns) ── */
+  .th {
+    background:#F1F5F9; padding:11px 12px; font-size:10.5px; font-weight:700;
+    color:#475569; text-transform:uppercase; letter-spacing:0.7px;
+    border-top:2px solid #94A3B8; border-bottom:2px solid #94A3B8;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    min-height:44px; display:flex; align-items:center;
+  }
+  .td {
+    background:#fff; padding:10px 12px; font-size:13px; color:#1E293B;
+    border-bottom:1px solid #E2E8F0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    min-height:44px; display:flex; align-items:center;
+  }
+  .td.alt    { background:#F8FAFC; }
+  .td.wrap   { white-space:normal; word-break:break-word; }
+  .td.muted  { color:#94A3B8; justify-content:center; }
+  .td.icon   { justify-content:center; padding:0; }
+  .td.center { justify-content:center; }
+
+  /* Edit-icon button (only inside the table, distinguished by single-char label) */
+  .stButton > button[kind="secondary"] {
+    background:#fff !important; color:#2563EB !important;
+    border:1px solid #E2E8F0 !important;
+    height:44px !important; min-height:44px !important;
+    padding:0 !important; font-size:16px !important; border-radius:0 !important;
+    border-bottom:1px solid #E2E8F0 !important;
+  }
+  .stButton > button[kind="secondary"]:hover {
+    background:#EFF6FF !important; border-color:#2563EB !important;
+  }
+
+  /* Kill row gaps so cell + button line up perfectly */
+  [data-testid="stHorizontalBlock"] { gap:0 !important; margin:0 !important; }
+  [data-testid="stVerticalBlock"]   { gap:0 !important; }
+  .element-container                { margin:0 !important; padding:0 !important; }
+  [data-testid="column"] > div      { gap:0 !important; }
+
+  /* Restore breathing room inside the filter panel */
+  .panel + div [data-testid="stHorizontalBlock"] { gap:14px !important; }
+
+  /* ── Legacy data editor polish (kept for stats/etc) ── */
+  [data-testid="stDataFrame"] {
     border:1px solid #E2E8F0; border-radius:14px; overflow:hidden;
     box-shadow:0 1px 4px rgba(0,0,0,.05); background:#fff;
   }
-  [data-testid="stDataFrame"] [role="columnheader"],
-  [data-testid="stDataEditor"] [role="columnheader"] {
+  [data-testid="stDataFrame"] [role="columnheader"] {
     background:#F1F5F9 !important;
     color:#475569 !important;
     font-weight:700 !important;
@@ -362,26 +402,41 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Data table — read-only view + per-row Edit checkbox that opens a dialog.
+# Data table — per-row ✏️ Edit button opens a modal dialog
 # --------------------------------------------------------------------------- #
-DISPLAY_COLS = [
-    "customer_follow_up", "customer_id", "customer_name", "purchase_date",
-    "machine_type", "phone_number", "email_id",
-    "status", "next_appointment", "interested", "remarks",
-]
+
+def _safe(v, fallback="—"):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return fallback
+    s = str(v).strip()
+    return fallback if s in ("", "NaT", "nan", "None") else s
 
 
-# ── Dialog (Streamlit modal) ────────────────────────────────────────────────
+def _fmt_date(d):
+    if d is None or (isinstance(d, float) and pd.isna(d)):
+        return "—"
+    if isinstance(d, date):
+        return d.strftime("%d/%m/%Y")
+    try:
+        parsed = pd.to_datetime(d, errors="coerce")
+        return parsed.strftime("%d/%m/%Y") if pd.notna(parsed) else "—"
+    except Exception:
+        return "—"
+
+
+# ── Modal dialog ────────────────────────────────────────────────────────────
 @st.dialog("Edit Lead")
 def edit_lead_dialog(row: dict):
     cid = int(row["customer_id"])
     name = row.get("customer_name") or "—"
+    machine = row.get("machine_type") or "—"
 
     st.markdown(
-        f"<div style='font-size:13px;color:#64748B;margin-bottom:2px;'>Customer</div>"
-        f"<div style='font-size:18px;font-weight:700;color:#0F172A;margin-bottom:2px;'>{name}</div>"
-        f"<div style='font-size:12px;color:#94A3B8;margin-bottom:14px;'>ID {cid} &nbsp;·&nbsp; "
-        f"{row.get('machine_type') or '—'}</div>",
+        f"<div style='font-size:12px;color:#94A3B8;text-transform:uppercase;"
+        f"letter-spacing:0.7px;margin-bottom:2px;'>Customer</div>"
+        f"<div style='font-size:20px;font-weight:700;color:#0F172A;line-height:1.2;'>{name}</div>"
+        f"<div style='font-size:12px;color:#94A3B8;margin:4px 0 16px;'>"
+        f"ID {cid} &nbsp;·&nbsp; {machine}</div>",
         unsafe_allow_html=True,
     )
 
@@ -404,7 +459,7 @@ def edit_lead_dialog(row: dict):
                       key=f"dlg_i_{cid}")
     nr = st.text_area("Remarks", value=cur_r, height=110, key=f"dlg_r_{cid}")
 
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💾  Save", type="primary", use_container_width=True,
@@ -416,21 +471,15 @@ def edit_lead_dialog(row: dict):
                 None if ni == "—" else ni,
                 nr.strip() or None,
             )
-            st.session_state["active_edit"] = None
-            st.session_state["editor_v"] = st.session_state.get("editor_v", 0) + 1
-            st.toast(f"Saved changes for {name}", icon="✅")
+            st.toast(f"Saved {name}", icon="✅")
             st.rerun()
     with c2:
         if st.button("Cancel", use_container_width=True, key=f"dlg_cancel_{cid}"):
-            st.session_state["active_edit"] = None
-            st.session_state["editor_v"] = st.session_state.get("editor_v", 0) + 1
             st.rerun()
 
 
-# ── State ──────────────────────────────────────────────────────────────────
-st.session_state.setdefault("editor_v", 0)
-st.session_state.setdefault("active_edit", None)
-
+# ── Table rendering ─────────────────────────────────────────────────────────
+read_only = section != "Today's Lead"
 
 if len(filtered) == 0:
     st.markdown(
@@ -441,65 +490,54 @@ if len(filtered) == 0:
         unsafe_allow_html=True,
     )
 else:
-    display_df = filtered[DISPLAY_COLS].copy().reset_index(drop=True)
-    display_df.insert(0, "_action", "✏️")  # visible edit icon
+    # column ratios:  edit  follow-up  id    name  date  machine  phone  email  status  appt  int   remarks
+    R   = [0.45,     2.2,       0.55, 1.4,  1.0,  1.65,    1.05,  1.8,   1.05,   1.05, 1.2,  1.7]
+    HDR = ["",       "Customer Follow-Up", "ID", "Customer Name", "Purchase Date",
+           "Machine Type", "Phone", "Email", "Status", "Next Appt",
+           "Interested?", "Remarks"]
 
-    read_only = section != "Today's Lead"
+    # Header row
+    hdr = st.columns(R)
+    for c, lbl in zip(hdr, HDR):
+        c.markdown(f"<div class='th'>{lbl}</div>", unsafe_allow_html=True)
 
-    event = st.dataframe(
-        display_df,
-        column_config={
-            "_action": st.column_config.TextColumn(
-                "Edit", width="small",
-                help="Click any row to open the edit dialog"),
-            "customer_follow_up": st.column_config.TextColumn(
-                "Customer Follow-Up", width="large",
-                help="Auto-assigned based on purchase date"),
-            "customer_id": st.column_config.NumberColumn(
-                "ID", width="small", format="%d"),
-            "customer_name": st.column_config.TextColumn(
-                "Customer Name", width="medium"),
-            "purchase_date": st.column_config.DateColumn(
-                "Purchase Date", width="small", format="DD/MM/YYYY"),
-            "machine_type": st.column_config.TextColumn(
-                "Machine Type", width="medium"),
-            "phone_number": st.column_config.TextColumn(
-                "Phone", width="small"),
-            "email_id": st.column_config.TextColumn(
-                "Email", width="medium"),
-            "status": st.column_config.TextColumn(
-                "Status", width="small"),
-            "next_appointment": st.column_config.DateColumn(
-                "Next Appointment", width="small", format="DD/MM/YYYY"),
-            "interested": st.column_config.TextColumn(
-                "Interested?", width="small"),
-            "remarks": st.column_config.TextColumn(
-                "Remarks", width="large"),
-        },
-        hide_index=True,
-        use_container_width=True,
-        height=min(640, 90 + 38 * len(display_df)),
-        on_select=("rerun" if not read_only else "ignore"),
-        selection_mode="single-row",
-        key=f"lead_table_{st.session_state['editor_v']}",
-    )
+    # Data rows
+    for ri, (_, row) in enumerate(filtered.iterrows()):
+        cid = int(row["customer_id"])
+        alt = " alt" if (ri % 2 == 1) else ""
+        cols = st.columns(R)
+
+        # 0 — edit icon button (real st.button → 100% reliable click)
+        with cols[0]:
+            if not read_only:
+                if st.button("✏️", key=f"edit_{cid}",
+                             help=f"Edit lead {cid}",
+                             use_container_width=True):
+                    edit_lead_dialog(row.to_dict())
+            else:
+                st.markdown(
+                    f"<div class='td muted{alt}'>—</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # 1–11 data cells
+        cols[1].markdown(f"<div class='td wrap{alt}'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='td center{alt}'>{cid}</div>",                                  unsafe_allow_html=True)
+        cols[3].markdown(f"<div class='td{alt}'><b>{_safe(row.get('customer_name'))}</b></div>",      unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='td{alt}'>{_fmt_date(row.get('purchase_date'))}</div>",         unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='td{alt}'>{_safe(row.get('machine_type'))}</div>",              unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='td{alt}'>{_safe(row.get('phone_number'))}</div>",              unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='td{alt}'>{_safe(row.get('email_id'))}</div>",                  unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='td{alt}'>{_safe(row.get('status'))}</div>",                    unsafe_allow_html=True)
+        cols[9].markdown(f"<div class='td{alt}'>{_fmt_date(row.get('next_appointment'))}</div>",      unsafe_allow_html=True)
+        cols[10].markdown(f"<div class='td{alt}'>{_safe(row.get('interested'))}</div>",               unsafe_allow_html=True)
+        cols[11].markdown(f"<div class='td wrap{alt}'>{_safe(row.get('remarks'))}</div>",             unsafe_allow_html=True)
 
     # caption
-    cap = ("Click the ✏️ icon (or any cell in the row) to edit."
+    cap = ("Click the ✏️ icon on any row to open the edit dialog."
            if not read_only else
            "Switch to Today's Lead to edit records.")
     st.markdown(
-        f"<div style='padding:6px 2px 0;color:#64748B;font-size:12.5px;'>{cap}</div>",
+        f"<div style='padding:10px 2px 0;color:#64748B;font-size:12.5px;'>{cap}</div>",
         unsafe_allow_html=True,
     )
-
-    # open dialog when a row is selected
-    if not read_only:
-        try:
-            sel_rows = event.selection.rows  # type: ignore[attr-defined]
-        except AttributeError:
-            sel_rows = []
-        if sel_rows and st.session_state["active_edit"] is None:
-            row_dict = display_df.iloc[sel_rows[0]].to_dict()
-            st.session_state["active_edit"] = int(row_dict["customer_id"])
-            edit_lead_dialog(row_dict)
