@@ -228,8 +228,8 @@ st.markdown("""
   .td.icon    { justify-content:center; padding:14px 0; }
   .td.center  { justify-content:center; }
   /* Right-edge breathing room so Remarks doesn't touch grey container */
-  .td.td-last { padding-right:26px; }
-  .th.th-last { padding-right:26px; }
+  .td.td-last { padding-right:52px !important; }
+  .th.th-last { padding-right:52px !important; }
 
   /* Status/Interested chips with colored dots */
   .chip {
