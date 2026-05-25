@@ -263,40 +263,59 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+COL_MAP = {
+    "IFB point ID": "ifb_point_id",
+    "Customer_ID": "customer_id",
+    "Customer name": "customer_name",
+    "Purchase Date": "purchase_date",
+    "Machine Type": "machine_type",
+    "Phone number": "phone_number",
+    "Email ID": "email_id",
+    "Status": "status",
+    "Next appointment": "next_appointment",
+    "Interested/ Not Interested": "interested",
+    "Remarks": "remarks",
+}
+
+DB_SCHEMA = """CREATE TABLE IF NOT EXISTS customers (
+    ifb_point_id INTEGER, customer_id INTEGER PRIMARY KEY, customer_name TEXT,
+    purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
+    status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT);"""
+
+
 @st.cache_resource
 def init_db_if_missing():
-    """Create and seed DB on first run if missing. For Streamlit Cloud."""
+    """Create and seed DB on first run. Works locally (Excel) and on Streamlit Cloud (data.csv)."""
     if DB_PATH.exists():
         return
-    try:
-        from seed_db import SCHEMA, COL_MAP
-        excel_path = Path(r"C:\Users\aswin\Downloads\IFB point customer dummy data.xlsx")
-        if excel_path.exists():
-            df = pd.read_excel(excel_path)
-            df = df.rename(columns=COL_MAP)
-            df["purchase_date"] = pd.to_datetime(df["purchase_date"], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
-            df["next_appointment"] = pd.to_datetime(df["next_appointment"], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
-            df["phone_number"] = df["phone_number"].astype(str)
-            conn = sqlite3.connect(DB_PATH)
-            conn.executescript(SCHEMA)
-            df.to_sql("customers", conn, if_exists="append", index=False)
-            conn.commit()
-            conn.close()
-            return
-    except Exception:
-        pass
-    # Fallback: use sample data (for Streamlit Cloud)
-    SCHEMA = """CREATE TABLE IF NOT EXISTS customers (
-        ifb_point_id INTEGER, customer_id INTEGER PRIMARY KEY, customer_name TEXT,
-        purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
-        status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT);"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
-    conn.executemany(
-        """INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?)""", SAMPLE_DATA
-    )
-    conn.commit()
-    conn.close()
+
+    df = None
+
+    # 1) Try local Excel
+    excel_path = Path(r"C:\Users\aswin\Downloads\IFB point customer dummy data.xlsx")
+    if excel_path.exists():
+        df = pd.read_excel(excel_path)
+
+    # 2) Try committed CSV (works on Streamlit Cloud)
+    if df is None:
+        csv_path = Path(__file__).parent / "data.csv"
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+
+    if df is not None:
+        df = df.rename(columns=COL_MAP)
+        df["purchase_date"] = pd.to_datetime(
+            df["purchase_date"], dayfirst=True, errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
+        df["next_appointment"] = pd.to_datetime(
+            df["next_appointment"], dayfirst=True, errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
+        df["phone_number"] = df["phone_number"].astype(str)
+        conn = sqlite3.connect(DB_PATH)
+        conn.executescript(DB_SCHEMA)
+        df.to_sql("customers", conn, if_exists="append", index=False)
+        conn.commit()
+        conn.close()
 
 init_db_if_missing()
 
