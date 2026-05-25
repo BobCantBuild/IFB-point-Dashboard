@@ -424,6 +424,39 @@ with st.container(border=True):
 
 
 # --------------------------------------------------------------------------- #
+# Sidebar — Follow-Up call type filter + Purchase Date sort
+# --------------------------------------------------------------------------- #
+FOLLOW_UP_TYPES = [
+    "Post Purchase Delight Call",
+    "Usage & Experience Feedback Call",
+    "Pre-Warranty Expiry Engagement Call",
+    "7-Year Loyalty Upgrade Call",
+]
+
+with st.sidebar:
+    st.markdown("### 🔎 Refine")
+    st.caption("Narrow the leads list")
+
+    st.markdown("**Follow-Up Type**")
+    selected_types = st.multiselect(
+        "Follow-Up Type",
+        options=FOLLOW_UP_TYPES,
+        default=FOLLOW_UP_TYPES,
+        label_visibility="collapsed",
+        placeholder="Choose call types",
+    )
+
+    st.markdown("**Purchase Date order**")
+    sort_order = st.radio(
+        "Purchase Date order",
+        options=["Ascending", "Descending"],
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
 if section == "Missed Follow Up's":
@@ -443,6 +476,17 @@ else:
         except ValueError:
             pass
         filtered = filtered[mask]
+
+    # sidebar: follow-up type filter
+    if selected_types and len(selected_types) < len(FOLLOW_UP_TYPES):
+        filtered = filtered[filtered["customer_follow_up"].isin(selected_types)]
+
+    # sidebar: purchase date sort
+    filtered = filtered.sort_values(
+        by="purchase_date",
+        ascending=(sort_order == "Ascending"),
+        na_position="last",
+    )
 
 st.markdown(f"""
 <div class="sec">
@@ -647,7 +691,7 @@ else:
         )
 
     # ── Pagination bar ──────────────────────────────────────────────────────
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
     pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
     with pc1:
         if st.button("⟵  Previous", key="pg_prev",
