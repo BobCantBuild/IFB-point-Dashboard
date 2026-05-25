@@ -99,7 +99,7 @@ def init_db_if_missing():
 # --------------------------------------------------------------------------- #
 # Page setup
 # --------------------------------------------------------------------------- #
-st.set_page_config(page_title="IFB Point Dashboard", layout="wide", page_icon=":bar_chart:")
+st.set_page_config(page_title="IFB POINT - Customer Follow Up", layout="wide", page_icon=":bar_chart:")
 
 st.markdown("""
 <style>
@@ -337,7 +337,7 @@ today  = date.today()
 st.markdown(f"""
 <div class="hero">
   <div>
-    <h1>IFB Point Dashboard</h1>
+    <h1>IFB POINT - Customer Follow Up</h1>
     <p>Customer Follow-Up Management &nbsp;&middot;&nbsp; {today.strftime('%A, %d %B %Y')}</p>
   </div>
   <span class="pill">&#9679;&nbsp; Live</span>
@@ -402,7 +402,7 @@ with st.container(border=True):
     with fc1:
         section = st.radio(
             "Section",
-            ["Today's Lead", "Missed Leads"],
+            ["Today's Lead", "Missed Follow Up's"],
             horizontal=True,
             label_visibility="collapsed",
         )
@@ -426,7 +426,7 @@ with st.container(border=True):
 # --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
-if section == "Missed Leads":
+if section == "Missed Follow Up's":
     filtered = df_all.iloc[0:0].copy()
 else:
     filtered = df_all.copy()
