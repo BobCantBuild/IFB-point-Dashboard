@@ -184,12 +184,19 @@ st.markdown("""
 
   /* ── Buttons ── */
   .stButton > button {
-    background:#0F172A; color:#F8FAFC; border:0; border-radius:8px;
-    padding:6px 14px; font-weight:600; font-size:13px;
-    height:36px !important; min-height:0 !important;
-    line-height:1 !important;
+    background:#0F172A; color:#F8FAFC; border:0; border-radius:6px;
+    padding:0 10px; font-weight:600; font-size:13px;
+    height:42px !important; min-height:42px !important;
+    line-height:42px !important; display:inline-flex;
+    align-items:center; justify-content:center;
   }
   .stButton > button:hover { background:#1E293B; }
+
+  /* ── Kill every source of vertical gap inside table rows ── */
+  [data-testid="stHorizontalBlock"] { gap:0 !important; margin:0 !important; padding:0 !important; }
+  [data-testid="stVerticalBlock"]   { gap:0 !important; }
+  .element-container                { margin:0 !important; padding:0 !important; }
+  [data-testid="column"] > div      { gap:0 !important; }
 
   /* ── Section header ── */
   .sec { display:flex; align-items:center; gap:10px; margin:6px 0 14px; }
@@ -446,10 +453,10 @@ else:
             _cell(dc[7],  _safe(cur_s, "—"), bg,            last=is_end)
             _cell(dc[8],  ap_s,              bg,            last=is_end)
             _cell(dc[9],  _safe(cur_i, "—"), bg,            last=is_end)
-            _cell(dc[10], _safe(cur_r, "—"), bg,            last=is_end)
-            _cell(dc[11], "",                bg, right=True, last=is_end)
-            if section == "Today's Lead":
-                with dc[11]:
-                    if st.button("✏️", key=f"ed_{cid}", help="Edit row"):
+            _cell(dc[10], _safe(cur_r, "—"), bg, right=True, last=is_end)
+            with dc[11]:
+                if section == "Today's Lead":
+                    if st.button("✏️", key=f"ed_{cid}",
+                                 help="Edit row", use_container_width=True):
                         st.session_state["editing_cid"] = cid
                         st.rerun()
