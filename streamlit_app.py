@@ -206,9 +206,9 @@ st.markdown("""
   .th {
     background:#FFFFFF;
     padding:16px 14px;
-    font-size:12px; font-weight:500;
-    color:#94A3B8; letter-spacing:0;
-    border-bottom:1px solid #F1F5F9;
+    font-size:12.5px; font-weight:600;
+    color:#334155; letter-spacing:0.2px;
+    border-bottom:1px solid #E2E8F0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     min-height:50px; display:flex; align-items:center;
   }
@@ -476,9 +476,22 @@ def edit_lead_dialog(row: dict):
     )
 
     cur_s = row.get("status")           if pd.notna(row.get("status"))           else None
-    cur_a = row.get("next_appointment") if isinstance(row.get("next_appointment"), date) else None
     cur_i = row.get("interested")       if pd.notna(row.get("interested"))       else None
     cur_r = str(row.get("remarks"))     if pd.notna(row.get("remarks")) and row.get("remarks") else ""
+
+    # Date can be None / pd.NaT / datetime.date — coerce safely
+    raw_a = row.get("next_appointment")
+    cur_a = None
+    if raw_a is not None:
+        try:
+            if not pd.isna(raw_a):
+                if isinstance(raw_a, date):
+                    cur_a = raw_a
+                else:
+                    parsed = pd.to_datetime(raw_a, errors="coerce")
+                    cur_a = parsed.date() if pd.notna(parsed) else None
+        except (TypeError, ValueError):
+            cur_a = None
 
     s_opts = ["—"] + STATUS_OPTIONS
     i_opts = ["—"] + INTEREST_OPTIONS
@@ -487,8 +500,7 @@ def edit_lead_dialog(row: dict):
                       index=s_opts.index(cur_s) if cur_s in STATUS_OPTIONS else 0,
                       key=f"dlg_s_{cid}")
     na = st.date_input("Next Appointment",
-                       value=cur_a if isinstance(cur_a, date) else None,
-                       min_value=today, key=f"dlg_a_{cid}")
+                       value=cur_a, min_value=today, key=f"dlg_a_{cid}")
     ni = st.selectbox("Interested?", i_opts,
                       index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
                       key=f"dlg_i_{cid}")
