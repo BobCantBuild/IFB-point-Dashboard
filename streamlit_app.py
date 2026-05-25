@@ -32,6 +32,13 @@ COL_LABELS = {
 STATUS_OPTIONS = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 
+SAMPLE_DATA = [
+    (56372, 1449, "Kavin", "2019-04-25", "IFB TL-RCG 6.5kg Aqua - TL", "9950313198", "user2@example.com", None, None, None, None),
+    (56372, 6112, "Sneha", "2019-06-30", "IFB Microwave Oven 30BRC2 - Microwave Oven", "9327108127", "user3@example.com", None, None, None, None),
+    (56372, 4707, "Anu", "2019-09-04", "IFB Executive Plus ZXB - FL", "9910237661", "user4@example.com", None, None, None, None),
+    (56372, 3738, "Meena", "2019-11-09", "IFB Turbo Dry MX - Dryer", "9603033340", "user5@example.com", None, None, None, None),
+    (56372, 3029, "Rahul", "2020-01-14", "IFB Senator Plus SX - FL", "9307727705", "user6@example.com", None, None, None, None),
+]
 
 # --------------------------------------------------------------------------- #
 # Data layer
@@ -213,8 +220,45 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+@st.cache_resource
+def init_db_if_missing():
+    """Create and seed DB on first run if missing. For Streamlit Cloud."""
+    if DB_PATH.exists():
+        return
+    try:
+        from seed_db import SCHEMA, COL_MAP
+        excel_path = Path(r"C:\Users\aswin\Downloads\IFB point customer dummy data.xlsx")
+        if excel_path.exists():
+            df = pd.read_excel(excel_path)
+            df = df.rename(columns=COL_MAP)
+            df["purchase_date"] = pd.to_datetime(df["purchase_date"], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
+            df["next_appointment"] = pd.to_datetime(df["next_appointment"], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
+            df["phone_number"] = df["phone_number"].astype(str)
+            conn = sqlite3.connect(DB_PATH)
+            conn.executescript(SCHEMA)
+            df.to_sql("customers", conn, if_exists="append", index=False)
+            conn.commit()
+            conn.close()
+            return
+    except Exception:
+        pass
+    # Fallback: use sample data (for Streamlit Cloud)
+    SCHEMA = """CREATE TABLE IF NOT EXISTS customers (
+        ifb_point_id INTEGER, customer_id INTEGER PRIMARY KEY, customer_name TEXT,
+        purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
+        status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT);"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript(SCHEMA)
+    conn.executemany(
+        """INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?)""", SAMPLE_DATA
+    )
+    conn.commit()
+    conn.close()
+
+init_db_if_missing()
+
 if not DB_PATH.exists():
-    st.error(f"Database not found at {DB_PATH}. Run `python seed_db.py` first.")
+    st.error("Database not initialized. Local: run `python seed_db.py`. Cloud: ensure Excel file is accessible.")
     st.stop()
 
 df_all = load_all()
