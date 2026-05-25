@@ -204,17 +204,6 @@ st.markdown("""
   .sec h3   { margin:0; font-size:16px; font-weight:700; color:#0F172A; }
   .sec .cnt { font-size:11px; padding:2px 10px; border-radius:999px; background:#F1F5F9;
               color:#64748B; font-weight:600; border:1px solid #E2E8F0; }
-
-  /* ── Scrollable table wrapper ── */
-  .table-scroll-wrap {
-    overflow-x: auto;
-    width: 100%;
-    border-radius: 10px;
-  }
-  .table-scroll-wrap table {
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -256,10 +245,8 @@ not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
 
-
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
-
 
 st.markdown(f"""
 <div class="stats-row">
@@ -325,7 +312,7 @@ with st.container(border=True):
 
 
 # --------------------------------------------------------------------------- #
-# Filter logic
+# Filter
 # --------------------------------------------------------------------------- #
 if section == "Missed Leads":
     filtered = df_all.iloc[0:0].copy()
@@ -345,7 +332,6 @@ else:
             pass
         filtered = filtered[mask]
 
-
 st.markdown(f"""
 <div class="sec">
   <span class="dot"></span>
@@ -355,24 +341,21 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Table constants
+# Per-row inline-edit table  (with horizontal scroll via fixed page width)
 # --------------------------------------------------------------------------- #
-# Fixed pixel widths per column
-COL_PX = [210, 60, 120, 100, 185, 105, 170, 110, 100, 125, 190, 50, 50]
-#          fu   id  name date machine phone email status appt inter remarks edit save
 
-LABELS = [
-    "Customer Follow-Up", "ID", "Name", "Purchase Date",
-    "Machine Type", "Phone", "Email",
-    "Status", "Next Appt", "Interested?", "Remarks", "", "",
-]
+# col widths in proportional units — total ≈ 16.5 (maps to 1640px page)
+#         fu    id    name  date   machine  phone  email   status  appt   int    rem   edit  save
+RATIOS = [2.3,  0.65, 1.2,  1.0,   2.0,   1.1,   1.8,    1.1,    1.05,  1.3,   2.0,  0.5,  0.5]
+LABELS = ["Customer Follow-Up","ID","Name","Purchase Date",
+          "Machine Type","Phone","Email",
+          "Status","Next Appt","Interested?","Remarks","&nbsp;","&nbsp;"]
 
-OUTER   = "#94A3B8"
-INNER   = "#E2E8F0"
+N = len(RATIOS)  # 13 columns (0-10 data, 11 edit, 12 save)
+OUTER = "#94A3B8"
+INNER = "#E2E8F0"
 HEAD_BG = "#F1F5F9"
-ALT     = ["#FFFFFF", "#F8FAFC"]
-
-WRAP_COLS = {0, 10}   # columns that allow text wrap
+ALT = ["#FFFFFF", "#F8FAFC"]
 
 
 def _safe(v, fallback="—"):
@@ -382,71 +365,54 @@ def _safe(v, fallback="—"):
     return fallback if s in ("", "NaT", "nan", "None") else s
 
 
-def td(html, bg, col_idx, *, header=False, last_row=False):
-    """Return a single <td> HTML string."""
-    w = COL_PX[col_idx]
-    is_first   = col_idx == 0
-    is_last    = col_idx == len(COL_PX) - 1
-    wrap       = col_idx in WRAP_COLS
-
-    bl = f"border-left:2px solid {OUTER};"  if is_first else f"border-left:1px solid {INNER};"
-    br = f"border-right:2px solid {OUTER};" if is_last  else ""
-    bt = f"border-top:2px solid {OUTER};"   if header   else ""
-
-    if header:
-        bb = f"border-bottom:3px solid {OUTER};"
-    elif last_row:
-        bb = f"border-bottom:2px solid {OUTER};"
-    else:
-        bb = f"border-bottom:1px solid {INNER};"
-
+def _cell(col, html, bg, top=False, left=False, right=False,
+          last=False, header=False, wrap=False):
+    bt  = f"border-top:2px solid {OUTER};"    if top   else ""
+    bl  = f"border-left:2px solid {OUTER};"   if left  else ""
+    br  = f"border-right:2px solid {OUTER};"  if right else f"border-right:1px solid {INNER};"
+    bb  = f"border-bottom:2px solid {OUTER};" if last  else f"border-bottom:1px solid {INNER};"
     fw  = "700"     if header else "400"
     fs  = "10.5px"  if header else "13px"
     clr = "#475569" if header else "#1E293B"
     tt  = "text-transform:uppercase;letter-spacing:0.7px;" if header else ""
-    ws  = ("white-space:normal;word-break:break-word;"
-           if wrap else
-           "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")
-    pb  = "padding-bottom:16px;" if header else ""   # extra bottom spacing for header row only
+    ws  = "white-space:normal;word-break:break-word;" if wrap else "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
 
-    return (
-        f"<td style='background:{bg};padding:10px 12px;{pb}"
-        f"font-size:{fs};font-weight:{fw};color:{clr};{tt}{ws}"
-        f"width:{w}px;min-width:{w}px;max-width:{w}px;"
-        f"{bl}{br}{bt}{bb}'>{html}</td>"
+    # ── NEW: header-specific styling ──
+    header_border = f"border-bottom:2px solid {OUTER};" if header else ""
+    header_pad    = "padding-bottom:16px;" if header else ""
+
+    col.markdown(
+        f"<div style='background:{bg};padding:10px 12px;font-size:{fs};"
+        f"font-weight:{fw};color:{clr};{tt}{ws}"
+        f"min-height:42px;{bt}{bl}{br}{bb}{header_border}{header_pad}'>{html}</div>",
+        unsafe_allow_html=True,
     )
 
 
-# --------------------------------------------------------------------------- #
-# Render table
-# --------------------------------------------------------------------------- #
+# session state
 if "editing_cid" not in st.session_state:
     st.session_state["editing_cid"] = None
 
-total_width = sum(COL_PX) + 4
+# ── header ────────────────────────────────────────────────────────────────────
+hdr = st.columns(RATIOS)
+for i, (c, lbl) in enumerate(zip(hdr, LABELS)):
+    _cell(c, lbl, HEAD_BG, header=True, top=True,
+          left=(i == 0), right=(i == N - 1),
+          wrap=(i in (0, 10)))
 
+# ── rows ─────────────────────────────────────────────────────────────────────
 if len(filtered) == 0:
     st.markdown(
-        f"<div style='text-align:center;padding:48px;color:#94A3B8;font-size:14px;"
-        f"border:2px solid {OUTER};border-radius:0 0 10px 10px;background:#fff'>"
-        f"No records found.</div>",
+        "<div style='text-align:center;padding:48px;color:#94A3B8;font-size:14px;"
+        f"border-left:2px solid {OUTER};border-right:2px solid {OUTER};"
+        f"border-bottom:2px solid {OUTER};background:#fff'>No records found.</div>",
         unsafe_allow_html=True,
     )
 else:
     total_rows = len(filtered)
-
-    # ── Build header row ──────────────────────────────────────────────────────
-    hdr_cells = "".join(
-        td(lbl, HEAD_BG, i, header=True)
-        for i, lbl in enumerate(LABELS)
-    )
-
-    # ── Build data rows ───────────────────────────────────────────────────────
-    rows_html = f"<tr>{hdr_cells}</tr>"
-
     for ri, (_, row) in enumerate(filtered.iterrows()):
         cid    = int(row["customer_id"])
-        is_end = ri == total_rows - 1
+        is_end = (ri == total_rows - 1)
         is_ed  = (st.session_state["editing_cid"] == cid) and (section == "Today's Lead")
         bg     = ALT[ri % 2]
 
@@ -455,115 +421,62 @@ else:
         cur_i = row["interested"]       if pd.notna(row.get("interested"))       else None
         cur_r = str(row["remarks"])     if pd.notna(row.get("remarks")) and row["remarks"] else ""
 
-        pd_s = (row["purchase_date"].strftime("%d/%m/%Y")
-                if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—")
-        ap_s = cur_a.strftime("%d/%m/%Y") if cur_a else "—"
+        dc = st.columns(RATIOS)
 
-        # cols 0-6 are always read-only
-        static = (
-            td(_safe(row.get("customer_follow_up")),            bg, 0, last_row=is_end)
-            + td(str(cid),                                      bg, 1, last_row=is_end)
-            + td(f"<b>{_safe(row.get('customer_name'))}</b>",   bg, 2, last_row=is_end)
-            + td(pd_s,                                          bg, 3, last_row=is_end)
-            + td(_safe(row.get("machine_type")),                bg, 4, last_row=is_end)
-            + td(_safe(row.get("phone_number")),                bg, 5, last_row=is_end)
-            + td(_safe(row.get("email_id")),                    bg, 6, last_row=is_end)
-        )
+        # read-only cells
+        pd_s = row["purchase_date"].strftime("%d/%m/%Y") if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—"
+        _cell(dc[0], _safe(row.get("customer_follow_up")),        bg, left=True, last=is_end, wrap=True)
+        _cell(dc[1], str(cid),                                   bg,            last=is_end)
+        _cell(dc[2], f"<b>{_safe(row.get('customer_name'))}</b>", bg,           last=is_end)
+        _cell(dc[3], pd_s,                                       bg,            last=is_end)
+        _cell(dc[4], _safe(row.get("machine_type")),             bg,            last=is_end)
+        _cell(dc[5], _safe(row.get("phone_number")),             bg,            last=is_end)
+        _cell(dc[6], _safe(row.get("email_id")),                 bg,            last=is_end)
 
         if is_ed:
-            # Show placeholder text in editable columns; widgets rendered below
-            editable = (
-                td("<i style='color:#94A3B8'>editing…</i>", bg, 7,  last_row=is_end)
-                + td("",                                    bg, 8,  last_row=is_end)
-                + td("",                                    bg, 9,  last_row=is_end)
-                + td("",                                    bg, 10, last_row=is_end)
-                + td("",                                    bg, 11, last_row=is_end)
-                + td("",                                    bg, 12, last_row=is_end)
-            )
-        else:
-            edit_btn = (
-                "✏️" if section == "Today's Lead" else ""
-            )
-            editable = (
-                td(_safe(cur_s, "—"), bg, 7,  last_row=is_end)
-                + td(ap_s,            bg, 8,  last_row=is_end)
-                + td(_safe(cur_i, "—"), bg, 9, last_row=is_end)
-                + td(_safe(cur_r, "—"), bg, 10, last_row=is_end)
-                + td(edit_btn,        bg, 11, last_row=is_end)
-                + td("",              bg, 12, last_row=is_end)
-            )
-
-        rows_html += f"<tr>{static}{editable}</tr>"
-
-    table_html = f"""
-    <div class="table-scroll-wrap">
-      <table style="width:{total_width}px;min-width:{total_width}px;
-                    border-collapse:collapse;table-layout:fixed;">
-        {rows_html}
-      </table>
-    </div>
-    """
-    st.markdown(table_html, unsafe_allow_html=True)
-
-    # ── Edit widgets (rendered below the table for the active editing row) ────
-    for ri, (_, row) in enumerate(filtered.iterrows()):
-        cid   = int(row["customer_id"])
-        is_ed = (st.session_state["editing_cid"] == cid) and (section == "Today's Lead")
-
-        cur_s = row["status"]           if pd.notna(row.get("status"))           else None
-        cur_a = row["next_appointment"] if pd.notna(row.get("next_appointment")) else None
-        cur_i = row["interested"]       if pd.notna(row.get("interested"))       else None
-        cur_r = str(row["remarks"])     if pd.notna(row.get("remarks")) and row["remarks"] else ""
-
-        if is_ed:
-            st.markdown(
-                f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;"
-                f"border-radius:8px;padding:12px 16px;margin:8px 0 4px;"
-                f"font-size:12px;font-weight:600;color:#1E40AF'>"
-                f"✏️ Editing Customer ID {cid}</div>",
-                unsafe_allow_html=True,
-            )
-            ec1, ec2, ec3, ec4, ec5, ec6 = st.columns([1.4, 1.4, 1.4, 2.0, 0.35, 0.35])
-            with ec1:
-                ns = st.selectbox(
-                    "Status", ["—"] + STATUS_OPTIONS,
-                    index=(["—"] + STATUS_OPTIONS).index(cur_s) if cur_s in STATUS_OPTIONS else 0,
-                    key=f"s_{cid}",
-                )
-            with ec2:
-                na = st.date_input(
-                    "Next Appointment",
+            with dc[7]:
+                ns = st.selectbox("Status", ["—"] + STATUS_OPTIONS,
+                    index=(["—"]+STATUS_OPTIONS).index(cur_s) if cur_s in STATUS_OPTIONS else 0,
+                    key=f"s_{cid}", label_visibility="collapsed")
+            with dc[8]:
+                na = st.date_input("Appt",
                     value=cur_a if isinstance(cur_a, date) else None,
-                    min_value=today,
-                    key=f"a_{cid}",
-                )
-            with ec3:
-                ni = st.selectbox(
-                    "Interested?", ["—"] + INTEREST_OPTIONS,
-                    index=(["—"] + INTEREST_OPTIONS).index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
-                    key=f"i_{cid}",
-                )
-            with ec4:
-                nr = st.text_input("Remarks", value=cur_r, key=f"r_{cid}")
-            with ec5:
-                if st.button("✕", key=f"cx_{cid}", help="Cancel", use_container_width=True):
+                    min_value=today, key=f"a_{cid}", label_visibility="collapsed")
+            with dc[9]:
+                ni = st.selectbox("Interested", ["—"] + INTEREST_OPTIONS,
+                    index=(["—"]+INTEREST_OPTIONS).index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
+                    key=f"i_{cid}", label_visibility="collapsed")
+            with dc[10]:
+                nr = st.text_input("Remarks", value=cur_r,
+                    key=f"r_{cid}", label_visibility="collapsed")
+            # col 11 = Cancel (✕),  col 12 = Save (💾)
+            with dc[11]:
+                if st.button("✕", key=f"cx_{cid}", help="Cancel",
+                             use_container_width=True):
                     st.session_state["editing_cid"] = None
                     st.rerun()
-            with ec6:
-                if st.button("💾", key=f"sv_{cid}", help="Save", use_container_width=True):
-                    update_row(
-                        cid,
+            with dc[12]:
+                if st.button("💾", key=f"sv_{cid}", help="Save",
+                             use_container_width=True):
+                    update_row(cid,
                         None if ns == "—" else ns,
                         na if isinstance(na, date) else None,
                         None if ni == "—" else ni,
-                        nr.strip() or None,
-                    )
+                        nr.strip() or None)
                     st.session_state["editing_cid"] = None
                     st.rerun()
-            break  # only one row can be in edit mode at a time
-
-        elif section == "Today's Lead":
-            # Individual ✏️ button per non-editing row
-            if st.button("✏️", key=f"ed_{cid}", help=f"Edit row {cid}", use_container_width=False):
-                st.session_state["editing_cid"] = cid
-                st.rerun()
+        else:
+            ap_s = cur_a.strftime("%d/%m/%Y") if cur_a else "—"
+            _cell(dc[7],  _safe(cur_s, "—"), bg,                        last=is_end)
+            _cell(dc[8],  ap_s,              bg,                        last=is_end)
+            _cell(dc[9],  _safe(cur_i, "—"), bg,                        last=is_end)
+            _cell(dc[10], _safe(cur_r, "—"), bg, right=True, last=is_end, wrap=True)
+            # col 11 = Edit (✏️),  col 12 = Save (empty in view mode)
+            with dc[11]:
+                if section == "Today's Lead":
+                    if st.button("✏️", key=f"ed_{cid}",
+                                 help="Edit row", use_container_width=True):
+                        st.session_state["editing_cid"] = cid
+                        st.rerun()
+            with dc[12]:
+                pass  # save column is empty until row is in edit mode
