@@ -266,24 +266,6 @@ st.markdown("""
   }
   .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
 
-  /* Header buttons (popover filter, sort toggle) — blend into header row */
-  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button,
-  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="stPopover"] > div > button {
-    background:#FFFFFF !important; color:#334155 !important;
-    border:0 !important; border-bottom:1px solid #E2E8F0 !important;
-    border-radius:0 !important;
-    height:50px !important; min-height:50px !important;
-    padding:0 14px !important;
-    font-size:12.5px !important; font-weight:600 !important;
-    letter-spacing:0.2px !important;
-    text-align:left !important; justify-content:flex-start !important;
-    width:100% !important;
-  }
-  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button:hover,
-  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="stPopover"] > div > button:hover {
-    background:#F8FAFC !important; color:#0F172A !important;
-  }
-
   /* Pencil edit button — circular icon, ONLY inside table rows */
   [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
     background:#FFFFFF !important; color:#94A3B8 !important;
@@ -444,15 +426,6 @@ with st.container(border=True):
 # --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
-FOLLOW_UP_TYPES = [
-    "Post Purchase Delight Call",
-    "Usage & Experience Feedback Call",
-    "Pre-Warranty Expiry Engagement Call",
-    "7-Year Loyalty Upgrade Call",
-]
-st.session_state.setdefault("fu_filter", list(FOLLOW_UP_TYPES))
-st.session_state.setdefault("pd_sort",   "asc")
-
 if section == "Missed Follow Up's":
     filtered = df_all.iloc[0:0].copy()
 else:
@@ -470,18 +443,6 @@ else:
         except ValueError:
             pass
         filtered = filtered[mask]
-
-    # header-popover: follow-up type filter
-    sel = st.session_state["fu_filter"]
-    if sel and len(sel) < len(FOLLOW_UP_TYPES):
-        filtered = filtered[filtered["customer_follow_up"].isin(sel)]
-
-    # header-toggle: purchase date sort
-    filtered = filtered.sort_values(
-        by="purchase_date",
-        ascending=(st.session_state["pd_sort"] == "asc"),
-        na_position="last",
-    )
 
 st.markdown(f"""
 <div class="sec">
@@ -631,49 +592,10 @@ else:
     # Header row
     hdr = st.columns(R)
     last_i = len(HDR) - 1
-    fu_active   = len(st.session_state["fu_filter"]) < len(FOLLOW_UP_TYPES)
-    fu_icon     = "🟦" if fu_active else "▾"
-    sort_icon   = "▲" if st.session_state["pd_sort"] == "asc" else "▼"
-
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-        # Col 1: Customer Follow-Up — popover filter
-        if i == 1:
-            with c:
-                with st.popover(f"{lbl}  {fu_icon}", use_container_width=True,
-                                help="Filter by call type"):
-                    st.markdown("**Filter call types**")
-                    new_sel = st.multiselect(
-                        "Types",
-                        FOLLOW_UP_TYPES,
-                        default=st.session_state["fu_filter"],
-                        label_visibility="collapsed",
-                        key="fu_filter_widget",
-                    )
-                    cc1, cc2 = st.columns(2)
-                    with cc1:
-                        if st.button("Apply", type="primary",
-                                     use_container_width=True, key="fu_apply"):
-                            st.session_state["fu_filter"] = new_sel
-                            st.rerun()
-                    with cc2:
-                        if st.button("Reset", use_container_width=True, key="fu_reset"):
-                            st.session_state["fu_filter"] = list(FOLLOW_UP_TYPES)
-                            st.rerun()
-        # Col 4: Purchase Date — sort toggle button
-        elif i == 4:
-            with c:
-                if st.button(f"{lbl}  {sort_icon}", key="pd_sort_btn",
-                             use_container_width=True,
-                             help=("Currently ascending — click for descending"
-                                   if st.session_state["pd_sort"] == "asc"
-                                   else "Currently descending — click for ascending")):
-                    st.session_state["pd_sort"] = ("desc"
-                        if st.session_state["pd_sort"] == "asc" else "asc")
-                    st.rerun()
-        else:
-            extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-            style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
-            c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
+        extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
+        style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
+        c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
 
     def _status_chip(v):
         s = _safe(v)
