@@ -134,170 +134,149 @@ st.set_page_config(page_title="IFB Point Dashboard", layout="wide", page_icon=":
 CSS = """
 <style>
   /* ----- Global ----- */
-  .stApp { background: #FFF8EE; }
-  .block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1400px; }
+  .stApp { background: #F1F5F9; }
+  .block-container { padding-top: 1.4rem; padding-bottom: 2rem; max-width: 1400px; }
   header[data-testid="stHeader"] { background: transparent; }
   #MainMenu, footer { visibility: hidden; }
 
   /* ----- Hero ----- */
   .hero {
-    background: linear-gradient(135deg, #F59E0B 0%, #F97316 100%);
-    border-radius: 20px;
-    padding: 24px 32px;
-    color: #fff;
-    box-shadow: 0 8px 32px rgba(245,158,11,0.28);
-    margin-bottom: 20px;
+    background: #0F172A;
+    border-radius: 16px;
+    padding: 22px 28px;
+    margin-bottom: 18px;
     display: flex; align-items: center; justify-content: space-between;
   }
-  .hero-left h1 { margin: 0; font-size: 28px; font-weight: 900;
-    letter-spacing: -0.5px; color: #fff; }
-  .hero-left p  { margin: 4px 0 0; font-size: 13px;
-    color: rgba(255,255,255,0.82); font-weight: 500; }
+  .hero-left h1 { margin: 0; font-size: 22px; font-weight: 700;
+    letter-spacing: -0.3px; color: #F8FAFC; }
+  .hero-left p  { margin: 5px 0 0; font-size: 13px; color: #94A3B8; }
   .hero .pill {
-    display: inline-block; padding: 5px 14px; border-radius: 999px;
-    background: rgba(255,255,255,0.22); font-size: 12px; font-weight: 700;
-    color: #fff; letter-spacing: 0.5px;
+    display: inline-block; padding: 5px 14px; border-radius: 6px;
+    background: #1E293B; font-size: 12px; font-weight: 600;
+    color: #38BDF8; letter-spacing: 0.3px; border: 1px solid #334155;
   }
 
   /* ----- Stats row ----- */
   .stats-row {
     display: flex; gap: 12px; align-items: stretch;
-    margin-bottom: 18px; flex-wrap: nowrap;
+    margin-bottom: 16px; flex-wrap: nowrap;
   }
 
   /* Solo card */
   .stat-solo {
-    background: #fff;
-    border: 1px solid #F0E4CE;
-    border-radius: 16px; padding: 20px 22px;
+    background: #fff; border: 1px solid #E2E8F0;
+    border-radius: 14px; padding: 20px 22px;
     min-width: 120px; display: flex; flex-direction: column;
     justify-content: space-between; flex-shrink: 0;
-    box-shadow: 0 2px 12px rgba(245,158,11,0.08);
-    transition: box-shadow .15s, transform .15s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   }
-  .stat-solo:hover { box-shadow: 0 6px 24px rgba(245,158,11,0.16); transform: translateY(-2px); }
-  .stat-solo .s-label { font-size: 11px; font-weight: 700; color: #A8896A;
-    text-transform: uppercase; letter-spacing: 1.3px; }
-  .stat-solo .s-value { font-size: 40px; font-weight: 900; margin-top: 6px;
-    line-height: 1; color: #1C1917; }
-  .stat-solo .s-sub { font-size: 11px; color: #C4A882; margin-top: 5px; font-weight: 500; }
+  .stat-solo .s-label { font-size: 11px; font-weight: 600; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px; }
+  .stat-solo .s-value { font-size: 38px; font-weight: 800; margin-top: 8px;
+    line-height: 1; color: #0F172A; }
+  .stat-solo .s-sub { font-size: 11px; color: #CBD5E1; margin-top: 6px; }
 
   /* Group card */
   .stat-group {
-    background: #fff;
-    border: 1px solid #F0E4CE;
-    border-radius: 16px; padding: 16px 18px;
-    flex: 1;
-    box-shadow: 0 2px 12px rgba(245,158,11,0.08);
-    transition: box-shadow .15s, transform .15s;
+    background: #fff; border: 1px solid #E2E8F0;
+    border-radius: 14px; padding: 16px 18px; flex: 1;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   }
-  .stat-group:hover { box-shadow: 0 6px 24px rgba(245,158,11,0.14); transform: translateY(-2px); }
-  .stat-group .g-label { font-size: 11px; font-weight: 700; color: #A8896A;
-    text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 12px; }
+  .stat-group .g-label { font-size: 11px; font-weight: 600; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
   .stat-group .g-inner { display: flex; gap: 8px; }
 
   /* Sub-card */
   .sub-stat {
-    flex: 1; border-radius: 10px; padding: 10px 10px 8px;
-    text-align: center; border: 1px solid transparent;
-    transition: transform .12s;
+    flex: 1; border-radius: 8px; padding: 10px 10px 8px;
+    text-align: center; background: #F8FAFC; border: 1px solid #E2E8F0;
   }
-  .sub-stat:hover { transform: translateY(-1px); }
-  .sub-stat .ss-val { font-size: 26px; font-weight: 800; line-height: 1; }
-  .sub-stat .ss-lbl { font-size: 10px; font-weight: 600; margin-top: 5px;
-    text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.80; }
+  .sub-stat .ss-val { font-size: 24px; font-weight: 800; line-height: 1; color: #0F172A; }
+  .sub-stat .ss-lbl { font-size: 10px; font-weight: 500; margin-top: 5px;
+    color: #64748B; letter-spacing: 0.3px; }
 
-  /* Colour variants — soft pastel for light theme */
-  .ss-green  { background: #F0FDF4; border-color: #BBF7D0; color: #16A34A; }
-  .ss-red    { background: #FFF1F2; border-color: #FECDD3; color: #DC2626; }
-  .ss-grey   { background: #F8FAFC; border-color: #E2E8F0; color: #64748B; }
-  .ss-amber  { background: #FFFBEB; border-color: #FDE68A; color: #D97706; }
-  .ss-cyan   { background: #ECFEFF; border-color: #A5F3FC; color: #0891B2; }
-  .ss-violet { background: #F5F3FF; border-color: #DDD6FE; color: #7C3AED; }
-  .ss-orange { background: #FFF7ED; border-color: #FED7AA; color: #EA580C; }
-  .ss-pink   { background: #FFF0F6; border-color: #FBCFE8; color: #DB2777; }
+  /* Subtle tinted variants — only the number gets color */
+  .ss-green .ss-val  { color: #16A34A; }
+  .ss-red   .ss-val  { color: #DC2626; }
+  .ss-grey  .ss-val  { color: #475569; }
+  .ss-blue  .ss-val  { color: #2563EB; }
+  .ss-teal  .ss-val  { color: #0D9488; }
+  .ss-indigo .ss-val { color: #4F46E5; }
+  .ss-rose  .ss-val  { color: #E11D48; }
+  .ss-slate .ss-val  { color: #334155; }
 
   /* ----- Filter panel ----- */
   .panel {
-    background: #fff;
-    border: 1px solid #F0E4CE;
-    border-radius: 16px;
-    padding: 16px 20px 8px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 10px rgba(245,158,11,0.07);
+    background: #fff; border: 1px solid #E2E8F0;
+    border-radius: 14px; padding: 16px 20px 8px;
+    margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
   }
-  .panel .ttl { font-size: 11px; color: #A8896A; text-transform: uppercase;
-    letter-spacing: 1.3px; font-weight: 700; margin-bottom: 8px; }
+  .panel .ttl { font-size: 11px; color: #94A3B8; text-transform: uppercase;
+    letter-spacing: 1px; font-weight: 600; margin-bottom: 8px; }
 
-  /* ----- Section selector (pill tabs) ----- */
+  /* ----- Section selector ----- */
   div[role="radiogroup"] {
-    gap: 6px !important;
-    background: #FEF3C7;
-    padding: 5px;
-    border-radius: 12px;
-    border: 1px solid #FDE68A;
-    width: fit-content;
+    gap: 4px !important; background: #F1F5F9;
+    padding: 4px; border-radius: 10px;
+    border: 1px solid #E2E8F0; width: fit-content;
   }
   div[role="radiogroup"] > label {
-    background: transparent; border-radius: 8px;
+    background: transparent; border-radius: 7px;
     padding: 7px 18px !important; margin: 0 !important;
     cursor: pointer; transition: all .15s ease;
-    color: #92400E; font-weight: 600;
+    color: #64748B; font-weight: 500; font-size: 13px;
   }
-  div[role="radiogroup"] > label:hover { background: rgba(245,158,11,0.15); }
+  div[role="radiogroup"] > label:hover { background: #E2E8F0; color: #0F172A; }
   div[role="radiogroup"] > label[data-checked="true"],
   div[role="radiogroup"] > label:has(input:checked) {
-    background: #F59E0B !important; color: #fff !important;
-    box-shadow: 0 4px 14px rgba(245,158,11,0.40);
+    background: #0F172A !important; color: #F8FAFC !important;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.15);
   }
   div[role="radiogroup"] > label > div:first-child { display: none !important; }
 
   /* ----- Inputs ----- */
   div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
-    background: #FFFBF5 !important; border-radius: 10px !important;
-    border: 1px solid #F0E4CE !important;
+    background: #F8FAFC !important; border-radius: 8px !important;
+    border: 1px solid #E2E8F0 !important;
   }
-  .stDateInput > div > div { background: #FFFBF5 !important; border-radius: 10px !important; }
+  .stDateInput > div > div { background: #F8FAFC !important; border-radius: 8px !important; }
 
-  /* ----- Save button ----- */
+  /* ----- Button ----- */
   .stButton > button {
-    background: linear-gradient(135deg, #F59E0B, #F97316);
-    color: #fff; border: 0; border-radius: 10px;
-    padding: 10px 24px; font-weight: 700; font-size: 14px;
-    box-shadow: 0 6px 20px rgba(245,158,11,0.35);
-    transition: transform .12s ease, box-shadow .12s ease;
+    background: #0F172A; color: #F8FAFC;
+    border: 0; border-radius: 8px;
+    padding: 9px 22px; font-weight: 600; font-size: 13px;
+    transition: background .15s ease;
   }
-  .stButton > button:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(245,158,11,0.48); }
+  .stButton > button:hover { background: #1E293B; }
 
   /* ----- Data editor ----- */
   div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
-    border-radius: 14px; overflow: hidden;
-    border: 1px solid #F0E4CE;
-    box-shadow: 0 4px 20px rgba(245,158,11,0.08);
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
   }
 
   /* ----- Editable legend ----- */
-  .edit-legend { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  .edit-legend .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #A8896A; }
-  .edit-legend .dot-edit { width: 8px; height: 8px; border-radius: 2px; background: #F59E0B; }
-  .edit-legend .dot-read { width: 8px; height: 8px; border-radius: 2px; background: #E5DDD2; }
+  .edit-legend { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .edit-legend .leg-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #94A3B8; }
+  .edit-legend .dot-edit { width: 8px; height: 8px; border-radius: 2px; background: #2563EB; }
+  .edit-legend .dot-read { width: 8px; height: 8px; border-radius: 2px; background: #CBD5E1; }
   .edit-tag {
-    display: inline-block; font-size: 10px; font-weight: 700;
-    padding: 2px 8px; border-radius: 5px;
-    background: #FEF3C7; color: #B45309;
-    border: 1px solid #FDE68A;
-    letter-spacing: 0.5px; text-transform: uppercase; margin-left: 5px;
+    display: inline-block; font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px;
+    background: #EFF6FF; color: #2563EB;
+    border: 1px solid #BFDBFE;
+    letter-spacing: 0.4px; text-transform: uppercase; margin-left: 4px;
   }
 
   /* ----- Section subheader ----- */
   .sec { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; }
-  .sec .dot { width: 10px; height: 10px; border-radius: 999px;
-    background: linear-gradient(135deg,#F59E0B,#F97316);
-    box-shadow: 0 0 10px rgba(245,158,11,0.45); }
-  .sec h3 { margin: 0; font-size: 18px; font-weight: 800; color: #1C1917; }
-  .sec .badge { font-size: 11px; padding: 3px 12px; border-radius: 999px;
-    background: #FEF3C7; color: #B45309; font-weight: 700;
-    border: 1px solid #FDE68A; }
+  .sec .dot { width: 8px; height: 8px; border-radius: 999px; background: #2563EB; }
+  .sec h3 { margin: 0; font-size: 16px; font-weight: 700; color: #0F172A; }
+  .sec .badge { font-size: 11px; padding: 2px 10px; border-radius: 999px;
+    background: #F1F5F9; color: #64748B; font-weight: 600;
+    border: 1px solid #E2E8F0; }
 
 </style>
 """
@@ -415,28 +394,28 @@ stats_html = f"""
   <div class="stat-group">
     <div class="g-label">Contact Status</div>
     <div class="g-inner">
-      {sub("ss-green",  contacted,  "✓ Contacted")}
-      {sub("ss-red",    not_cont,   "✗ Not Contacted")}
-      {sub("ss-grey",   s_empty,    "— Empty")}
+      {sub("ss-green",  contacted,  "Contacted")}
+      {sub("ss-red",    not_cont,   "Not Contacted")}
+      {sub("ss-grey",   s_empty,    "Empty")}
     </div>
   </div>
 
   <div class="stat-group">
     <div class="g-label">Interest</div>
     <div class="g-inner">
-      {sub("ss-green",  interested,   "✓ Interested")}
-      {sub("ss-red",    not_interest, "✗ Not Interested")}
-      {sub("ss-grey",   i_empty,      "— Empty")}
+      {sub("ss-green",  interested,   "Interested")}
+      {sub("ss-red",    not_interest, "Not Interested")}
+      {sub("ss-grey",   i_empty,      "Empty")}
     </div>
   </div>
 
   <div class="stat-group">
     <div class="g-label">Follow-Up Stage</div>
     <div class="g-inner">
-      {sub("ss-amber",  fu_pp,  "Post Purchase")}
-      {sub("ss-violet", fu_ue,  "Usage & Exp.")}
-      {sub("ss-orange", fu_pw,  "Pre-Warranty")}
-      {sub("ss-pink",   fu_7y,  "7-Year Loyalty")}
+      {sub("ss-blue",   fu_pp,  "Post Purchase")}
+      {sub("ss-teal",   fu_ue,  "Usage & Exp.")}
+      {sub("ss-indigo", fu_pw,  "Pre-Warranty")}
+      {sub("ss-slate",  fu_7y,  "7-Year Loyalty")}
     </div>
   </div>
 
