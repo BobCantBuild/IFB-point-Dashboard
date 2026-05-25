@@ -222,11 +222,14 @@ st.markdown("""
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     min-height:64px; display:flex; align-items:center;
   }
-  .td.alt    { background:#FFFFFF; }     /* no alternating — all white */
-  .td.wrap   { white-space:normal; word-break:break-word; line-height:1.4; }
-  .td.muted  { color:#CBD5E1; justify-content:center; }
-  .td.icon   { justify-content:center; padding:14px 0; }
-  .td.center { justify-content:center; }
+  .td.alt     { background:#FFFFFF; }     /* no alternating — all white */
+  .td.wrap    { white-space:normal; word-break:break-word; line-height:1.4; }
+  .td.muted   { color:#CBD5E1; justify-content:center; }
+  .td.icon    { justify-content:center; padding:14px 0; }
+  .td.center  { justify-content:center; }
+  /* Right-edge breathing room so Remarks doesn't touch grey container */
+  .td.td-last { padding-right:26px; }
+  .th.th-last { padding-right:26px; }
 
   /* Status/Interested chips with colored dots */
   .chip {
@@ -613,7 +616,7 @@ else:
         cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",                unsafe_allow_html=True)
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[11].markdown(f"<div class='td' title='{_rem_tip}'>{_rem_full}</div>",                         unsafe_allow_html=True)
+        cols[11].markdown(f"<div class='td td-last' title='{_rem_tip}'>{_rem_full}</div>",                 unsafe_allow_html=True)
 
     # caption
     cap = ("Click the ✏️ icon on any row to open the edit dialog."
