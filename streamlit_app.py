@@ -156,23 +156,57 @@ CSS = """
     margin-left: 8px; backdrop-filter: blur(6px);
   }
 
-  /* ----- KPI cards ----- */
-  .kpi {
-    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
-    border: 1px solid rgba(148,163,184,0.15);
-    border-radius: 14px;
-    padding: 16px 18px;
-    height: 100%;
-    transition: transform .15s ease, border-color .15s ease;
+  /* ----- Stats row (image-1 style) ----- */
+  .stats-row {
+    display: flex; gap: 10px; align-items: stretch;
+    margin-bottom: 16px; flex-wrap: nowrap;
   }
-  .kpi:hover { transform: translateY(-2px); border-color: rgba(139,92,246,0.55); }
-  .kpi .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-  .kpi .value { font-size: 30px; font-weight: 800; margin-top: 6px; color: #f8fafc; }
-  .kpi .sub   { font-size: 12px; color: #64748b; margin-top: 4px; }
-  .kpi.k-total .value   { background: linear-gradient(90deg,#60a5fa,#a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .kpi.k-contacted .value { color: #34d399; }
-  .kpi.k-interested .value { color: #f472b6; }
-  .kpi.k-pending .value  { color: #fbbf24; }
+
+  /* Single-value card (like "IN PIPELINE") */
+  .stat-solo {
+    background: rgba(21,27,48,0.7);
+    border: 1px solid rgba(148,163,184,0.14);
+    border-radius: 14px; padding: 18px 20px;
+    min-width: 110px; display: flex; flex-direction: column;
+    justify-content: space-between;
+    transition: border-color .15s; flex-shrink: 0;
+  }
+  .stat-solo:hover { border-color: rgba(139,92,246,0.5); }
+  .stat-solo .s-label { font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: 1.2px; }
+  .stat-solo .s-value { font-size: 36px; font-weight: 900; margin-top: 8px; line-height: 1;
+    background: linear-gradient(90deg,#60a5fa,#a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .stat-solo .s-sub { font-size: 11px; color: #475569; margin-top: 6px; }
+
+  /* Group card (like "ORDER ID MATCH") */
+  .stat-group {
+    background: rgba(21,27,48,0.7);
+    border: 1px solid rgba(148,163,184,0.14);
+    border-radius: 14px; padding: 14px 16px;
+    flex: 1; transition: border-color .15s;
+  }
+  .stat-group:hover { border-color: rgba(139,92,246,0.4); }
+  .stat-group .g-label { font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; }
+  .stat-group .g-inner { display: flex; gap: 8px; }
+
+  /* Sub-card inside group (e.g. "25 Match") */
+  .sub-stat {
+    flex: 1; border-radius: 9px; padding: 10px 12px;
+    text-align: center; border: 1px solid transparent;
+  }
+  .sub-stat .ss-val  { font-size: 26px; font-weight: 800; line-height: 1; }
+  .sub-stat .ss-lbl  { font-size: 11px; font-weight: 600; margin-top: 4px; opacity: 0.85; }
+
+  /* Colour variants */
+  .ss-green  { background: rgba(20,83,45,0.5);  border-color: rgba(34,197,94,0.25);  color: #4ade80; }
+  .ss-red    { background: rgba(127,29,29,0.4); border-color: rgba(239,68,68,0.25);  color: #f87171; }
+  .ss-grey   { background: rgba(30,41,59,0.6);  border-color: rgba(100,116,139,0.2); color: #94a3b8; }
+  .ss-cyan   { background: rgba(8,51,68,0.6);   border-color: rgba(34,211,238,0.25); color: #22d3ee; }
+  .ss-violet { background: rgba(46,16,101,0.5); border-color: rgba(167,139,250,0.25);color: #a78bfa; }
+  .ss-orange { background: rgba(67,20,7,0.6);   border-color: rgba(251,146,60,0.25); color: #fb923c; }
+  .ss-pink   { background: rgba(74,4,78,0.4);   border-color: rgba(244,114,182,0.25);color: #f472b6; }
 
   /* ----- Panel ----- */
   .panel {
@@ -267,22 +301,6 @@ CSS = """
   .sec h3 { margin: 0; font-size: 18px; font-weight: 700; color: #f1f5f9; }
   .sec .badge { font-size: 11px; padding: 2px 10px; border-radius: 999px; background: rgba(139,92,246,0.18); color: #c4b5fd; font-weight: 600; }
 
-  /* ----- Follow-up strip ----- */
-  .fu-strip {
-    display: flex; gap: 12px; flex-wrap: wrap;
-    margin: 4px 0 16px;
-  }
-  .fu-card {
-    flex: 1; min-width: 180px;
-    border-radius: 12px;
-    padding: 14px 16px;
-    border-width: 1px; border-style: solid;
-    transition: transform .15s ease;
-  }
-  .fu-card:hover { transform: translateY(-2px); }
-  .fu-card .fu-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.85; }
-  .fu-card .fu-count { font-size: 28px; font-weight: 800; margin-top: 4px; }
-  .fu-card .fu-range { font-size: 11px; opacity: 0.6; margin-top: 2px; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -364,59 +382,66 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------- #
-# KPI row
+# Stats row  (Image-1 style: solo card + grouped sub-cards)
 # --------------------------------------------------------------------------- #
-total = len(df_all)
-contacted = int((df_all["status"] == "Contacted").sum())
-interested = int((df_all["interested"] == "Interested").sum())
-pending = int(df_all["status"].isna().sum() + (df_all["status"] == "Not Contacted").sum())
+total      = len(df_all)
+contacted  = int((df_all["status"] == "Contacted").sum())
+not_cont   = int((df_all["status"] == "Not Contacted").sum())
+s_empty    = total - contacted - not_cont
 
-k1, k2, k3, k4 = st.columns(4)
-for col, cls, label, value, sub in [
-    (k1, "k-total",      "Total Leads",  total,      "in database"),
-    (k2, "k-contacted",  "Contacted",    contacted,  f"{(contacted/total*100 if total else 0):.0f}% of total"),
-    (k3, "k-interested", "Interested",   interested, "marked interested"),
-    (k4, "k-pending",    "Pending",      pending,    "awaiting contact"),
-]:
-    col.markdown(
-        f"""<div class="kpi {cls}">
-              <div class="label">{label}</div>
-              <div class="value">{value}</div>
-              <div class="sub">{sub}</div>
-            </div>""",
-        unsafe_allow_html=True,
-    )
-
-st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-# --------------------------------------------------------------------------- #
-# Follow-up strip
-# --------------------------------------------------------------------------- #
-FU_COLORS = {
-    "Post Purchase Delight Call":           ("#22d3ee", "#0e3a42"),
-    "Usage & Experience Feedback Call":     ("#a78bfa", "#2d1f52"),
-    "Pre-Warranty Expiry Engagement Call":  ("#fb923c", "#3d1f09"),
-    "7-Year Loyalty Upgrade Call":          ("#f472b6", "#3d0f26"),
-}
-FU_RANGES = {
-    "Post Purchase Delight Call":           "Within 2 days of purchase",
-    "Usage & Experience Feedback Call":     "2 days – 1 month",
-    "Pre-Warranty Expiry Engagement Call":  "1 month – 48 months",
-    "7-Year Loyalty Upgrade Call":          "48 months – 84 months",
-}
+interested    = int((df_all["interested"] == "Interested").sum())
+not_interest  = int((df_all["interested"] == "Not Interested").sum())
+i_empty       = total - interested - not_interest
 
 fu_counts = df_all["customer_follow_up"].value_counts().to_dict()
-fu_html = '<div class="fu-strip">'
-for label, (fg, bg) in FU_COLORS.items():
-    count = fu_counts.get(label, 0)
-    fu_html += f"""
-    <div class="fu-card" style="background:{bg};border-color:{fg}33;color:{fg}">
-      <div class="fu-label">{label}</div>
-      <div class="fu-count" style="color:{fg}">{count}</div>
-      <div class="fu-range">{FU_RANGES[label]}</div>
-    </div>"""
-fu_html += "</div>"
-st.markdown(fu_html, unsafe_allow_html=True)
+fu_pp   = fu_counts.get("Post Purchase Delight Call", 0)
+fu_ue   = fu_counts.get("Usage & Experience Feedback Call", 0)
+fu_pw   = fu_counts.get("Pre-Warranty Expiry Engagement Call", 0)
+fu_7y   = fu_counts.get("7-Year Loyalty Upgrade Call", 0)
+
+def sub(css, val, lbl):
+    return f'<div class="sub-stat {css}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
+
+stats_html = f"""
+<div class="stats-row">
+
+  <div class="stat-solo">
+    <div class="s-label">Total Leads</div>
+    <div class="s-value">{total}</div>
+    <div class="s-sub">in database</div>
+  </div>
+
+  <div class="stat-group">
+    <div class="g-label">Contact Status</div>
+    <div class="g-inner">
+      {sub("ss-green",  contacted,  "✓ Contacted")}
+      {sub("ss-red",    not_cont,   "✗ Not Contacted")}
+      {sub("ss-grey",   s_empty,    "— Empty")}
+    </div>
+  </div>
+
+  <div class="stat-group">
+    <div class="g-label">Interest</div>
+    <div class="g-inner">
+      {sub("ss-green",  interested,   "✓ Interested")}
+      {sub("ss-red",    not_interest, "✗ Not Interested")}
+      {sub("ss-grey",   i_empty,      "— Empty")}
+    </div>
+  </div>
+
+  <div class="stat-group">
+    <div class="g-label">Follow-Up Stage</div>
+    <div class="g-inner">
+      {sub("ss-cyan",   fu_pp,  "Post Purchase")}
+      {sub("ss-violet", fu_ue,  "Usage & Exp.")}
+      {sub("ss-orange", fu_pw,  "Pre-Warranty")}
+      {sub("ss-pink",   fu_7y,  "7-Year Loyalty")}
+    </div>
+  </div>
+
+</div>
+"""
+st.markdown(stats_html, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Filter panel
