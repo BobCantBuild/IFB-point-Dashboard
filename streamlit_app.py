@@ -204,16 +204,23 @@ st.markdown("""
 
   /* ── Lead table (per-row st.columns) ── */
   .th {
-    background:linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
-    padding:14px 14px; font-size:11.5px; font-weight:700;
-    color:#F8FAFC; text-transform:uppercase; letter-spacing:1.1px;
-    border-bottom:3px solid #2563EB;
+    background:#FFFFFF;
+    padding:18px 14px 14px;
+    font-size:13px; font-weight:700;
+    color:#0F172A; letter-spacing:0.2px;
+    border-top:3px solid #2563EB;
+    border-bottom:2px solid #E2E8F0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    min-height:52px; display:flex; align-items:center;
-    box-shadow:inset 0 -1px 0 rgba(255,255,255,0.05);
+    min-height:58px; display:flex; align-items:center;
+    box-shadow:0 4px 8px -4px rgba(15,23,42,0.06);
+    position:relative;
   }
-  .th.th-first { border-top-left-radius:10px; }
-  .th.th-last  { border-top-right-radius:10px; }
+  .th::after {
+    content:''; position:absolute; left:14px; right:14px; bottom:8px;
+    height:2px; background:#2563EB; opacity:0; transition:opacity .2s;
+  }
+  .th.th-first { border-top-left-radius:12px; padding-left:18px; }
+  .th.th-last  { border-top-right-radius:12px; }
   .td {
     background:#fff; padding:10px 12px; font-size:13px; color:#1E293B;
     border-bottom:1px solid #E2E8F0;
