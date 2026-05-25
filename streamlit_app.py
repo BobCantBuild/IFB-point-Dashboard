@@ -224,15 +224,35 @@ CSS = """
     background: transparent; border-radius: 7px;
     padding: 7px 18px !important; margin: 0 !important;
     cursor: pointer; transition: all .15s ease;
-    color: #64748B; font-weight: 500; font-size: 13px;
+    color: #334155 !important; font-weight: 600; font-size: 13px;
   }
-  div[role="radiogroup"] > label:hover { background: #E2E8F0; color: #0F172A; }
+  div[role="radiogroup"] > label:hover { background: #E2E8F0; color: #0F172A !important; }
   div[role="radiogroup"] > label[data-checked="true"],
   div[role="radiogroup"] > label:has(input:checked) {
-    background: #0F172A !important; color: #F8FAFC !important;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+    background: #2563EB !important; color: #FFFFFF !important;
+    box-shadow: 0 1px 6px rgba(37,99,235,0.25);
   }
   div[role="radiogroup"] > label > div:first-child { display: none !important; }
+
+  /* ----- Row spacing in dataframe ----- */
+  [data-testid="stDataFrame"] tr td,
+  [data-testid="stDataFrame"] tr th {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    font-size: 13px !important;
+  }
+
+  /* ----- Edit panel card ----- */
+  .edit-panel {
+    background: #fff; border: 1px solid #BFDBFE;
+    border-left: 4px solid #2563EB;
+    border-radius: 12px; padding: 18px 22px;
+    margin-top: 12px;
+    box-shadow: 0 2px 12px rgba(37,99,235,0.08);
+  }
+  .edit-panel .ep-title { font-size: 13px; font-weight: 700; color: #1E40AF;
+    text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+  .edit-panel .ep-sub { font-size: 12px; color: #64748B; margin-bottom: 14px; }
 
   /* ----- Inputs ----- */
   div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
@@ -489,79 +509,114 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Legend showing editable vs read-only
+# Legend
 st.markdown("""
 <div class="edit-legend">
   <div class="leg-item"><span class="dot-read"></span> Read-only</div>
-  <div class="leg-item"><span class="dot-edit"></span> Editable — click a cell to update</div>
-  <span style="margin-left:4px;font-size:12px;color:#94a3b8;">
-    Editable columns:
+  <div class="leg-item"><span class="dot-edit"></span> Click a row to edit</div>
+  <span style="font-size:12px;color:#94A3B8;margin-left:4px;">
+    Editable:
     <span class="edit-tag">▾ Status</span>
     <span class="edit-tag">▾ Next Appointment</span>
-    <span class="edit-tag">▾ Interested / Not Interested</span>
+    <span class="edit-tag">▾ Interested</span>
     <span class="edit-tag">Remarks</span>
   </span>
 </div>
 """, unsafe_allow_html=True)
 
-# Replace None/NaN with "Empty" for display in text/select columns
+# Add a visual edit-indicator column for display
 view = filtered[DISPLAY_COLS].copy()
 for _col in ["status", "interested", "remarks"]:
     view[_col] = view[_col].fillna("Empty")
+view.insert(len(view.columns), "✏", "Click to edit")
 
-edited = st.data_editor(
+# ---------- Read-only table with row selection ----------
+COLUMN_CONFIG_RO = {
+    "customer_follow_up": st.column_config.TextColumn(COL_LABELS["customer_follow_up"], width="medium"),
+    "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], width="small"),
+    "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], width="small"),
+    "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], format="DD/MM/YYYY", width="small"),
+    "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], width="medium"),
+    "phone_number":       st.column_config.TextColumn(COL_LABELS["phone_number"], width="small"),
+    "email_id":           st.column_config.TextColumn(COL_LABELS["email_id"], width="medium"),
+    "status":             st.column_config.TextColumn(COL_LABELS["status"], width="small"),
+    "next_appointment":   st.column_config.DateColumn(COL_LABELS["next_appointment"], format="DD/MM/YYYY", width="small"),
+    "interested":         st.column_config.TextColumn(COL_LABELS["interested"], width="small"),
+    "remarks":            st.column_config.TextColumn(COL_LABELS["remarks"], width="large"),
+    "✏":                  st.column_config.TextColumn("", width="small"),
+}
+
+sel = st.dataframe(
     view,
-    key=f"editor_{section}",
     use_container_width=True,
     hide_index=True,
-    num_rows="fixed",
-    height=460,
-    column_config={
-        "customer_follow_up": st.column_config.TextColumn(
-            COL_LABELS["customer_follow_up"], disabled=True, width="medium",
-            help="Auto-calculated from Purchase Date",
-        ),
-        "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], disabled=True, width="small"),
-        "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], disabled=True, width="small"),
-        "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small"),
-        "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], disabled=True, width="medium"),
-        "phone_number":       st.column_config.TextColumn(COL_LABELS["phone_number"], disabled=True, width="small"),
-        "email_id":           st.column_config.TextColumn(COL_LABELS["email_id"], disabled=True, width="medium"),
-        "status":             st.column_config.SelectboxColumn(
-            COL_LABELS["status"],
-            options=["Empty"] + STATUS_OPTIONS,
-            required=False,
-            width="medium",
-            help="Click to select: Contacted / Not Contacted",
-        ),
-        "next_appointment":   st.column_config.DateColumn(
-            COL_LABELS["next_appointment"],
-            min_value=today,
-            format="DD/MM/YYYY",
-            width="medium",
-            help="Click to pick a future date",
-        ),
-        "interested":         st.column_config.SelectboxColumn(
-            COL_LABELS["interested"],
-            options=["Empty"] + INTEREST_OPTIONS,
-            required=False,
-            width="medium",
-            help="Click to select: Interested / Not Interested",
-        ),
-        "remarks":            st.column_config.TextColumn(
-            COL_LABELS["remarks"], width="large",
-            help="Click to type remarks",
-        ),
-    },
+    height=480,
+    column_config=COLUMN_CONFIG_RO,
+    on_select="rerun",
+    selection_mode="single-row",
+    key=f"df_{section}",
 )
 
+# ---------- Per-row edit panel ----------
 if section == "Today's lead":
-    sb1, sb2 = st.columns([1, 6])
-    with sb1:
-        if st.button("Save changes"):
-            n = diff_and_save(filtered, edited)
-            if n:
-                st.success(f"Saved {n} row(s).")
-                st.rerun()
-            else:
-                st.info("No changes to save.")
+    selected_rows = sel.selection.rows if sel.selection else []
+    if selected_rows:
+        idx = selected_rows[0]
+        row = filtered.iloc[idx]
+        cid  = int(row["customer_id"])
+        name = row["customer_name"]
+
+        st.markdown(
+            f'<div class="edit-panel">'
+            f'<div class="ep-title">Editing row</div>'
+            f'<div class="ep-sub">{name} &nbsp;·&nbsp; Customer ID: {cid}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        cur_status = row["status"] if pd.notna(row["status"]) else None
+        cur_appt   = row["next_appointment"] if pd.notna(row["next_appointment"]) else None
+        cur_int    = row["interested"] if pd.notna(row["interested"]) else None
+        cur_rem    = row["remarks"] if pd.notna(row["remarks"]) else ""
+
+        ec1, ec2, ec3, ec4, ec5 = st.columns([1.2, 1.2, 1.5, 2, 0.7])
+
+        with ec1:
+            new_status = st.selectbox(
+                "▾ Status", ["Empty"] + STATUS_OPTIONS,
+                index=(["Empty"] + STATUS_OPTIONS).index(cur_status) if cur_status in STATUS_OPTIONS else 0,
+                key=f"s_status_{cid}",
+            )
+        with ec2:
+            new_appt = st.date_input(
+                "▾ Next Appointment",
+                value=cur_appt if cur_appt else None,
+                min_value=today,
+                key=f"s_appt_{cid}",
+            )
+        with ec3:
+            new_int = st.selectbox(
+                "▾ Interested / Not Interested", ["Empty"] + INTEREST_OPTIONS,
+                index=(["Empty"] + INTEREST_OPTIONS).index(cur_int) if cur_int in INTEREST_OPTIONS else 0,
+                key=f"s_int_{cid}",
+            )
+        with ec4:
+            new_rem = st.text_input("Remarks", value=cur_rem, key=f"s_rem_{cid}")
+
+        with ec5:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            save_col, cancel_col = st.columns(2)
+            with save_col:
+                if st.button("Save", key=f"save_{cid}", type="primary"):
+                    update_row(
+                        cid,
+                        None if new_status == "Empty" else new_status,
+                        new_appt if isinstance(new_appt, date) else None,
+                        None if new_int == "Empty" else new_int,
+                        new_rem if new_rem.strip() else None,
+                    )
+                    st.success(f"Saved — {name}")
+                    st.rerun()
+            with cancel_col:
+                if st.button("✕", key=f"cancel_{cid}"):
+                    st.rerun()
