@@ -413,13 +413,23 @@ def _safe(v, fallback="—"):
 
 
 def _fmt_date(d):
-    if d is None or (isinstance(d, float) and pd.isna(d)):
+    if d is None:
         return "—"
+    try:
+        if pd.isna(d):
+            return "—"
+    except (TypeError, ValueError):
+        pass
     if isinstance(d, date):
-        return d.strftime("%d/%m/%Y")
+        try:
+            return d.strftime("%d/%m/%Y")
+        except (ValueError, AttributeError):
+            return "—"
     try:
         parsed = pd.to_datetime(d, errors="coerce")
-        return parsed.strftime("%d/%m/%Y") if pd.notna(parsed) else "—"
+        if pd.isna(parsed):
+            return "—"
+        return parsed.strftime("%d/%m/%Y")
     except Exception:
         return "—"
 
