@@ -14,6 +14,16 @@ STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 
 
+def _is_real_date(d) -> bool:
+    """True only for an actual datetime.date (not NaT, NaN, None, or a string)."""
+    if not isinstance(d, date):
+        return False
+    try:
+        return not pd.isna(d)
+    except (TypeError, ValueError):
+        return True
+
+
 def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
     if purchase_date is None:
         return None
@@ -224,6 +234,8 @@ st.markdown("""
   }
   .td.alt     { background:#FFFFFF; }     /* no alternating — all white */
   .td.wrap    { white-space:normal; word-break:break-word; line-height:1.4; }
+  /* Row hover: lift the whole row in light blue so eye can track left-to-right */
+  [data-testid="stHorizontalBlock"]:has(.td):hover .td { background:#F8FAFC; }
   .td.muted   { color:#CBD5E1; justify-content:center; }
   .td.icon    { justify-content:center; padding:14px 0; }
   .td.center  { justify-content:center; }
@@ -244,7 +256,6 @@ st.markdown("""
   .chip.red::before    { background:#DC2626; }
   .chip.slate::before  { background:#94A3B8; }
 
-  /* Pencil edit button — circular outlined icon button */
   /* Default secondary button (dialog Cancel etc.) — proper rectangular */
   .stButton > button[kind="secondary"] {
     background:#FFFFFF !important; color:#475569 !important;
@@ -308,13 +319,40 @@ st.markdown("""
   }
 
   /* ── Section header ── */
-  .sec { display:flex; align-items:center; gap:10px; margin:6px 0 14px; }
+  .sec { display:flex; align-items:center; gap:10px; margin:6px 0 14px; flex-wrap:wrap; }
   .sec .dot { width:8px; height:8px; border-radius:999px; background:#2563EB; }
   .sec h3   { margin:0; font-size:16px; font-weight:700; color:#0F172A; }
   .sec .cnt { font-size:11px; padding:2px 10px; border-radius:999px; background:#F1F5F9;
               color:#64748B; font-weight:600; border:1px solid #E2E8F0; }
-            
-  
+  .sec .sec-help { font-size:12px; color:#94A3B8; font-weight:500; margin-left:4px; }
+
+  /* Refresh + Export buttons in section header row — light style */
+  [data-testid="stDownloadButton"] > button {
+    background:#FFFFFF !important; color:#0F172A !important;
+    border:1px solid #CBD5E1 !important;
+    height:42px !important; min-height:42px !important;
+    padding:0 14px !important; font-size:13px !important; font-weight:600 !important;
+    border-radius:8px !important;
+  }
+  [data-testid="stDownloadButton"] > button:hover {
+    background:#EFF6FF !important; border-color:#2563EB !important; color:#2563EB !important;
+  }
+  [data-testid="stDownloadButton"] > button[disabled] {
+    background:#F8FAFC !important; color:#CBD5E1 !important; border-color:#E2E8F0 !important;
+  }
+
+  /* ── Print-friendly: hide chrome, show full data ── */
+  @media print {
+    .stApp { background:#FFFFFF !important; overflow:visible !important; }
+    .block-container { max-width:none !important; padding:0 !important; }
+    .hero, .panel, [data-testid="stToolbar"],
+    [data-testid="stDownloadButton"], #refresh_btn,
+    .stButton, header[data-testid="stHeader"] { display:none !important; }
+    .th, .td { padding:8px 10px !important; min-height:auto !important;
+               border-bottom:1px solid #94A3B8 !important; font-size:11px !important; }
+    .stats-row, .sec { page-break-inside:avoid; }
+    .td.wrap, .td.td-last { white-space:normal !important; }
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -356,6 +394,15 @@ not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
 
+# Today-relevant stats — what reps actually need to action right now
+_appt_series = df_all["next_appointment"]
+due_today  = int(sum(_is_real_date(d) and d == today for d in _appt_series))
+overdue    = int(sum(
+    _is_real_date(d) and d < today and s != "Contacted"
+    for d, s in zip(_appt_series, df_all["status"].fillna(""))
+))
+scheduled  = int(sum(_is_real_date(d) and d >= today for d in _appt_series))
+
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
 
@@ -389,6 +436,14 @@ st.markdown(f"""
       {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
       {sub("ss-indigo", fu.get("Pre-Warranty Expiry Engagement Call",0),  "Pre-Warranty")}
       {sub("ss-slate",  fu.get("7-Year Loyalty Upgrade Call",0),          "7-Year Loyalty")}
+    </div>
+  </div>
+  <div class="stat-group">
+    <div class="g-label">Action Required</div>
+    <div class="g-inner">
+      {sub("ss-red",    overdue,    "Overdue")}
+      {sub("ss-blue",   due_today,  "Due Today")}
+      {sub("ss-teal",   scheduled,  "Scheduled")}
     </div>
   </div>
 </div>""", unsafe_allow_html=True)
@@ -427,29 +482,75 @@ with st.container(border=True):
 # Filter
 # --------------------------------------------------------------------------- #
 if section == "Missed Follow Up's":
-    filtered = df_all.iloc[0:0].copy()
+    # Overdue: scheduled appointment is in the past AND lead has not been contacted.
+    today_d = today
+    past_appt = df_all["next_appointment"].apply(
+        lambda d: _is_real_date(d) and d < today_d
+    )
+    not_contacted = df_all["status"].fillna("").astype(str) != "Contacted"
+    filtered = df_all[past_appt & not_contacted].copy()
 else:
     filtered = df_all.copy()
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        d0, d1 = date_range
-        filtered = filtered[filtered["purchase_date"].between(d0, d1)]
-    q = search_q.strip()
-    if q:
-        mask = (filtered["customer_name"].str.contains(q, case=False, na=False) |
-                filtered["phone_number"].str.contains(q, case=False, na=False)  |
-                filtered["email_id"].str.contains(q, case=False, na=False))
-        try:
-            mask |= (filtered["customer_id"] == int(q))
-        except ValueError:
-            pass
-        filtered = filtered[mask]
 
-st.markdown(f"""
-<div class="sec">
-  <span class="dot"></span>
-  <h3>{section}</h3>
-  <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
-</div>""", unsafe_allow_html=True)
+# date range + search apply to BOTH sections
+if isinstance(date_range, tuple) and len(date_range) == 2:
+    d0, d1 = date_range
+    filtered = filtered[filtered["purchase_date"].between(d0, d1)]
+q = search_q.strip()
+if q:
+    mask = (filtered["customer_name"].str.contains(q, case=False, na=False) |
+            filtered["phone_number"].str.contains(q, case=False, na=False)  |
+            filtered["email_id"].str.contains(q, case=False, na=False))
+    try:
+        mask |= (filtered["customer_id"] == int(q))
+    except ValueError:
+        pass
+    filtered = filtered[mask]
+
+_sec_label = section
+_sec_help  = ("Leads with overdue Next Appointment and not yet contacted."
+              if section == "Missed Follow Up's" else
+              "All leads matching your current filters.")
+
+sh1, sh2, sh3 = st.columns([6, 1.1, 1.4])
+with sh1:
+    st.markdown(f"""
+    <div class="sec">
+      <span class="dot"></span>
+      <h3>{_sec_label}</h3>
+      <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
+      <span class="sec-help">{_sec_help}</span>
+    </div>""", unsafe_allow_html=True)
+with sh2:
+    if st.button("↻ Refresh", key="refresh_btn",
+                 help="Reload data from the database",
+                 use_container_width=True):
+        st.cache_data.clear()
+        try: st.cache_resource.clear()
+        except Exception: pass
+        st.rerun()
+with sh3:
+    def _iso(d):
+        if _is_real_date(d):
+            try: return d.strftime("%Y-%m-%d")
+            except Exception: return ""
+        return ""
+    _export_df = filtered.copy()
+    for _c in ("purchase_date", "next_appointment"):
+        if _c in _export_df.columns:
+            _export_df[_c] = _export_df[_c].apply(_iso)
+    _csv_bytes = _export_df.to_csv(index=False).encode("utf-8-sig")
+    _safe_section = section.replace("'", "").replace(" ", "_")
+    st.download_button(
+        f"📥 Export CSV ({len(filtered)})",
+        _csv_bytes,
+        f"ifb_leads_{_safe_section}_{today.strftime('%Y%m%d')}.csv",
+        "text/csv",
+        key="export_csv",
+        use_container_width=True,
+        disabled=(len(filtered) == 0),
+        help="Download the currently filtered leads as CSV",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -537,22 +638,26 @@ def edit_lead_dialog(row: dict):
     with c1:
         if st.button("💾  Save", type="primary", use_container_width=True,
                      key=f"dlg_save_{cid}"):
-            update_row(
-                cid,
-                None if ns == "—" else ns,
-                na if isinstance(na, date) else None,
-                None if ni == "—" else ni,
-                nr.strip() or None,
-            )
-            st.toast(f"Saved {name}", icon="✅")
-            st.rerun()
+            try:
+                update_row(
+                    cid,
+                    None if ns == "—" else ns,
+                    na if isinstance(na, date) else None,
+                    None if ni == "—" else ni,
+                    nr.strip() or None,
+                )
+                st.toast(f"Saved changes for {name}", icon="✅")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Save failed — {type(e).__name__}: {e}")
     with c2:
         if st.button("Cancel", use_container_width=True, key=f"dlg_cancel_{cid}"):
             st.rerun()
 
 
 # ── Table rendering ─────────────────────────────────────────────────────────
-read_only = section != "Today's Lead"
+# Editing is allowed in BOTH sections — a missed follow-up should be actionable.
+read_only = False
 
 if len(filtered) == 0:
     st.markdown(
