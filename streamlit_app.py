@@ -1,4 +1,4 @@
-"""IFB point Dashboard — Streamlit UI backed by SQLite."""
+"""IFB point Dashboard â€” Streamlit UI backed by SQLite."""
 from __future__ import annotations
 
 import sqlite3
@@ -24,9 +24,9 @@ COL_LABELS = {
     "machine_type": "Machine Type",
     "phone_number": "Phone number",
     "email_id": "Email ID",
-    "status": "▾ Status",
-    "next_appointment": "▾ Next Appointment",
-    "interested": "▾ Interested / Not Interested",
+    "status": "â–¾ Status",
+    "next_appointment": "â–¾ Next Appointment",
+    "interested": "â–¾ Interested / Not Interested",
     "remarks": "Remarks",
 }
 
@@ -44,11 +44,11 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
     days = (today - purchase_date).days
     if days <= 2:
         return "Post Purchase Delight Call"
-    elif days <= 30:                # 2 days – 1 month
+    elif days <= 30:                # 2 days â€“ 1 month
         return "Usage & Experience Feedback Call"
-    elif days <= 1460:              # 1 month – 48 months (4 years)
+    elif days <= 1460:              # 1 month â€“ 48 months (4 years)
         return "Pre-Warranty Expiry Engagement Call"
-    else:                           # 48 months+ → 7-Year Loyalty Upgrade
+    else:                           # 48 months+ â†’ 7-Year Loyalty Upgrade
         return "7-Year Loyalty Upgrade Call"
 
 STATUS_OPTIONS = ["Contacted", "Not Contacted"]
@@ -195,7 +195,7 @@ CSS = """
   .sub-stat .ss-lbl { font-size: 10px; font-weight: 500; margin-top: 5px;
     color: #64748B; letter-spacing: 0.3px; }
 
-  /* Subtle tinted variants — only the number gets color */
+  /* Subtle tinted variants â€” only the number gets color */
   .ss-green .ss-val  { color: #16A34A; }
   .ss-red   .ss-val  { color: #DC2626; }
   .ss-grey  .ss-val  { color: #475569; }
@@ -373,9 +373,9 @@ st.markdown(
     <div class="hero">
       <div class="hero-left">
         <h1>IFB Point Dashboard</h1>
-        <p>Customer Follow-Up Management &nbsp;·&nbsp; {today.strftime('%A, %d %B %Y')}</p>
+        <p>Customer Follow-Up Management &nbsp;Â·&nbsp; {today.strftime('%A, %d %B %Y')}</p>
       </div>
-      <span class="pill">● &nbsp;Live</span>
+      <span class="pill">â— &nbsp;Live</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -513,110 +513,169 @@ st.markdown(
 st.markdown("""
 <div class="edit-legend">
   <div class="leg-item"><span class="dot-read"></span> Read-only</div>
-  <div class="leg-item"><span class="dot-edit"></span> Click a row to edit</div>
+  <div class="leg-item"><span class="dot-edit"></span> Use ✏️ to edit a row</div>
   <span style="font-size:12px;color:#94A3B8;margin-left:4px;">
     Editable:
-    <span class="edit-tag">▾ Status</span>
-    <span class="edit-tag">▾ Next Appointment</span>
-    <span class="edit-tag">▾ Interested</span>
+    <span class="edit-tag">â–¾ Status</span>
+    <span class="edit-tag">â–¾ Next Appointment</span>
+    <span class="edit-tag">â–¾ Interested</span>
     <span class="edit-tag">Remarks</span>
   </span>
 </div>
 """, unsafe_allow_html=True)
 
-# Add a visual edit-indicator column for display
-view = filtered[DISPLAY_COLS].copy()
-for _col in ["status", "interested", "remarks"]:
-    view[_col] = view[_col].fillna("Empty")
-view.insert(len(view.columns), "✏", "Click to edit")
-
-# ---------- Read-only table with row selection ----------
-COLUMN_CONFIG_RO = {
-    "customer_follow_up": st.column_config.TextColumn(COL_LABELS["customer_follow_up"], width="medium"),
-    "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], width="small"),
-    "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], width="small"),
-    "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], format="DD/MM/YYYY", width="small"),
-    "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], width="medium"),
-    "phone_number":       st.column_config.TextColumn(COL_LABELS["phone_number"], width="small"),
-    "email_id":           st.column_config.TextColumn(COL_LABELS["email_id"], width="medium"),
-    "status":             st.column_config.TextColumn(COL_LABELS["status"], width="small"),
-    "next_appointment":   st.column_config.DateColumn(COL_LABELS["next_appointment"], format="DD/MM/YYYY", width="small"),
-    "interested":         st.column_config.TextColumn(COL_LABELS["interested"], width="small"),
-    "remarks":            st.column_config.TextColumn(COL_LABELS["remarks"], width="large"),
-    "✏":                  st.column_config.TextColumn("", width="small"),
-}
-
-sel = st.dataframe(
-    view,
-    use_container_width=True,
-    hide_index=True,
-    height=480,
-    column_config=COLUMN_CONFIG_RO,
-    on_select="rerun",
-    selection_mode="single-row",
-    key=f"df_{section}",
-)
-
-# ---------- Per-row edit panel ----------
+# ---------- Table ----------
 if section == "Today's lead":
-    selected_rows = sel.selection.rows if sel.selection else []
-    if selected_rows:
-        idx = selected_rows[0]
-        row = filtered.iloc[idx]
-        cid  = int(row["customer_id"])
-        name = row["customer_name"]
+    # Allow multiple rows in edit mode at once.
+    edit_rows = st.session_state.get("edit_rows", set())
+    if not isinstance(edit_rows, set):
+        edit_rows = set()
+    st.session_state["edit_rows"] = edit_rows
 
-        st.markdown(
-            f'<div class="edit-panel">'
-            f'<div class="ep-title">Editing row</div>'
-            f'<div class="ep-sub">{name} &nbsp;·&nbsp; Customer ID: {cid}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    header_cols = st.columns([1.6, 0.7, 1.0, 0.9, 1.8, 0.9, 1.6, 1.0, 1.0, 1.2, 2.0, 0.9])
+    headers = [
+        COL_LABELS["customer_follow_up"],
+        COL_LABELS["customer_id"],
+        COL_LABELS["customer_name"],
+        COL_LABELS["purchase_date"],
+        COL_LABELS["machine_type"],
+        COL_LABELS["phone_number"],
+        COL_LABELS["email_id"],
+        COL_LABELS["status"],
+        COL_LABELS["next_appointment"],
+        COL_LABELS["interested"],
+        COL_LABELS["remarks"],
+        "",
+    ]
+    for c, h in zip(header_cols, headers):
+        with c:
+            st.markdown(f"**{h}**")
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    for _, row in filtered.iterrows():
+        cid = int(row["customer_id"])
+        is_editing = cid in edit_rows
 
         cur_status = row["status"] if pd.notna(row["status"]) else None
-        cur_appt   = row["next_appointment"] if pd.notna(row["next_appointment"]) else None
-        cur_int    = row["interested"] if pd.notna(row["interested"]) else None
-        cur_rem    = row["remarks"] if pd.notna(row["remarks"]) else ""
+        cur_appt = row["next_appointment"] if pd.notna(row["next_appointment"]) else None
+        cur_int = row["interested"] if pd.notna(row["interested"]) else None
+        cur_rem = row["remarks"] if pd.notna(row["remarks"]) else ""
 
-        ec1, ec2, ec3, ec4, ec5 = st.columns([1.2, 1.2, 1.5, 2, 0.7])
+        cols = st.columns([1.6, 0.7, 1.0, 0.9, 1.8, 0.9, 1.6, 1.0, 1.0, 1.2, 2.0, 0.9])
 
-        with ec1:
-            new_status = st.selectbox(
-                "▾ Status", ["Empty"] + STATUS_OPTIONS,
-                index=(["Empty"] + STATUS_OPTIONS).index(cur_status) if cur_status in STATUS_OPTIONS else 0,
-                key=f"s_status_{cid}",
-            )
-        with ec2:
-            new_appt = st.date_input(
-                "▾ Next Appointment",
-                value=cur_appt if cur_appt else None,
-                min_value=today,
-                key=f"s_appt_{cid}",
-            )
-        with ec3:
-            new_int = st.selectbox(
-                "▾ Interested / Not Interested", ["Empty"] + INTEREST_OPTIONS,
-                index=(["Empty"] + INTEREST_OPTIONS).index(cur_int) if cur_int in INTEREST_OPTIONS else 0,
-                key=f"s_int_{cid}",
-            )
-        with ec4:
-            new_rem = st.text_input("Remarks", value=cur_rem, key=f"s_rem_{cid}")
+        with cols[0]:
+            st.write(row.get("customer_follow_up") or "")
+        with cols[1]:
+            st.write(cid)
+        with cols[2]:
+            st.write(row.get("customer_name") or "")
+        with cols[3]:
+            st.write(row.get("purchase_date") or "")
+        with cols[4]:
+            st.write(row.get("machine_type") or "")
+        with cols[5]:
+            st.write(row.get("phone_number") or "")
+        with cols[6]:
+            st.write(row.get("email_id") or "")
 
-        with ec5:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            save_col, cancel_col = st.columns(2)
-            with save_col:
-                if st.button("Save", key=f"save_{cid}", type="primary"):
-                    update_row(
-                        cid,
-                        None if new_status == "Empty" else new_status,
-                        new_appt if isinstance(new_appt, date) else None,
-                        None if new_int == "Empty" else new_int,
-                        new_rem if new_rem.strip() else None,
-                    )
-                    st.success(f"Saved — {name}")
+        if is_editing:
+            with cols[7]:
+                new_status = st.selectbox(
+                    "Status",
+                    ["Empty"] + STATUS_OPTIONS,
+                    index=(["Empty"] + STATUS_OPTIONS).index(cur_status) if cur_status in STATUS_OPTIONS else 0,
+                    key=f"row_status_{cid}",
+                    label_visibility="collapsed",
+                )
+            with cols[8]:
+                new_appt = st.date_input(
+                    "Next Appointment",
+                    value=cur_appt if cur_appt else None,
+                    min_value=today,
+                    key=f"row_appt_{cid}",
+                    label_visibility="collapsed",
+                )
+            with cols[9]:
+                new_int = st.selectbox(
+                    "Interested",
+                    ["Empty"] + INTEREST_OPTIONS,
+                    index=(["Empty"] + INTEREST_OPTIONS).index(cur_int) if cur_int in INTEREST_OPTIONS else 0,
+                    key=f"row_int_{cid}",
+                    label_visibility="collapsed",
+                )
+            with cols[10]:
+                new_rem = st.text_input(
+                    "Remarks",
+                    value=cur_rem,
+                    key=f"row_rem_{cid}",
+                    label_visibility="collapsed",
+                )
+
+            with cols[11]:
+                save_btn, cancel_btn = st.columns(2)
+                with save_btn:
+                    if st.button("💾", key=f"row_save_{cid}", help="Save"):
+                        update_row(
+                            cid,
+                            None if new_status == "Empty" else new_status,
+                            new_appt if isinstance(new_appt, date) else None,
+                            None if new_int == "Empty" else new_int,
+                            new_rem if new_rem.strip() else None,
+                        )
+                        edit_rows.discard(cid)
+                        st.session_state["edit_rows"] = edit_rows
+                        st.success(f"Saved â€” {row.get('customer_name') or cid}")
+                        st.rerun()
+                with cancel_btn:
+                    if st.button("âœ•", key=f"row_cancel_{cid}", help="Cancel"):
+                        edit_rows.discard(cid)
+                        st.session_state["edit_rows"] = edit_rows
+                        st.rerun()
+        else:
+            with cols[7]:
+                st.write(cur_status or "Empty")
+            with cols[8]:
+                st.write(cur_appt or "Empty")
+            with cols[9]:
+                st.write(cur_int or "Empty")
+            with cols[10]:
+                st.write(cur_rem or "Empty")
+            with cols[11]:
+                if st.button("âœ", key=f"row_edit_{cid}", help="Edit"):
+                    edit_rows.add(cid)
+                    st.session_state["edit_rows"] = edit_rows
                     st.rerun()
-            with cancel_col:
-                if st.button("✕", key=f"cancel_{cid}"):
-                    st.rerun()
+
+        st.divider()
+else:
+    # Add a visual edit-indicator column for display
+    view = filtered[DISPLAY_COLS].copy()
+    for _col in ["status", "interested", "remarks"]:
+        view[_col] = view[_col].fillna("Empty")
+    view.insert(len(view.columns), "âœ", "")
+
+    # ---------- Read-only table ----------
+    COLUMN_CONFIG_RO = {
+        "customer_follow_up": st.column_config.TextColumn(COL_LABELS["customer_follow_up"], width="medium"),
+        "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], width="small"),
+        "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], width="small"),
+        "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], format="DD/MM/YYYY", width="small"),
+        "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], width="medium"),
+        "phone_number":       st.column_config.TextColumn(COL_LABELS["phone_number"], width="small"),
+        "email_id":           st.column_config.TextColumn(COL_LABELS["email_id"], width="medium"),
+        "status":             st.column_config.TextColumn(COL_LABELS["status"], width="small"),
+        "next_appointment":   st.column_config.DateColumn(COL_LABELS["next_appointment"], format="DD/MM/YYYY", width="small"),
+        "interested":         st.column_config.TextColumn(COL_LABELS["interested"], width="small"),
+        "remarks":            st.column_config.TextColumn(COL_LABELS["remarks"], width="large"),
+        "âœ":                  st.column_config.TextColumn("", width="small"),
+    }
+
+    st.dataframe(
+        view,
+        use_container_width=True,
+        hide_index=True,
+        height=480,
+        column_config=COLUMN_CONFIG_RO,
+        key=f"df_{section}",
+    )
