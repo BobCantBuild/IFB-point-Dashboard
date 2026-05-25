@@ -505,7 +505,7 @@ if len(filtered) == 0:
     )
 else:
     # column ratios:  edit  follow-up  id    name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.45,     2.2,       0.55, 1.4,  1.0,  1.65,    1.05,  1.8,   1.05,   1.05, 1.2,  1.7]
+    R   = [0.4,      3.1,       0.5,  1.3,  0.95, 1.5,     1.0,   1.7,   1.0,    1.0,  1.15, 1.6]
     HDR = ["",       "Customer Follow-Up", "ID", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email", "Status", "Next Appt",
            "Interested?", "Remarks"]
@@ -537,7 +537,7 @@ else:
                 )
 
         # 1–11 data cells
-        cols[1].markdown(f"<div class='td wrap{alt}'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
+        cols[1].markdown(f"<div class='td{alt}'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
         cols[2].markdown(f"<div class='td center{alt}'>{cid}</div>",                                  unsafe_allow_html=True)
         cols[3].markdown(f"<div class='td{alt}'><b>{_safe(row.get('customer_name'))}</b></div>",      unsafe_allow_html=True)
         cols[4].markdown(f"<div class='td{alt}'>{_fmt_date(row.get('purchase_date'))}</div>",         unsafe_allow_html=True)
