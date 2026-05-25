@@ -272,6 +272,35 @@ CSS = """
     padding:2px 7px; border-radius:4px; background:#EFF6FF; color:#2563EB;
     border:1px solid #BFDBFE; letter-spacing:0.4px; text-transform:uppercase; margin-left:4px;
   }
+
+  /* ── inline table wrapper ───────────────────────────────── */
+  .tbl-wrap {
+    border:1px solid #CBD5E1; border-radius:12px;
+    overflow:hidden; background:#fff;
+    box-shadow:0 1px 8px rgba(0,0,0,0.07);
+    margin-bottom:12px;
+  }
+
+  /* remove streamlit's default column gap/padding inside the table */
+  .tbl-wrap [data-testid="stHorizontalBlock"] {
+    gap:0 !important;
+    border-bottom:1px solid #E2E8F0;
+    align-items:stretch !important;
+  }
+  .tbl-wrap [data-testid="stHorizontalBlock"]:last-child { border-bottom:none; }
+
+  .tbl-wrap [data-testid="column"] {
+    padding:0 !important;
+    border-right:1px solid #F1F5F9;
+  }
+  .tbl-wrap [data-testid="column"]:last-child { border-right:none; }
+
+  /* header row background */
+  .tbl-head [data-testid="stHorizontalBlock"] { background:#F8FAFC !important; }
+
+  /* alternating row background */
+  .tbl-body .tbl-even [data-testid="stHorizontalBlock"] { background:#ffffff; }
+  .tbl-body .tbl-odd  [data-testid="stHorizontalBlock"] { background:#F8FAFC; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -429,13 +458,14 @@ HEADERS = [
     "Status", "Next Appt", "Interested?", "Remarks", "",
 ]
 
-def _cell(col, value, muted=False):
-    """Render a read-only table cell."""
-    color = "#94A3B8" if muted else "#1E293B"
+def _cell(col, value, muted=False, bold=False):
+    """Render a single read-only table cell."""
+    color  = "#94A3B8" if muted else "#374151"
+    weight = "600"     if bold  else "400"
     col.markdown(
-        f"<div style='font-size:12.5px;color:{color};padding:6px 2px;"
-        f"line-height:1.4;overflow:hidden;text-overflow:ellipsis;"
-        f"white-space:nowrap'>{value}</div>",
+        f"<div style='font-size:12.5px;font-weight:{weight};color:{color};"
+        f"padding:10px 10px;line-height:1.4;"
+        f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{value}</div>",
         unsafe_allow_html=True,
     )
 
@@ -448,46 +478,55 @@ def _safe(v, fallback="—"):
 if "editing_cid" not in st.session_state:
     st.session_state["editing_cid"] = None
 
-# ── table header ──────────────────────────────────────────────────────────
+# ── open table wrapper ────────────────────────────────────────────────────
+st.markdown('<div class="tbl-wrap">', unsafe_allow_html=True)
+
+# ── header row ────────────────────────────────────────────────────────────
+st.markdown('<div class="tbl-head">', unsafe_allow_html=True)
 hdr = st.columns(RATIOS, gap="small")
 for col, lbl in zip(hdr, HEADERS):
     col.markdown(
-        f"<div style='font-size:11px;font-weight:700;color:#64748B;"
-        f"text-transform:uppercase;letter-spacing:0.7px;"
-        f"padding:4px 2px 8px;border-bottom:2px solid #E2E8F0'>{lbl}</div>",
+        f"<div style='font-size:10.5px;font-weight:700;color:#64748B;"
+        f"text-transform:uppercase;letter-spacing:0.8px;"
+        f"padding:10px 10px'>{lbl}</div>",
         unsafe_allow_html=True,
     )
+st.markdown('</div>', unsafe_allow_html=True)  # end tbl-head
 
 # ── data rows ─────────────────────────────────────────────────────────────
+st.markdown('<div class="tbl-body">', unsafe_allow_html=True)
+
 if len(filtered) == 0:
     st.markdown(
-        "<div style='text-align:center;padding:40px;color:#94A3B8;"
-        "font-size:14px'>No records match your filters.</div>",
+        "<div style='text-align:center;padding:48px;color:#94A3B8;font-size:14px'>"
+        "No records match your filters.</div>",
         unsafe_allow_html=True,
     )
 else:
-    for _, row in filtered.iterrows():
+    for row_idx, (_, row) in enumerate(filtered.iterrows()):
         cid        = int(row["customer_id"])
         is_editing = (st.session_state["editing_cid"] == cid)
+        row_cls    = "tbl-even" if row_idx % 2 == 0 else "tbl-odd"
 
         cur_status = row["status"]           if pd.notna(row.get("status"))           else None
         cur_appt   = row["next_appointment"] if pd.notna(row.get("next_appointment")) else None
         cur_int    = row["interested"]       if pd.notna(row.get("interested"))       else None
         cur_rem    = str(row["remarks"])     if pd.notna(row.get("remarks")) and row["remarks"] else ""
 
+        st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
         cols = st.columns(RATIOS, gap="small")
 
-        # ── always read-only columns ──────────────────────────────────────
+        # read-only columns
         _cell(cols[0], _safe(row.get("customer_follow_up")))
-        _cell(cols[1], cid, muted=True)
-        _cell(cols[2], _safe(row.get("customer_name")))
+        _cell(cols[1], str(cid), muted=True)
+        _cell(cols[2], _safe(row.get("customer_name")), bold=True)
         pd_str = row["purchase_date"].strftime("%d/%m/%Y") if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—"
         _cell(cols[3], pd_str, muted=True)
         _cell(cols[4], _safe(row.get("machine_type")))
         _cell(cols[5], _safe(row.get("phone_number")))
         _cell(cols[6], _safe(row.get("email_id")))
 
-        # ── editable columns ──────────────────────────────────────────────
+        # editable / view columns
         if is_editing and section == "Today's Lead":
             with cols[7]:
                 new_status = st.selectbox(
@@ -513,40 +552,36 @@ else:
                     "Remarks", value=cur_rem,
                     key=f"r_{cid}", label_visibility="collapsed",
                 )
-            # save + cancel icons
             with cols[11]:
-                st.markdown("<div style='padding-top:4px'>", unsafe_allow_html=True)
-                if st.button("💾", key=f"sv_{cid}", help="Save changes"):
-                    update_row(
-                        cid,
-                        None if new_status == "Empty" else new_status,
-                        new_appt if isinstance(new_appt, date) else None,
-                        None if new_int    == "Empty" else new_int,
-                        new_rem.strip() or None,
-                    )
-                    st.session_state["editing_cid"] = None
-                    st.rerun()
-                if st.button("✕", key=f"cx_{cid}", help="Cancel"):
-                    st.session_state["editing_cid"] = None
-                    st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
-
+                btn_save, btn_cancel = st.columns(2)
+                with btn_save:
+                    if st.button("💾", key=f"sv_{cid}", help="Save"):
+                        update_row(
+                            cid,
+                            None if new_status == "Empty" else new_status,
+                            new_appt if isinstance(new_appt, date) else None,
+                            None if new_int == "Empty" else new_int,
+                            new_rem.strip() or None,
+                        )
+                        st.session_state["editing_cid"] = None
+                        st.rerun()
+                with btn_cancel:
+                    if st.button("✕", key=f"cx_{cid}", help="Cancel"):
+                        st.session_state["editing_cid"] = None
+                        st.rerun()
         else:
-            _cell(cols[7],  _safe(cur_status,  "Empty"))
-            ap_str = cur_appt.strftime("%d/%m/%Y") if cur_appt and pd.notna(cur_appt) else "Empty"
-            _cell(cols[8],  ap_str, muted=(ap_str == "Empty"))
-            _cell(cols[9],  _safe(cur_int,     "Empty"))
-            _cell(cols[10], _safe(cur_rem,     "—"))
+            _cell(cols[7],  _safe(cur_status, "—"), muted=(cur_status is None))
+            ap_str = cur_appt.strftime("%d/%m/%Y") if cur_appt else "—"
+            _cell(cols[8],  ap_str, muted=(cur_appt is None))
+            _cell(cols[9],  _safe(cur_int, "—"), muted=(cur_int is None))
+            _cell(cols[10], _safe(cur_rem, "—"), muted=(not cur_rem))
             with cols[11]:
-                st.markdown("<div style='padding-top:4px'>", unsafe_allow_html=True)
                 if section == "Today's Lead":
-                    if st.button("✏️", key=f"ed_{cid}", help="Edit this row"):
+                    if st.button("✏️", key=f"ed_{cid}", help="Edit row"):
                         st.session_state["editing_cid"] = cid
                         st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
 
-        # thin row divider
-        st.markdown(
-            "<hr style='margin:2px 0;border:none;border-top:1px solid #F1F5F9'>",
-            unsafe_allow_html=True,
-        )
+        st.markdown('</div>', unsafe_allow_html=True)  # end row div
+
+st.markdown('</div>', unsafe_allow_html=True)  # end tbl-body
+st.markdown('</div>', unsafe_allow_html=True)  # end tbl-wrap
