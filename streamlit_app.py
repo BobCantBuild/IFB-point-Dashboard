@@ -113,8 +113,51 @@ st.set_page_config(page_title="IFB POINT - Customer Follow Up", layout="wide", p
 
 st.markdown("""
 <style>
+  /* ── Typography: Inter for a premium feel ── */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  html, body, .stApp, [class*="st-"] {
+    font-family:'Inter','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif !important;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+  }
+
+  /* ── Design tokens ── */
+  :root {
+    --brand:#2563EB;   --brand-d:#1D4ED8;  --brand-l:#EFF6FF;
+    --ink:#0F172A;     --slate:#475569;    --muted:#94A3B8;
+    --line:#E2E8F0;    --bg:#F1F5F9;       --bg-soft:#F8FAFC;
+    --good:#16A34A;    --good-bg:#DCFCE7;
+    --warn:#F59E0B;    --warn-bg:#FEF3C7;
+    --bad:#DC2626;     --bad-bg:#FEE2E2;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+    --shadow-md:0 2px 4px rgba(15,23,42,.04), 0 8px 16px rgba(15,23,42,.06);
+    --shadow-lg:0 4px 12px rgba(15,23,42,.06), 0 24px 48px rgba(15,23,42,.10);
+    --ease:cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ── Tabular numerals for all numbers (clean alignment) ── */
+  .s-value, .ss-val, .cnt, .td.center, .td { font-variant-numeric:tabular-nums; }
+
+  /* ── Smooth entry animations ── */
+  @keyframes fadeInUp {
+    from { opacity:0; transform:translateY(10px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes livePulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(16,185,129,0.55); }
+    50%     { box-shadow:0 0 0 6px rgba(16,185,129,0); }
+  }
+  @keyframes shimmer {
+    from { background-position:-200px 0; }
+    to   { background-position:200px 0; }
+  }
+  .hero       { animation:fadeInUp .35s var(--ease) both; }
+  .stats-row  { animation:fadeInUp .45s var(--ease) both; }
+  .sec        { animation:fadeIn   .5s  var(--ease) both; }
+
   /* ── Page base ── */
-  .stApp { background:#F1F5F9; overflow-x:auto; }
+  .stApp { background:var(--bg); overflow-x:auto; }
   .block-container {
     padding-top:1.4rem; padding-bottom:2rem;
     max-width:1700px;
@@ -124,60 +167,109 @@ st.markdown("""
 
   /* ── Hero ── */
   .hero {
-    background:#0F172A; border-radius:16px; padding:22px 28px;
-    margin-bottom:18px; display:flex; align-items:center; justify-content:space-between;
+    background:
+      radial-gradient(circle at 90% 0%, rgba(37,99,235,0.28) 0%, rgba(37,99,235,0) 55%),
+      radial-gradient(circle at 0% 100%, rgba(56,189,248,0.15) 0%, rgba(56,189,248,0) 50%),
+      linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
+    border-radius:18px; padding:24px 30px;
+    margin-bottom:18px;
+    display:flex; align-items:center; justify-content:space-between;
+    box-shadow:var(--shadow-lg);
+    position:relative; overflow:hidden;
   }
-  .hero h1 { margin:0; font-size:22px; font-weight:700; color:#F8FAFC; }
-  .hero p  { margin:4px 0 0; font-size:13px; color:#94A3B8; }
+  .hero h1 {
+    margin:0; font-size:24px; font-weight:800; color:#F8FAFC;
+    letter-spacing:-0.3px; line-height:1.15;
+  }
+  .hero p  { margin:5px 0 0; font-size:13px; color:#94A3B8; font-weight:500; }
   .hero .pill {
-    padding:5px 14px; border-radius:6px; background:#1E293B;
-    font-size:12px; font-weight:600; color:#38BDF8; border:1px solid #334155;
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 14px 7px 12px; border-radius:999px;
+    background:rgba(16,185,129,0.12);
+    font-size:12px; font-weight:700; color:#34D399;
+    border:1px solid rgba(16,185,129,0.30);
+    letter-spacing:0.3px;
+  }
+  .hero .pill::before {
+    content:''; width:8px; height:8px; border-radius:50%;
+    background:#10B981; box-shadow:0 0 0 0 rgba(16,185,129,0.6);
+    animation:livePulse 2.2s var(--ease) infinite;
   }
 
   /* ── Stats ── */
-  .stats-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:stretch; }
-  .stat-solo {
-    background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:20px 22px; min-width:130px; flex-shrink:0;
-    box-shadow:0 1px 4px rgba(0,0,0,.06);
+  .stats-row { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; align-items:stretch; }
+  .stat-solo, .stat-group {
+    background:linear-gradient(180deg,#FFFFFF 0%,#FAFBFC 100%);
+    border:1px solid var(--line); border-radius:16px;
+    padding:18px 22px;
+    box-shadow:var(--shadow-sm);
+    transition:transform .25s var(--ease), box-shadow .25s var(--ease);
   }
-  .s-label { font-size:11px; font-weight:600; color:#94A3B8; text-transform:uppercase; letter-spacing:1px; }
-  .s-value { font-size:38px; font-weight:800; line-height:1; color:#0F172A; margin-top:6px; }
-  .s-sub   { font-size:11px; color:#CBD5E1; margin-top:5px; }
-  .stat-group {
-    background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:16px 18px; flex:1 1 320px; min-width:320px; box-shadow:0 1px 4px rgba(0,0,0,.06);
+  .stat-solo:hover, .stat-group:hover {
+    transform:translateY(-3px);
+    box-shadow:var(--shadow-md);
+    border-color:#CBD5E1;
   }
-  .g-label { font-size:11px; font-weight:600; color:#94A3B8; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+  .stat-solo { min-width:140px; flex-shrink:0; }
+  .stat-group { flex:1 1 320px; min-width:320px; padding:16px 20px; }
+
+  .s-label, .g-label {
+    font-size:11px; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:1.2px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .s-value {
+    font-size:42px; font-weight:800; line-height:1; margin-top:8px;
+    background:linear-gradient(135deg,var(--ink) 0%,#475569 100%);
+    -webkit-background-clip:text; background-clip:text;
+    color:transparent; letter-spacing:-1px;
+  }
+  .s-sub   { font-size:11px; color:#94A3B8; margin-top:6px; font-weight:500; }
+  .g-label { margin-bottom:11px; }
   .g-inner { display:flex; gap:8px; flex-wrap:wrap; }
-  .sub-stat { flex:1; border-radius:8px; padding:10px 8px; text-align:center; background:#F8FAFC; border:1px solid #E2E8F0; }
-  .ss-val   { font-size:22px; font-weight:800; line-height:1; color:#0F172A; }
-  .ss-lbl   { font-size:10px; color:#64748B; margin-top:4px; }
-  .ss-green .ss-val { color:#16A34A; } .ss-red   .ss-val { color:#DC2626; }
-  .ss-grey  .ss-val { color:#475569; } .ss-blue  .ss-val { color:#2563EB; }
-  .ss-teal  .ss-val { color:#0D9488; } .ss-indigo .ss-val { color:#4F46E5; }
+  .sub-stat {
+    flex:1; border-radius:10px; padding:11px 8px; text-align:center;
+    background:var(--bg-soft); border:1px solid var(--line);
+    transition:transform .2s var(--ease), background .2s var(--ease);
+  }
+  .sub-stat:hover { transform:translateY(-1px); background:#F1F5F9; }
+  .ss-val   { font-size:24px; font-weight:800; line-height:1; color:var(--ink); }
+  .ss-lbl   { font-size:10.5px; color:#64748B; margin-top:5px; font-weight:600; }
+  .ss-green .ss-val { color:var(--good); }   .ss-red    .ss-val { color:var(--bad); }
+  .ss-grey  .ss-val { color:#475569; }       .ss-blue   .ss-val { color:var(--brand); }
+  .ss-teal  .ss-val { color:#0D9488; }       .ss-indigo .ss-val { color:#4F46E5; }
   .ss-slate .ss-val { color:#334155; }
 
   /* ── Filter panel ── */
   .panel {
-    background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:14px 20px 6px; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.05);
+    background:#fff; border:1px solid var(--line); border-radius:16px;
+    padding:14px 20px 6px; margin-bottom:18px;
+    box-shadow:var(--shadow-sm);
+  }
+  /* Streamlit native bordered container */
+  [data-testid="stContainer"]:has(div[data-baseweb="input"]) {
+    background:#fff !important; border-radius:16px !important;
+    box-shadow:var(--shadow-sm);
   }
 
   /* ── Section pill ── */
   div[role="radiogroup"] {
-    gap:4px !important; background:#F1F5F9; padding:4px;
-    border-radius:10px; border:1px solid #E2E8F0; width:fit-content;
+    gap:4px !important; background:#F1F5F9; padding:5px;
+    border-radius:12px; border:1px solid var(--line); width:fit-content;
+    box-shadow:inset 0 1px 2px rgba(15,23,42,0.04);
   }
   div[role="radiogroup"] > label {
-    background:transparent; border-radius:7px; padding:7px 18px !important;
-    margin:0 !important; cursor:pointer; color:#334155 !important;
-    font-weight:600; font-size:13px; transition:all .15s;
+    background:transparent; border-radius:8px; padding:8px 20px !important;
+    margin:0 !important; cursor:pointer; color:var(--slate) !important;
+    font-weight:600; font-size:13px;
+    transition:all .2s var(--ease);
   }
-  div[role="radiogroup"] > label:hover { background:#E2E8F0; }
+  div[role="radiogroup"] > label:hover { background:#E2E8F0; color:var(--ink) !important; }
   div[role="radiogroup"] > label[data-checked="true"],
   div[role="radiogroup"] > label:has(input:checked) {
-    background:#2563EB !important; color:#fff !important;
+    background:linear-gradient(135deg,var(--brand) 0%,var(--brand-d) 100%) !important;
+    color:#fff !important;
+    box-shadow:0 2px 6px rgba(37,99,235,0.35);
   }
   div[role="radiogroup"] > label > div:first-child { display:none !important; }
 
@@ -290,9 +382,13 @@ st.markdown("""
     transition:all .15s ease;
   }
   [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:hover {
-    background:#EFF6FF !important; color:#2563EB !important;
-    border-color:#2563EB !important;
-    transform:scale(1.08);
+    background:var(--brand-l) !important; color:var(--brand) !important;
+    border-color:var(--brand) !important;
+    transform:scale(1.12) rotate(-8deg);
+    box-shadow:0 4px 12px rgba(37,99,235,0.25) !important;
+  }
+  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:active {
+    transform:scale(0.95) rotate(0deg);
   }
 
   /* Kill row gaps so cell + button line up perfectly */
@@ -320,11 +416,30 @@ st.markdown("""
 
   /* ── Section header ── */
   .sec { display:flex; align-items:center; gap:10px; margin:6px 0 14px; flex-wrap:wrap; }
-  .sec .dot { width:8px; height:8px; border-radius:999px; background:#2563EB; }
-  .sec h3   { margin:0; font-size:16px; font-weight:700; color:#0F172A; }
-  .sec .cnt { font-size:11px; padding:2px 10px; border-radius:999px; background:#F1F5F9;
-              color:#64748B; font-weight:600; border:1px solid #E2E8F0; }
-  .sec .sec-help { font-size:12px; color:#94A3B8; font-weight:500; margin-left:4px; }
+  .sec .dot {
+    width:9px; height:9px; border-radius:999px;
+    background:var(--brand);
+    box-shadow:0 0 0 3px rgba(37,99,235,0.18);
+  }
+  .sec h3   {
+    margin:0; font-size:17px; font-weight:800; color:var(--ink);
+    letter-spacing:-0.2px;
+  }
+  .sec .cnt {
+    font-size:11px; padding:3px 11px; border-radius:999px;
+    background:var(--brand-l); color:var(--brand-d);
+    font-weight:700; border:1px solid #BFDBFE;
+    letter-spacing:0.3px;
+  }
+  .sec .sec-help { font-size:12px; color:var(--muted); font-weight:500; margin-left:4px; }
+
+  /* ── Input focus ring (accessibility + polish) ── */
+  div[data-baseweb="input"]:focus-within > div,
+  div[data-baseweb="select"]:focus-within > div,
+  .stDateInput:focus-within > div > div {
+    border-color:var(--brand) !important;
+    box-shadow:0 0 0 3px rgba(37,99,235,0.15) !important;
+  }
 
   /* Refresh + Export buttons in section header row — light style */
   [data-testid="stDownloadButton"] > button {
@@ -375,10 +490,10 @@ today  = date.today()
 st.markdown(f"""
 <div class="hero">
   <div>
-    <h1>IFB POINT - Customer Follow Up</h1>
-    <p>Customer Follow-Up Management &nbsp;&middot;&nbsp; {today.strftime('%A, %d %B %Y')}</p>
+    <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
+    <p>Sales Engagement Console &nbsp;·&nbsp; {today.strftime('%A, %d %B %Y')}</p>
   </div>
-  <span class="pill">&#9679;&nbsp; Live</span>
+  <span class="pill">LIVE</span>
 </div>""", unsafe_allow_html=True)
 
 
@@ -409,12 +524,12 @@ def sub(cls, val, lbl):
 st.markdown(f"""
 <div class="stats-row">
   <div class="stat-solo">
-    <div class="s-label">Total Leads</div>
+    <div class="s-label">👥 Total Leads</div>
     <div class="s-value">{total}</div>
     <div class="s-sub">in database</div>
   </div>
   <div class="stat-group">
-    <div class="g-label">Contact Status</div>
+    <div class="g-label">📞 Contact Status</div>
     <div class="g-inner">
       {sub("ss-green", contacted,    "Contacted")}
       {sub("ss-red",   not_cont,     "Not Contacted")}
@@ -422,7 +537,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="stat-group">
-    <div class="g-label">Interest</div>
+    <div class="g-label">💬 Interest</div>
     <div class="g-inner">
       {sub("ss-green", interested,   "Interested")}
       {sub("ss-red",   not_interest, "Not Interested")}
@@ -430,7 +545,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="stat-group">
-    <div class="g-label">Follow-Up Stage</div>
+    <div class="g-label">🎯 Follow-Up Stage</div>
     <div class="g-inner">
       {sub("ss-blue",   fu.get("Post Purchase Delight Call",0),          "Post Purchase")}
       {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
@@ -439,7 +554,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="stat-group">
-    <div class="g-label">Action Required</div>
+    <div class="g-label">🔥 Action Required</div>
     <div class="g-inner">
       {sub("ss-red",    overdue,    "Overdue")}
       {sub("ss-blue",   due_today,  "Due Today")}
@@ -455,9 +570,11 @@ st.markdown(f"""
 with st.container(border=True):
     fc1, fc2, fc3 = st.columns([1.2, 1.4, 1.4])
     with fc1:
+        _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
         section = st.radio(
             "Section",
             ["Today's Lead", "Missed Follow Up's"],
+            format_func=lambda s: f"{_section_emoji[s]}  {s}",
             horizontal=True,
             label_visibility="collapsed",
         )
@@ -587,7 +704,7 @@ def _fmt_date(d):
 
 
 # ── Modal dialog ────────────────────────────────────────────────────────────
-@st.dialog("Edit Lead")
+@st.dialog("✏️  Edit Lead")
 def edit_lead_dialog(row: dict):
     cid = int(row["customer_id"])
     name = row.get("customer_name") or "—"
@@ -755,7 +872,7 @@ else:
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
     pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
     with pc1:
-        if st.button("⟵  Previous", key="pg_prev",
+        if st.button("◀  Previous", key="pg_prev", type="secondary",
                      use_container_width=True, disabled=(page <= 1)):
             st.session_state["page_num"] = page - 1
             st.rerun()
@@ -765,17 +882,20 @@ else:
                "Switch to Today's Lead to edit records.")
         showing_from = start + 1 if total_rows else 0
         st.markdown(
-            f"<div style='text-align:center;padding:10px 0;color:#475569;"
-            f"font-size:13px;font-weight:600;'>"
-            f"Showing <b>{showing_from}–{end}</b> of <b>{total_rows}</b> "
-            f"&nbsp;·&nbsp; Page <b>{page}</b> of <b>{total_pages}</b>"
-            f"</div>"
-            f"<div style='text-align:center;color:#94A3B8;font-size:12px;"
-            f"margin-top:-4px;'>{cap}</div>",
+            f"<div style='text-align:center;padding:10px 0;color:var(--slate);"
+            f"font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;'>"
+            f"Showing <b style='color:var(--ink);'>{showing_from}–{end}</b> "
+            f"of <b style='color:var(--ink);'>{total_rows}</b> "
+            f"&nbsp;·&nbsp; Page "
+            f"<span style='background:var(--brand-l);color:var(--brand-d);"
+            f"padding:2px 8px;border-radius:6px;font-weight:700;'>{page}</span>"
+            f" of <b>{total_pages}</b></div>"
+            f"<div style='text-align:center;color:var(--muted);font-size:12px;"
+            f"margin-top:2px;'>{cap}</div>",
             unsafe_allow_html=True,
         )
     with pc3:
-        if st.button("Next  ⟶", key="pg_next",
+        if st.button("Next  ▶", key="pg_next", type="secondary",
                      use_container_width=True, disabled=(page >= total_pages)):
             st.session_state["page_num"] = page + 1
             st.rerun()
