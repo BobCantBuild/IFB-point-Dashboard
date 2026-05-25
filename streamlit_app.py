@@ -94,7 +94,7 @@ def update_row(customer_id, status, next_appt, interested, remarks):
 
 
 def _norm(v):
-    if v is None or (isinstance(v, float) and pd.isna(v)):
+    if v is None or v == "Empty" or (isinstance(v, float) and pd.isna(v)):
         return None
     if isinstance(v, pd.Timestamp):
         return v.date()
@@ -111,12 +111,16 @@ def diff_and_save(original: pd.DataFrame, edited: pd.DataFrame) -> int:
             continue
         orig = o.loc[cid]
         if any(_norm(row[c]) != _norm(orig[c]) for c in editable):
+            def _val(v):
+                if v is None or v == "Empty" or (isinstance(v, float) and pd.isna(v)):
+                    return None
+                return v
             update_row(
                 int(cid),
-                row["status"] if pd.notna(row["status"]) else None,
+                _val(row["status"]),
                 row["next_appointment"] if pd.notna(row["next_appointment"]) else None,
-                row["interested"] if pd.notna(row["interested"]) else None,
-                row["remarks"] if pd.notna(row["remarks"]) else None,
+                _val(row["interested"]),
+                _val(row["remarks"]),
             )
             n += 1
     return n
@@ -403,7 +407,7 @@ fc1, fc2, fc3 = st.columns([1.2, 1.4, 1.4])
 with fc1:
     section = st.radio(
         "Section",
-        ["Today's lead", "Missed calls"],
+        ["Today's lead", "Missed Leads"],
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -412,33 +416,44 @@ with fc2:
     min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
     max_pd = df_all["purchase_date"].dropna().max() or today
     date_range = st.date_input(
-        "Purchase Date range",
+        "Lead Date range",
         value=(min_pd, max_pd),
         min_value=min_pd,
         max_value=max_pd,
     )
 
 with fc3:
-    search_id = st.text_input("Search by Customer ID", placeholder="e.g. 1449")
+    search_q = st.text_input(
+        "Search",
+        placeholder="Customer ID / Name / Phone / Email",
+    )
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Filter & display
 # --------------------------------------------------------------------------- #
-if section == "Missed calls":
+if section == "Missed Leads":
     filtered = df_all.iloc[0:0].copy()
 else:
     filtered = df_all.copy()
     if isinstance(date_range, tuple) and len(date_range) == 2:
         d_from, d_to = date_range
         filtered = filtered[filtered["purchase_date"].between(d_from, d_to)]
-    if search_id.strip():
+    q = search_q.strip()
+    if q:
+        # Search across Customer ID, Customer Name, Phone number, Email ID
+        mask = (
+            filtered["customer_name"].str.contains(q, case=False, na=False) |
+            filtered["phone_number"].str.contains(q, case=False, na=False) |
+            filtered["email_id"].str.contains(q, case=False, na=False)
+        )
+        # Also try numeric match on customer_id
         try:
-            cid = int(search_id.strip())
-            filtered = filtered[filtered["customer_id"] == cid]
+            mask |= (filtered["customer_id"] == int(q))
         except ValueError:
-            st.warning("Customer ID must be a number.")
+            pass
+        filtered = filtered[mask]
 
 st.markdown(
     f"""<div class="sec">
@@ -449,7 +464,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Replace None/NaN with "Empty" for display in text/select columns
 view = filtered[DISPLAY_COLS].copy()
+for _col in ["status", "interested", "remarks"]:
+    view[_col] = view[_col].fillna("Empty")
+
 edited = st.data_editor(
     view,
     key=f"editor_{section}",
