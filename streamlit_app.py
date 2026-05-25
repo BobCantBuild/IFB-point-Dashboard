@@ -573,7 +573,8 @@ else:
     last_i = len(HDR) - 1
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
         extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-        c.markdown(f"<div class='th{extra}'>{lbl}</div>", unsafe_allow_html=True)
+        style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
+        c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
 
     def _status_chip(v):
         s = _safe(v)
@@ -616,7 +617,11 @@ else:
         cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",                unsafe_allow_html=True)
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[11].markdown(f"<div class='td td-last' title='{_rem_tip}'>{_rem_full}</div>",                 unsafe_allow_html=True)
+        cols[11].markdown(
+            f"<div class='td td-last' style='padding-right:56px;margin-right:6px;' "
+            f"title='{_rem_tip}'>{_rem_full}</div>",
+            unsafe_allow_html=True,
+        )
 
     # caption
     cap = ("Click the ✏️ icon on any row to open the edit dialog."
