@@ -103,31 +103,19 @@ st.set_page_config(page_title="IFB Point Dashboard", layout="wide", page_icon=":
 
 st.markdown("""
 <style>
-  .stApp { background:#F1F5F9; }
-  .block-container { padding-top:1.4rem; padding-bottom:2rem; max-width:1440px; }
+  /* ── Page base ── */
+  .stApp { background:#F1F5F9; overflow-x:auto; }
+  .block-container {
+    padding-top:1.4rem; padding-bottom:2rem;
+    width:1640px !important; min-width:1640px !important; max-width:1640px !important;
+  }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
 
-  /* ── Data editor / dataframe ── */
-  div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
-    border-radius:12px !important; overflow:hidden;
-    border:1px solid #CBD5E1 !important;
-    box-shadow:0 1px 8px rgba(0,0,0,.07) !important;
-  }
-  /* header row */
-  div[data-testid="stDataEditor"] th,
-  div[data-testid="stDataFrame"] th {
-    background:#F1F5F9 !important; font-weight:700 !important;
-    font-size:12px !important; text-transform:uppercase !important;
-    letter-spacing:0.6px !important; color:#475569 !important;
-    padding:10px 14px !important;
-  }
-  /* body cells */
-  div[data-testid="stDataEditor"] td,
-  div[data-testid="stDataFrame"] td {
-    font-size:13px !important; padding:10px 14px !important;
-    color:#1E293B !important;
-  }
+  /* ── Remove st.columns gap ── */
+  [data-testid="stHorizontalBlock"] { gap:0 !important; margin:0 !important; }
+  [data-testid="column"] { min-width:0 !important; }
+  [data-testid="stVerticalBlock"] { gap:0px !important; }
 
   /* ── Hero ── */
   .hero {
@@ -336,109 +324,132 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Table  — st.data_editor (horizontal + vertical scroll, proper grid)
+# Per-row inline-edit table  (with horizontal scroll via fixed page width)
 # --------------------------------------------------------------------------- #
-DISPLAY_COLS = [
-    "customer_follow_up", "customer_id", "customer_name", "purchase_date",
-    "machine_type", "phone_number", "email_id",
-    "status", "next_appointment", "interested", "remarks",
-]
 
-def _norm(v):
-    return None if (v is None or v == "—" or
-                    (isinstance(v, float) and pd.isna(v))) else v
+# col widths in proportional units — total ≈ 16.4 (maps to 1640px page)
+#         fu    id    name  date   machine  phone  email   status  appt   int    rem   action
+RATIOS = [2.2,  0.6,  1.1,  0.95,  2.0,   1.05,  1.75,   1.1,    1.0,   1.3,   2.0,  0.6]
+LABELS = ["Customer Follow-Up","ID","Name","Purchase Date",
+          "Machine Type","Phone","Email",
+          "Status","Next Appt","Interested?","Remarks",""]
 
-def diff_and_save(original: pd.DataFrame, edited: pd.DataFrame) -> int:
-    editable = ["status", "next_appointment", "interested", "remarks"]
-    o = original.set_index("customer_id")
-    e = edited.set_index("customer_id")
-    saved = 0
-    for cid, erow in e.iterrows():
-        if cid not in o.index:
-            continue
-        orig = o.loc[cid]
-        changed = False
-        for col in editable:
-            ov = _norm(orig[col])
-            ev = _norm(erow[col])
-            if isinstance(ov, pd.Timestamp): ov = ov.date()
-            if isinstance(ev, pd.Timestamp): ev = ev.date()
-            if ov != ev:
-                changed = True
-                break
-        if changed:
-            appt = erow["next_appointment"]
-            update_row(
-                int(cid),
-                _norm(erow["status"]),
-                appt if isinstance(appt, date) else None,
-                _norm(erow["interested"]),
-                _norm(erow["remarks"]),
-            )
-            saved += 1
-    return saved
+N = len(RATIOS)
+OUTER = "#94A3B8"
+INNER = "#E2E8F0"
+HEAD_BG = "#F1F5F9"
+ALT = ["#FFFFFF", "#F8FAFC"]
 
-if len(filtered) == 0:
-    st.info("No records match your filters.")
-else:
-    view = filtered[DISPLAY_COLS].copy()
-    for c in ["status", "interested", "remarks"]:
-        view[c] = view[c].fillna("—")
 
-    is_today = (section == "Today's Lead")
+def _safe(v, fallback="—"):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return fallback
+    s = str(v).strip()
+    return fallback if s in ("", "NaT", "nan", "None") else s
 
-    edited = st.data_editor(
-        view,
-        key=f"tbl_{section}",
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        height=600,
-        column_config={
-            "customer_follow_up": st.column_config.TextColumn(
-                "Customer Follow-Up", disabled=True, width=220),
-            "customer_id": st.column_config.NumberColumn(
-                "ID", disabled=True, width=70),
-            "customer_name": st.column_config.TextColumn(
-                "Name", disabled=True, width=110),
-            "purchase_date": st.column_config.DateColumn(
-                "Purchase Date", disabled=True, format="DD/MM/YYYY", width=120),
-            "machine_type": st.column_config.TextColumn(
-                "Machine Type", disabled=True, width=200),
-            "phone_number": st.column_config.TextColumn(
-                "Phone", disabled=True, width=120),
-            "email_id": st.column_config.TextColumn(
-                "Email", disabled=True, width=180),
-            "status": st.column_config.SelectboxColumn(
-                "Status",
-                options=["—"] + STATUS_OPTIONS,
-                disabled=not is_today, width=150,
-                help="Click to update"),
-            "next_appointment": st.column_config.DateColumn(
-                "Next Appointment",
-                disabled=not is_today,
-                min_value=today, format="DD/MM/YYYY", width=150,
-                help="Pick a future date"),
-            "interested": st.column_config.SelectboxColumn(
-                "Interested / Not Interested",
-                options=["—"] + INTEREST_OPTIONS,
-                disabled=not is_today, width=190,
-                help="Click to update"),
-            "remarks": st.column_config.TextColumn(
-                "Remarks",
-                disabled=not is_today, width=200,
-                help="Type remarks"),
-        },
+
+def _cell(col, html, bg, top=False, left=False, right=False,
+          last=False, header=False):
+    bt  = f"border-top:2px solid {OUTER};"           if top         else ""
+    bl  = f"border-left:2px solid {OUTER};"          if left        else ""
+    br  = f"border-right:2px solid {OUTER};"         if right       else f"border-right:1px solid {INNER};"
+    bb  = f"border-bottom:2px solid {OUTER};"        if last        else f"border-bottom:1px solid {INNER};"
+    fw  = "700"     if header else "400"
+    fs  = "10.5px"  if header else "13px"
+    clr = "#475569" if header else "#1E293B"
+    tt  = "text-transform:uppercase;letter-spacing:0.7px;" if header else ""
+    col.markdown(
+        f"<div style='background:{bg};padding:10px 12px;font-size:{fs};"
+        f"font-weight:{fw};color:{clr};{tt}"
+        f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+        f"min-height:42px;{bt}{bl}{br}{bb}'>{html}</div>",
+        unsafe_allow_html=True,
     )
 
-    if is_today:
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        sc, _ = st.columns([1, 7])
-        with sc:
-            if st.button("Save changes", type="primary", use_container_width=True):
-                n = diff_and_save(filtered, edited)
-                if n:
-                    st.success(f"Saved {n} row(s).")
-                    st.rerun()
-                else:
-                    st.info("No changes to save.")
+
+# session state
+if "editing_cid" not in st.session_state:
+    st.session_state["editing_cid"] = None
+
+# ── header ────────────────────────────────────────────────────────────────────
+hdr = st.columns(RATIOS)
+for i, (c, lbl) in enumerate(zip(hdr, LABELS)):
+    _cell(c, lbl, HEAD_BG, header=True, top=True,
+          left=(i == 0), right=(i == N - 1))
+
+# ── rows ─────────────────────────────────────────────────────────────────────
+if len(filtered) == 0:
+    st.markdown(
+        "<div style='text-align:center;padding:48px;color:#94A3B8;font-size:14px;"
+        f"border-left:2px solid {OUTER};border-right:2px solid {OUTER};"
+        f"border-bottom:2px solid {OUTER};background:#fff'>No records found.</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    total_rows = len(filtered)
+    for ri, (_, row) in enumerate(filtered.iterrows()):
+        cid    = int(row["customer_id"])
+        is_end = (ri == total_rows - 1)
+        is_ed  = (st.session_state["editing_cid"] == cid) and (section == "Today's Lead")
+        bg     = ALT[ri % 2]
+
+        cur_s = row["status"]           if pd.notna(row.get("status"))           else None
+        cur_a = row["next_appointment"] if pd.notna(row.get("next_appointment")) else None
+        cur_i = row["interested"]       if pd.notna(row.get("interested"))       else None
+        cur_r = str(row["remarks"])     if pd.notna(row.get("remarks")) and row["remarks"] else ""
+
+        dc = st.columns(RATIOS)
+
+        # read-only cells
+        pd_s = row["purchase_date"].strftime("%d/%m/%Y") if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—"
+        _cell(dc[0], _safe(row.get("customer_follow_up")),      bg, left=True,  last=is_end)
+        _cell(dc[1], str(cid),                                  bg,             last=is_end)
+        _cell(dc[2], f"<b>{_safe(row.get('customer_name'))}</b>", bg,           last=is_end)
+        _cell(dc[3], pd_s,                                      bg,             last=is_end)
+        _cell(dc[4], _safe(row.get("machine_type")),            bg,             last=is_end)
+        _cell(dc[5], _safe(row.get("phone_number")),            bg,             last=is_end)
+        _cell(dc[6], _safe(row.get("email_id")),                bg,             last=is_end)
+
+        if is_ed:
+            with dc[7]:
+                ns = st.selectbox("Status", ["—"] + STATUS_OPTIONS,
+                    index=(["—"]+STATUS_OPTIONS).index(cur_s) if cur_s in STATUS_OPTIONS else 0,
+                    key=f"s_{cid}", label_visibility="collapsed")
+            with dc[8]:
+                na = st.date_input("Appt",
+                    value=cur_a if isinstance(cur_a, date) else None,
+                    min_value=today, key=f"a_{cid}", label_visibility="collapsed")
+            with dc[9]:
+                ni = st.selectbox("Interested", ["—"] + INTEREST_OPTIONS,
+                    index=(["—"]+INTEREST_OPTIONS).index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
+                    key=f"i_{cid}", label_visibility="collapsed")
+            with dc[10]:
+                nr = st.text_input("Remarks", value=cur_r,
+                    key=f"r_{cid}", label_visibility="collapsed")
+            with dc[11]:
+                sv, cx = st.columns(2)
+                with sv:
+                    if st.button("💾", key=f"sv_{cid}", help="Save"):
+                        update_row(cid,
+                            None if ns=="—" else ns,
+                            na if isinstance(na, date) else None,
+                            None if ni=="—" else ni,
+                            nr.strip() or None)
+                        st.session_state["editing_cid"] = None
+                        st.rerun()
+                with cx:
+                    if st.button("✕", key=f"cx_{cid}", help="Cancel"):
+                        st.session_state["editing_cid"] = None
+                        st.rerun()
+        else:
+            ap_s = cur_a.strftime("%d/%m/%Y") if cur_a else "—"
+            _cell(dc[7],  _safe(cur_s, "—"), bg,            last=is_end)
+            _cell(dc[8],  ap_s,              bg,            last=is_end)
+            _cell(dc[9],  _safe(cur_i, "—"), bg,            last=is_end)
+            _cell(dc[10], _safe(cur_r, "—"), bg,            last=is_end)
+            _cell(dc[11], "",                bg, right=True, last=is_end)
+            if section == "Today's Lead":
+                with dc[11]:
+                    if st.button("✏️", key=f"ed_{cid}", help="Edit row"):
+                        st.session_state["editing_cid"] = cid
+                        st.rerun()
