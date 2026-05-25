@@ -109,8 +109,10 @@ st.markdown("""
   #MainMenu, footer { visibility:hidden; }
 
   /* ── Remove st.columns gap so cell borders line up ── */
-  [data-testid="stHorizontalBlock"] { gap:0 !important; }
+  [data-testid="stHorizontalBlock"] { gap:0 !important; margin:0 !important; }
   [data-testid="column"] { min-width:0 !important; }
+  /* ── Remove vertical gap between consecutive st.columns (table rows) ── */
+  [data-testid="stVerticalBlock"] { gap:0px !important; }
 
   /* ── Hero ── */
   .hero {
@@ -180,7 +182,9 @@ st.markdown("""
   /* ── Buttons ── */
   .stButton > button {
     background:#0F172A; color:#F8FAFC; border:0; border-radius:8px;
-    padding:8px 20px; font-weight:600; font-size:13px;
+    padding:6px 14px; font-weight:600; font-size:13px;
+    height:36px !important; min-height:0 !important;
+    line-height:1 !important;
   }
   .stButton > button:hover { background:#1E293B; }
 
@@ -460,9 +464,8 @@ else:
             render_cell(dcols[8],  ap_str,              bg,             last_row=is_last)
             render_cell(dcols[9],  _safe(cur_i, "—"),  bg,             last_row=is_last)
             render_cell(dcols[10], _safe(cur_r, "—"),  bg,             last_row=is_last)
-            render_cell(dcols[11], "",                  bg, right=True, last_row=is_last)
-            if section == "Today's Lead":
-                with dcols[11]:
+            with dcols[11]:
+                if section == "Today's Lead":
                     if st.button("✏️", key=f"ed_{cid}", help="Edit row"):
                         st.session_state["editing_cid"] = cid
                         st.rerun()
