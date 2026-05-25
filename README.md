@@ -23,7 +23,7 @@ A Streamlit dashboard backed by SQLite for tracking IFB point customer leads —
 
 ```
 IFB point Dashboard/
-├── app.py                # Streamlit application
+├── streamlit_app.py      # Streamlit application (main entry point)
 ├── seed_db.py            # One-time loader: xlsx -> SQLite
 ├── requirements.txt      # Python dependencies
 ├── README.md
@@ -56,10 +56,17 @@ This creates `ifb_point.db` with the `customers` table populated. If the DB alre
 ### 3. Run the dashboard
 
 ```powershell
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 Open http://localhost:8501 in your browser.
+
+### 4. Deploy on Streamlit Cloud
+
+1. Push this repo to GitHub
+2. Go to [streamlit.io/cloud](https://streamlit.io/cloud)
+3. Click "New app" → select your repo, branch, and main file as `streamlit_app.py`
+4. Deploy — your dashboard is live
 
 ## Database schema
 
