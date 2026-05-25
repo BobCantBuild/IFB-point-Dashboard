@@ -442,53 +442,50 @@ if len(filtered) == 0:
     )
 else:
     display_df = filtered[DISPLAY_COLS].copy().reset_index(drop=True)
-    display_df.insert(0, "_edit", False)  # edit toggle column
+    display_df.insert(0, "_action", "✏️")  # visible edit icon
 
     read_only = section != "Today's Lead"
 
-    edited = st.data_editor(
+    event = st.dataframe(
         display_df,
         column_config={
-            "_edit": st.column_config.CheckboxColumn(
-                "✏️", width="small", default=False,
-                help="Tick to edit this row"),
+            "_action": st.column_config.TextColumn(
+                "Edit", width="small",
+                help="Click any row to open the edit dialog"),
             "customer_follow_up": st.column_config.TextColumn(
-                "Customer Follow-Up", width="large", disabled=True,
+                "Customer Follow-Up", width="large",
                 help="Auto-assigned based on purchase date"),
             "customer_id": st.column_config.NumberColumn(
-                "ID", width="small", disabled=True, format="%d"),
+                "ID", width="small", format="%d"),
             "customer_name": st.column_config.TextColumn(
-                "Customer Name", width="medium", disabled=True),
+                "Customer Name", width="medium"),
             "purchase_date": st.column_config.DateColumn(
-                "Purchase Date", width="small", disabled=True, format="DD/MM/YYYY"),
+                "Purchase Date", width="small", format="DD/MM/YYYY"),
             "machine_type": st.column_config.TextColumn(
-                "Machine Type", width="medium", disabled=True),
+                "Machine Type", width="medium"),
             "phone_number": st.column_config.TextColumn(
-                "Phone", width="small", disabled=True),
+                "Phone", width="small"),
             "email_id": st.column_config.TextColumn(
-                "Email", width="medium", disabled=True),
+                "Email", width="medium"),
             "status": st.column_config.TextColumn(
-                "Status", width="small", disabled=True),
+                "Status", width="small"),
             "next_appointment": st.column_config.DateColumn(
-                "Next Appointment", width="small", disabled=True, format="DD/MM/YYYY"),
+                "Next Appointment", width="small", format="DD/MM/YYYY"),
             "interested": st.column_config.TextColumn(
-                "Interested?", width="small", disabled=True),
+                "Interested?", width="small"),
             "remarks": st.column_config.TextColumn(
-                "Remarks", width="large", disabled=True),
+                "Remarks", width="large"),
         },
         hide_index=True,
         use_container_width=True,
-        num_rows="fixed",
-        disabled=["customer_follow_up", "customer_id", "customer_name",
-                  "purchase_date", "machine_type", "phone_number", "email_id",
-                  "status", "next_appointment", "interested", "remarks"] +
-                 (["_edit"] if read_only else []),
         height=min(640, 90 + 38 * len(display_df)),
-        key=f"lead_editor_{st.session_state['editor_v']}",
+        on_select=("rerun" if not read_only else "ignore"),
+        selection_mode="single-row",
+        key=f"lead_table_{st.session_state['editor_v']}",
     )
 
     # caption
-    cap = ("Tick the ✏️ checkbox on any row to open the edit dialog."
+    cap = ("Click the ✏️ icon (or any cell in the row) to edit."
            if not read_only else
            "Switch to Today's Lead to edit records.")
     st.markdown(
@@ -496,10 +493,13 @@ else:
         unsafe_allow_html=True,
     )
 
-    # detect a newly-ticked edit checkbox
-    if not read_only and st.session_state["active_edit"] is None:
-        ticked = edited[edited["_edit"] == True]
-        if len(ticked) > 0:
-            row_dict = ticked.iloc[0].to_dict()
+    # open dialog when a row is selected
+    if not read_only:
+        try:
+            sel_rows = event.selection.rows  # type: ignore[attr-defined]
+        except AttributeError:
+            sel_rows = []
+        if sel_rows and st.session_state["active_edit"] is None:
+            row_dict = display_df.iloc[sel_rows[0]].to_dict()
             st.session_state["active_edit"] = int(row_dict["customer_id"])
             edit_lead_dialog(row_dict)
