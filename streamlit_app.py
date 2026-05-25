@@ -11,22 +11,22 @@ import streamlit as st
 DB_PATH = Path(__file__).parent / "ifb_point.db"
 
 DISPLAY_COLS = [
-    "customer_id", "customer_name", "purchase_date", "customer_follow_up",
+    "customer_follow_up", "customer_id", "customer_name", "purchase_date",
     "machine_type", "phone_number", "email_id", "status",
     "next_appointment", "interested", "remarks",
 ]
 
 COL_LABELS = {
+    "customer_follow_up": "Customer Follow-Up",
     "customer_id": "Customer ID",
     "customer_name": "Customer name",
     "purchase_date": "Purchase Date",
-    "customer_follow_up": "Customer Follow-Up",
     "machine_type": "Machine Type",
     "phone_number": "Phone number",
     "email_id": "Email ID",
-    "status": "Status",
-    "next_appointment": "Next appointment",
-    "interested": "Interested / Not Interested",
+    "status": "▾ Status",
+    "next_appointment": "▾ Next Appointment",
+    "interested": "▾ Interested / Not Interested",
     "remarks": "Remarks",
 }
 
@@ -236,6 +236,26 @@ CSS = """
     overflow: hidden;
     border: 1px solid rgba(148,163,184,0.15);
     box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  }
+
+  /* ----- Editable column legend ----- */
+  .edit-legend {
+    display: flex; gap: 16px; align-items: center;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .edit-legend .leg-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #94a3b8;
+  }
+  .edit-legend .dot-edit  { width: 8px; height: 8px; border-radius: 2px; background: #8b5cf6; }
+  .edit-legend .dot-read  { width: 8px; height: 8px; border-radius: 2px; background: #334155; }
+  .edit-tag {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 4px;
+    background: rgba(139,92,246,0.15); color: #a78bfa;
+    border: 1px solid rgba(139,92,246,0.3);
+    letter-spacing: 0.5px; text-transform: uppercase;
+    margin-left: 6px;
   }
 
   /* ----- Section subheader ----- */
@@ -464,6 +484,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Legend showing editable vs read-only
+st.markdown("""
+<div class="edit-legend">
+  <div class="leg-item"><span class="dot-read"></span> Read-only</div>
+  <div class="leg-item"><span class="dot-edit"></span> Editable — click a cell to update</div>
+  <span style="margin-left:4px;font-size:12px;color:#94a3b8;">
+    Editable columns:
+    <span class="edit-tag">▾ Status</span>
+    <span class="edit-tag">▾ Next Appointment</span>
+    <span class="edit-tag">▾ Interested / Not Interested</span>
+    <span class="edit-tag">Remarks</span>
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
 # Replace None/NaN with "Empty" for display in text/select columns
 view = filtered[DISPLAY_COLS].copy()
 for _col in ["status", "interested", "remarks"]:
@@ -477,28 +512,41 @@ edited = st.data_editor(
     num_rows="fixed",
     height=460,
     column_config={
-        "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], disabled=True, width="small"),
-        "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], disabled=True, width="small"),
-        "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small"),
         "customer_follow_up": st.column_config.TextColumn(
             COL_LABELS["customer_follow_up"], disabled=True, width="medium",
             help="Auto-calculated from Purchase Date",
         ),
+        "customer_id":        st.column_config.NumberColumn(COL_LABELS["customer_id"], disabled=True, width="small"),
+        "customer_name":      st.column_config.TextColumn(COL_LABELS["customer_name"], disabled=True, width="small"),
+        "purchase_date":      st.column_config.DateColumn(COL_LABELS["purchase_date"], disabled=True, format="DD/MM/YYYY", width="small"),
         "machine_type":       st.column_config.TextColumn(COL_LABELS["machine_type"], disabled=True, width="medium"),
-        "phone_number":     st.column_config.TextColumn(COL_LABELS["phone_number"], disabled=True, width="small"),
-        "email_id":         st.column_config.TextColumn(COL_LABELS["email_id"], disabled=True, width="medium"),
-        "status":           st.column_config.SelectboxColumn(
-            COL_LABELS["status"], options=STATUS_OPTIONS, required=False, width="small",
-            help="Contacted / Not Contacted",
+        "phone_number":       st.column_config.TextColumn(COL_LABELS["phone_number"], disabled=True, width="small"),
+        "email_id":           st.column_config.TextColumn(COL_LABELS["email_id"], disabled=True, width="medium"),
+        "status":             st.column_config.SelectboxColumn(
+            COL_LABELS["status"],
+            options=["Empty"] + STATUS_OPTIONS,
+            required=False,
+            width="medium",
+            help="Click to select: Contacted / Not Contacted",
         ),
-        "next_appointment": st.column_config.DateColumn(
-            COL_LABELS["next_appointment"], min_value=today, format="DD/MM/YYYY", width="small",
-            help="Pick a future date",
+        "next_appointment":   st.column_config.DateColumn(
+            COL_LABELS["next_appointment"],
+            min_value=today,
+            format="DD/MM/YYYY",
+            width="medium",
+            help="Click to pick a future date",
         ),
-        "interested":       st.column_config.SelectboxColumn(
-            COL_LABELS["interested"], options=INTEREST_OPTIONS, required=False, width="small",
+        "interested":         st.column_config.SelectboxColumn(
+            COL_LABELS["interested"],
+            options=["Empty"] + INTEREST_OPTIONS,
+            required=False,
+            width="medium",
+            help="Click to select: Interested / Not Interested",
         ),
-        "remarks":          st.column_config.TextColumn(COL_LABELS["remarks"], width="large"),
+        "remarks":            st.column_config.TextColumn(
+            COL_LABELS["remarks"], width="large",
+            help="Click to type remarks",
+        ),
     },
 )
 
