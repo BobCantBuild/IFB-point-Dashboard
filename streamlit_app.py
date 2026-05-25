@@ -286,19 +286,29 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 # Filters
 # --------------------------------------------------------------------------- #
-st.markdown('<div class="panel">', unsafe_allow_html=True)
-fc1, fc2, fc3 = st.columns([1.2, 1.4, 1.4])
-with fc1:
-    section = st.radio("Section", ["Today's Lead", "Missed Leads"],
-                       horizontal=True, label_visibility="collapsed")
-with fc2:
-    min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
-    max_pd = df_all["purchase_date"].dropna().max() or today
-    date_range = st.date_input("Lead Date range", value=(min_pd, max_pd),
-                               min_value=min_pd, max_value=max_pd)
-with fc3:
-    search_q = st.text_input("Search", placeholder="Customer ID / Name / Phone / Email")
-st.markdown('</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    fc1, fc2, fc3 = st.columns([1.2, 1.4, 1.4])
+    with fc1:
+        section = st.radio(
+            "Section",
+            ["Today's Lead", "Missed Leads"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with fc2:
+        min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
+        max_pd = df_all["purchase_date"].dropna().max() or today
+        date_range = st.date_input(
+            "Lead Date range",
+            value=(min_pd, max_pd),
+            min_value=min_pd,
+            max_value=max_pd,
+        )
+    with fc3:
+        search_q = st.text_input(
+            "Search",
+            placeholder="Customer ID / Name / Phone / Email",
+        )
 
 
 # --------------------------------------------------------------------------- #
