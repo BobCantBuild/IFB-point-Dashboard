@@ -130,10 +130,10 @@ st.markdown("""
   }
 
   /* ── Stats ── */
-  .stats-row { display:flex; gap:12px; margin-bottom:16px; }
+  .stats-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:nowrap; align-items:stretch; }
   .stat-solo {
     background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:20px 22px; min-width:120px; flex-shrink:0;
+    padding:20px 22px; min-width:130px; flex-shrink:0;
     box-shadow:0 1px 4px rgba(0,0,0,.06);
   }
   .s-label { font-size:11px; font-weight:600; color:#94A3B8; text-transform:uppercase; letter-spacing:1px; }
@@ -141,10 +141,10 @@ st.markdown("""
   .s-sub   { font-size:11px; color:#CBD5E1; margin-top:5px; }
   .stat-group {
     background:#fff; border:1px solid #E2E8F0; border-radius:14px;
-    padding:16px 18px; flex:1; box-shadow:0 1px 4px rgba(0,0,0,.06);
+    padding:16px 18px; flex:1; min-width:0; box-shadow:0 1px 4px rgba(0,0,0,.06);
   }
   .g-label { font-size:11px; font-weight:600; color:#94A3B8; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
-  .g-inner { display:flex; gap:8px; }
+  .g-inner { display:flex; gap:8px; flex-wrap:nowrap; }
   .sub-stat { flex:1; border-radius:8px; padding:10px 8px; text-align:center; background:#F8FAFC; border:1px solid #E2E8F0; }
   .ss-val   { font-size:22px; font-weight:800; line-height:1; color:#0F172A; }
   .ss-lbl   { font-size:10px; color:#64748B; margin-top:4px; }
@@ -334,12 +334,12 @@ st.markdown(f"""
 # Per-row inline-edit table  (with horizontal scroll via fixed page width)
 # --------------------------------------------------------------------------- #
 
-# col widths in proportional units — total ≈ 16.4 (maps to 1640px page)
+# col widths in proportional units — total ≈ 16.5 (maps to 1640px page)
 #         fu    id    name  date   machine  phone  email   status  appt   int    rem   edit  save
-RATIOS = [2.2,  0.6,  1.1,  0.95,  2.0,   1.05,  1.75,   1.1,    1.0,   1.3,   2.0,  0.5,  0.5]
+RATIOS = [2.3,  0.65, 1.2,  1.0,   2.0,   1.1,   1.8,    1.1,    1.05,  1.3,   2.0,  0.5,  0.5]
 LABELS = ["Customer Follow-Up","ID","Name","Purchase Date",
           "Machine Type","Phone","Email",
-          "Status","Next Appt","Interested?","Remarks","",""]
+          "Status","Next Appt","Interested?","Remarks","&nbsp;","&nbsp;"]
 
 N = len(RATIOS)  # 13 columns (0-10 data, 11 edit, 12 save)
 OUTER = "#94A3B8"
@@ -356,19 +356,19 @@ def _safe(v, fallback="—"):
 
 
 def _cell(col, html, bg, top=False, left=False, right=False,
-          last=False, header=False):
-    bt  = f"border-top:2px solid {OUTER};"           if top         else ""
-    bl  = f"border-left:2px solid {OUTER};"          if left        else ""
-    br  = f"border-right:2px solid {OUTER};"         if right       else f"border-right:1px solid {INNER};"
-    bb  = f"border-bottom:2px solid {OUTER};"        if last        else f"border-bottom:1px solid {INNER};"
+          last=False, header=False, wrap=False):
+    bt  = f"border-top:2px solid {OUTER};"    if top   else ""
+    bl  = f"border-left:2px solid {OUTER};"   if left  else ""
+    br  = f"border-right:2px solid {OUTER};"  if right else f"border-right:1px solid {INNER};"
+    bb  = f"border-bottom:2px solid {OUTER};" if last  else f"border-bottom:1px solid {INNER};"
     fw  = "700"     if header else "400"
     fs  = "10.5px"  if header else "13px"
     clr = "#475569" if header else "#1E293B"
     tt  = "text-transform:uppercase;letter-spacing:0.7px;" if header else ""
+    ws  = "white-space:normal;word-break:break-word;" if wrap else "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
     col.markdown(
         f"<div style='background:{bg};padding:10px 12px;font-size:{fs};"
-        f"font-weight:{fw};color:{clr};{tt}"
-        f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+        f"font-weight:{fw};color:{clr};{tt}{ws}"
         f"min-height:42px;{bt}{bl}{br}{bb}'>{html}</div>",
         unsafe_allow_html=True,
     )
@@ -382,7 +382,8 @@ if "editing_cid" not in st.session_state:
 hdr = st.columns(RATIOS)
 for i, (c, lbl) in enumerate(zip(hdr, LABELS)):
     _cell(c, lbl, HEAD_BG, header=True, top=True,
-          left=(i == 0), right=(i == N - 1))
+          left=(i == 0), right=(i == N - 1),
+          wrap=(i in (0, 10)))
 
 # ── rows ─────────────────────────────────────────────────────────────────────
 if len(filtered) == 0:
@@ -409,13 +410,13 @@ else:
 
         # read-only cells
         pd_s = row["purchase_date"].strftime("%d/%m/%Y") if row.get("purchase_date") and pd.notna(row["purchase_date"]) else "—"
-        _cell(dc[0], _safe(row.get("customer_follow_up")),      bg, left=True,  last=is_end)
-        _cell(dc[1], str(cid),                                  bg,             last=is_end)
+        _cell(dc[0], _safe(row.get("customer_follow_up")),        bg, left=True, last=is_end, wrap=True)
+        _cell(dc[1], str(cid),                                   bg,            last=is_end)
         _cell(dc[2], f"<b>{_safe(row.get('customer_name'))}</b>", bg,           last=is_end)
-        _cell(dc[3], pd_s,                                      bg,             last=is_end)
-        _cell(dc[4], _safe(row.get("machine_type")),            bg,             last=is_end)
-        _cell(dc[5], _safe(row.get("phone_number")),            bg,             last=is_end)
-        _cell(dc[6], _safe(row.get("email_id")),                bg,             last=is_end)
+        _cell(dc[3], pd_s,                                       bg,            last=is_end)
+        _cell(dc[4], _safe(row.get("machine_type")),             bg,            last=is_end)
+        _cell(dc[5], _safe(row.get("phone_number")),             bg,            last=is_end)
+        _cell(dc[6], _safe(row.get("email_id")),                 bg,            last=is_end)
 
         if is_ed:
             with dc[7]:
@@ -451,10 +452,10 @@ else:
                     st.rerun()
         else:
             ap_s = cur_a.strftime("%d/%m/%Y") if cur_a else "—"
-            _cell(dc[7],  _safe(cur_s, "—"), bg,             last=is_end)
-            _cell(dc[8],  ap_s,              bg,             last=is_end)
-            _cell(dc[9],  _safe(cur_i, "—"), bg,             last=is_end)
-            _cell(dc[10], _safe(cur_r, "—"), bg, right=True, last=is_end)
+            _cell(dc[7],  _safe(cur_s, "—"), bg,                        last=is_end)
+            _cell(dc[8],  ap_s,              bg,                        last=is_end)
+            _cell(dc[9],  _safe(cur_i, "—"), bg,                        last=is_end)
+            _cell(dc[10], _safe(cur_r, "—"), bg, right=True, last=is_end, wrap=True)
             # col 11 = Edit (✏️),  col 12 = Save (empty in view mode)
             with dc[11]:
                 if section == "Today's Lead":
