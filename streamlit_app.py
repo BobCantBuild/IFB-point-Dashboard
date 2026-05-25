@@ -104,10 +104,10 @@ st.set_page_config(page_title="IFB Point Dashboard", layout="wide", page_icon=":
 st.markdown("""
 <style>
   /* ── Page base ── */
-  .stApp { background:#F1F5F9; }
+  .stApp { background:#F1F5F9; overflow-x:auto; }
   .block-container {
     padding-top:1.4rem; padding-bottom:2rem;
-    max-width:1500px;
+    max-width:1700px;
   }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
@@ -242,21 +242,43 @@ st.markdown("""
   .chip.slate::before  { background:#94A3B8; }
 
   /* Pencil edit button — circular outlined icon button */
+  /* Default secondary button (dialog Cancel etc.) — proper rectangular */
   .stButton > button[kind="secondary"] {
+    background:#FFFFFF !important; color:#475569 !important;
+    border:1px solid #CBD5E1 !important;
+    height:42px !important; min-height:42px !important;
+    padding:0 18px !important; font-size:13px !important; font-weight:600 !important;
+    border-radius:8px !important;
+  }
+  .stButton > button[kind="secondary"]:hover {
+    background:#F1F5F9 !important; border-color:#94A3B8 !important; color:#0F172A !important;
+  }
+
+  /* Polished primary button (dialog Save) */
+  .stButton > button[kind="primary"] {
+    background:#2563EB !important; color:#FFFFFF !important; border:0 !important;
+    height:42px !important; min-height:42px !important;
+    padding:0 18px !important; font-size:13px !important; font-weight:600 !important;
+    border-radius:8px !important;
+  }
+  .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
+
+  /* Pencil edit button — circular icon, ONLY inside table rows */
+  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
     background:#FFFFFF !important; color:#94A3B8 !important;
     border:1.5px solid #E2E8F0 !important;
     height:38px !important; min-height:38px !important;
     width:38px !important; min-width:38px !important;
-    padding:0 !important; font-size:14px !important;
+    padding:0 !important; font-size:14px !important; font-weight:400 !important;
     border-radius:50% !important;
     margin:0 auto !important;
     line-height:1 !important;
     transition:all .15s ease;
   }
-  .stButton > button[kind="secondary"]:hover {
+  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:hover {
     background:#EFF6FF !important; color:#2563EB !important;
     border-color:#2563EB !important;
-    transform:scale(1.05);
+    transform:scale(1.08);
   }
 
   /* Kill row gaps so cell + button line up perfectly */
@@ -538,7 +560,7 @@ if len(filtered) == 0:
     )
 else:
     # column ratios:  edit  follow-up  id    name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      3.1,       0.5,  1.3,  0.95, 1.5,     1.0,   1.7,   1.0,    1.0,  1.15, 1.6]
+    R   = [0.4,      2.7,       0.45, 1.25, 0.95, 1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
     HDR = ["",       "Customer Follow-Up", "ID", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email", "Status", "Next Appt",
            "Interested?", "Remarks"]
@@ -589,7 +611,9 @@ else:
         cols[8].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",                       unsafe_allow_html=True)
         cols[9].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>",                unsafe_allow_html=True)
         cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",                unsafe_allow_html=True)
-        cols[11].markdown(f"<div class='td wrap'>{_safe(row.get('remarks'))}</div>",                       unsafe_allow_html=True)
+        _rem_full = _safe(row.get('remarks'))
+        _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
+        cols[11].markdown(f"<div class='td' title='{_rem_tip}'>{_rem_full}</div>",                         unsafe_allow_html=True)
 
     # caption
     cap = ("Click the ✏️ icon on any row to open the edit dialog."
