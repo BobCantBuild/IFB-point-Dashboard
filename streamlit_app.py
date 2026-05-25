@@ -414,6 +414,7 @@ with st.container(border=True):
             value=(min_pd, max_pd),
             min_value=min_pd,
             max_value=max_pd,
+            format="DD/MM/YYYY",
         )
     with fc3:
         search_q = st.text_input(
