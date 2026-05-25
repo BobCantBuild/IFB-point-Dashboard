@@ -362,14 +362,75 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Editable data table — Streamlit's native st.data_editor
-# Professional standard: click any editable cell, then hit Save Changes.
+# Data table — read-only view + per-row Edit checkbox that opens a dialog.
 # --------------------------------------------------------------------------- #
 DISPLAY_COLS = [
     "customer_follow_up", "customer_id", "customer_name", "purchase_date",
     "machine_type", "phone_number", "email_id",
     "status", "next_appointment", "interested", "remarks",
 ]
+
+
+# ── Dialog (Streamlit modal) ────────────────────────────────────────────────
+@st.dialog("Edit Lead")
+def edit_lead_dialog(row: dict):
+    cid = int(row["customer_id"])
+    name = row.get("customer_name") or "—"
+
+    st.markdown(
+        f"<div style='font-size:13px;color:#64748B;margin-bottom:2px;'>Customer</div>"
+        f"<div style='font-size:18px;font-weight:700;color:#0F172A;margin-bottom:2px;'>{name}</div>"
+        f"<div style='font-size:12px;color:#94A3B8;margin-bottom:14px;'>ID {cid} &nbsp;·&nbsp; "
+        f"{row.get('machine_type') or '—'}</div>",
+        unsafe_allow_html=True,
+    )
+
+    cur_s = row.get("status")           if pd.notna(row.get("status"))           else None
+    cur_a = row.get("next_appointment") if isinstance(row.get("next_appointment"), date) else None
+    cur_i = row.get("interested")       if pd.notna(row.get("interested"))       else None
+    cur_r = str(row.get("remarks"))     if pd.notna(row.get("remarks")) and row.get("remarks") else ""
+
+    s_opts = ["—"] + STATUS_OPTIONS
+    i_opts = ["—"] + INTEREST_OPTIONS
+
+    ns = st.selectbox("Status", s_opts,
+                      index=s_opts.index(cur_s) if cur_s in STATUS_OPTIONS else 0,
+                      key=f"dlg_s_{cid}")
+    na = st.date_input("Next Appointment",
+                       value=cur_a if isinstance(cur_a, date) else None,
+                       min_value=today, key=f"dlg_a_{cid}")
+    ni = st.selectbox("Interested?", i_opts,
+                      index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
+                      key=f"dlg_i_{cid}")
+    nr = st.text_area("Remarks", value=cur_r, height=110, key=f"dlg_r_{cid}")
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾  Save", type="primary", use_container_width=True,
+                     key=f"dlg_save_{cid}"):
+            update_row(
+                cid,
+                None if ns == "—" else ns,
+                na if isinstance(na, date) else None,
+                None if ni == "—" else ni,
+                nr.strip() or None,
+            )
+            st.session_state["active_edit"] = None
+            st.session_state["editor_v"] = st.session_state.get("editor_v", 0) + 1
+            st.toast(f"Saved changes for {name}", icon="✅")
+            st.rerun()
+    with c2:
+        if st.button("Cancel", use_container_width=True, key=f"dlg_cancel_{cid}"):
+            st.session_state["active_edit"] = None
+            st.session_state["editor_v"] = st.session_state.get("editor_v", 0) + 1
+            st.rerun()
+
+
+# ── State ──────────────────────────────────────────────────────────────────
+st.session_state.setdefault("editor_v", 0)
+st.session_state.setdefault("active_edit", None)
+
 
 if len(filtered) == 0:
     st.markdown(
@@ -381,19 +442,16 @@ if len(filtered) == 0:
     )
 else:
     display_df = filtered[DISPLAY_COLS].copy().reset_index(drop=True)
-
-    # snapshot original frame for diff on save (keyed on row IDs so changing
-    # filters invalidates the snapshot)
-    snap_sig = tuple(display_df["customer_id"].tolist())
-    if (st.session_state.get("snap_sig") != snap_sig):
-        st.session_state["snap_sig"] = snap_sig
-        st.session_state["snap_df"] = display_df.copy()
+    display_df.insert(0, "_edit", False)  # edit toggle column
 
     read_only = section != "Today's Lead"
 
     edited = st.data_editor(
         display_df,
         column_config={
+            "_edit": st.column_config.CheckboxColumn(
+                "✏️", width="small", default=False,
+                help="Tick to edit this row"),
             "customer_follow_up": st.column_config.TextColumn(
                 "Customer Follow-Up", width="large", disabled=True,
                 help="Auto-assigned based on purchase date"),
@@ -409,71 +467,39 @@ else:
                 "Phone", width="small", disabled=True),
             "email_id": st.column_config.TextColumn(
                 "Email", width="medium", disabled=True),
-            "status": st.column_config.SelectboxColumn(
-                "Status", width="small", options=STATUS_OPTIONS, required=False),
+            "status": st.column_config.TextColumn(
+                "Status", width="small", disabled=True),
             "next_appointment": st.column_config.DateColumn(
-                "Next Appointment", width="small", format="DD/MM/YYYY",
-                min_value=today),
-            "interested": st.column_config.SelectboxColumn(
-                "Interested?", width="small", options=INTEREST_OPTIONS,
-                required=False),
+                "Next Appointment", width="small", disabled=True, format="DD/MM/YYYY"),
+            "interested": st.column_config.TextColumn(
+                "Interested?", width="small", disabled=True),
             "remarks": st.column_config.TextColumn(
-                "Remarks", width="large"),
+                "Remarks", width="large", disabled=True),
         },
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
-        disabled=read_only,
+        disabled=["customer_follow_up", "customer_id", "customer_name",
+                  "purchase_date", "machine_type", "phone_number", "email_id",
+                  "status", "next_appointment", "interested", "remarks"] +
+                 (["_edit"] if read_only else []),
         height=min(640, 90 + 38 * len(display_df)),
-        key="lead_editor",
+        key=f"lead_editor_{st.session_state['editor_v']}",
     )
 
-    # ── save bar ──
-    sb1, sb2, _ = st.columns([1.6, 3.0, 5.4])
-    with sb1:
-        save_clicked = st.button(
-            "💾  Save Changes",
-            type="primary",
-            use_container_width=True,
-            disabled=read_only,
-        )
-    with sb2:
-        msg = ("Click any editable cell, then save."
-               if not read_only else
-               "Switch to Today's Lead to edit records.")
-        st.markdown(
-            f"<div style='padding:10px 0;color:#64748B;font-size:12.5px;'>{msg}</div>",
-            unsafe_allow_html=True,
-        )
+    # caption
+    cap = ("Tick the ✏️ checkbox on any row to open the edit dialog."
+           if not read_only else
+           "Switch to Today's Lead to edit records.")
+    st.markdown(
+        f"<div style='padding:6px 2px 0;color:#64748B;font-size:12.5px;'>{cap}</div>",
+        unsafe_allow_html=True,
+    )
 
-    if save_clicked and not read_only:
-        original = st.session_state["snap_df"]
-        changes = 0
-
-        def _norm(v):
-            if v is None or (isinstance(v, float) and pd.isna(v)):
-                return ""
-            return str(v).strip()
-
-        for i in range(len(edited)):
-            o, n = original.iloc[i], edited.iloc[i]
-            if (_norm(o["status"])           != _norm(n["status"]) or
-                _norm(o["next_appointment"]) != _norm(n["next_appointment"]) or
-                _norm(o["interested"])       != _norm(n["interested"]) or
-                _norm(o["remarks"])          != _norm(n["remarks"])):
-
-                ns = n["status"]     if _norm(n["status"])     else None
-                ni = n["interested"] if _norm(n["interested"]) else None
-                na = n["next_appointment"] if isinstance(n["next_appointment"], date) else None
-                nr = _norm(n["remarks"]) or None
-
-                update_row(int(n["customer_id"]), ns, na, ni, nr)
-                changes += 1
-
-        if changes:
-            st.session_state.pop("snap_sig", None)
-            st.session_state.pop("snap_df", None)
-            st.success(f"Saved {changes} row{'s' if changes != 1 else ''} ✓")
-            st.rerun()
-        else:
-            st.info("No changes to save.")
+    # detect a newly-ticked edit checkbox
+    if not read_only and st.session_state["active_edit"] is None:
+        ticked = edited[edited["_edit"] == True]
+        if len(ticked) > 0:
+            row_dict = ticked.iloc[0].to_dict()
+            st.session_state["active_edit"] = int(row_dict["customer_id"])
+            edit_lead_dialog(row_dict)
