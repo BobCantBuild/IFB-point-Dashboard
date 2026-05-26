@@ -175,18 +175,17 @@ st.markdown("""
     padding:0.7rem 1rem 0.3rem;
   }
 
-  /* ── FIXED filter panel — anchored via #filter-anchor marker ── */
-  /* target the stVerticalBlockBorderWrapper that contains our marker */
-  [data-testid="stVerticalBlockBorderWrapper"]:has(#filter-anchor) {
+  /* ── FIXED filter panel — same DOM level as .fixed-header ── */
+  /* The outer .element-container is a direct child of the main stVerticalBlock,
+     exactly like the element-container wrapping .fixed-header. Target it via
+     the direct-child combinator so we never accidentally hit an inner wrapper. */
+  [data-testid="stVerticalBlock"] > .element-container:has(#filter-anchor) {
     position:fixed !important;
     top:172px !important;
     left:0 !important; right:0 !important;
     z-index:9998 !important;
     background:var(--bg) !important;
-    padding:0.4rem 1rem 0.6rem !important;
-    border-radius:0 !important;
-    border-left:0 !important; border-right:0 !important;
-    box-shadow:0 2px 8px rgba(15,23,42,.06) !important;
+    padding:0.4rem 1rem 0.5rem !important;
   }
   /* hide the injected anchor span itself */
   #filter-anchor { display:none !important; }
