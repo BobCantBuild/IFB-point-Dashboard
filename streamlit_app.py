@@ -60,13 +60,19 @@ def load_all() -> pd.DataFrame:
 
 def update_row(cid, status, next_appt, interested, remarks):
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
-    with get_conn() as conn:
-        conn.execute(
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        cur = conn.execute(
             "UPDATE customers SET status=?, next_appointment=?, interested=?, remarks=? "
             "WHERE customer_id=?",
             (status, appt_str, interested, remarks, cid),
         )
         conn.commit()
+        if cur.rowcount == 0:
+            raise RuntimeError(f"No row found with customer_id={cid}")
+    finally:
+        conn.close()
 
 
 COL_MAP = {
@@ -576,11 +582,10 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 # Section selector — read from session_state BEFORE filter logic runs
 # --------------------------------------------------------------------------- #
-_SEC_OPTS  = ["Open Followup", "Attempted Followup", "Missed Follow Up's"]
+_SEC_OPTS  = ["Open Followup", "Attempted Followup"]
 _SEC_EMOJI = {
     "Open Followup":      "📋",
     "Attempted Followup": "📞",
-    "Missed Follow Up's": "⚠️",
 }
 section = st.session_state.get("_view_section", "Open Followup")
 if section not in _SEC_OPTS:
@@ -659,16 +664,8 @@ components.html("""
 # --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
-if section == "Missed Follow Up's":
-    # Overdue: scheduled appointment is in the past AND lead has not been contacted.
-    today_d = today
-    past_appt = df_all["next_appointment"].apply(
-        lambda d: _is_real_date(d) and d < today_d
-    )
-    not_contacted = df_all["status"].fillna("").astype(str) != "Contacted"
-    filtered = df_all[past_appt & not_contacted].copy()
-elif section == "Attempted Followup":
-    # Leads where a follow-up was attempted — status is either Contacted or Not Contacted
+if section == "Attempted Followup":
+    # Leads where a follow-up was attempted — status is Contacted or Not Contacted
     attempted_mask = df_all["status"].fillna("").isin(["Contacted", "Not Contacted"])
     filtered = df_all[attempted_mask].copy()
 else:
@@ -693,7 +690,6 @@ if q:
 _sec_help  = {
     "Open Followup":      "All leads matching your current filters.",
     "Attempted Followup": "Leads where a follow-up was Contacted or Not Contacted.",
-    "Missed Follow Up's": "Leads with overdue Next Appointment and not yet contacted.",
 }.get(section, "")
 
 sh1, sh2, sh3 = st.columns([3, 3.5, 1.1])
