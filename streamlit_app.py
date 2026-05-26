@@ -273,37 +273,32 @@ st.markdown("""
     box-shadow:var(--shadow-sm);
   }
 
-  /* ── Section pill — fills column width, options spread evenly ── */
-  div[role="radiogroup"] {
-    gap:4px !important; background:#F1F5F9; padding:4px !important;
-    border-radius:10px; border:1px solid var(--line);
-    box-shadow:inset 0 1px 2px rgba(15,23,42,0.04);
-    height:42px !important; box-sizing:border-box !important;
-    display:flex !important; flex-direction:row !important;
-    flex-wrap:nowrap !important;
-    align-items:center !important;
-    width:100% !important;          /* fill the column — never overflows */
-  }
-  div[role="radiogroup"] > label {
-    background:transparent; border-radius:7px;
-    padding:0 6px !important; height:34px !important;
-    display:flex !important; align-items:center !important;
-    justify-content:center !important;  /* text centred inside each pill */
-    flex:1 1 0 !important;              /* equal width, fill available space */
-    white-space:nowrap !important;
-    margin:0 !important; cursor:pointer; color:var(--slate) !important;
-    font-weight:600; font-size:13px;
-    transition:all .2s var(--ease);
-    text-align:center !important;
-  }
-  div[role="radiogroup"] > label:hover { background:#E2E8F0; color:var(--ink) !important; }
-  div[role="radiogroup"] > label[data-checked="true"],
-  div[role="radiogroup"] > label:has(input:checked) {
+  /* ── Toggle button pair (Open / Attempted) ── */
+  /* Active pill — primary blue */
+  .toggle-active > button {
     background:linear-gradient(135deg,var(--brand) 0%,var(--brand-d) 100%) !important;
     color:#fff !important;
-    box-shadow:0 2px 6px rgba(37,99,235,0.35);
+    border:none !important;
+    box-shadow:0 2px 8px rgba(37,99,235,0.30) !important;
+    border-radius:10px !important;
+    font-size:13px !important; font-weight:700 !important;
+    height:42px !important; min-height:42px !important;
   }
-  div[role="radiogroup"] > label > div:first-child { display:none !important; }
+  /* Inactive pill — ghost */
+  .toggle-inactive > button {
+    background:#FFFFFF !important;
+    color:var(--slate) !important;
+    border:1px solid var(--line) !important;
+    box-shadow:none !important;
+    border-radius:10px !important;
+    font-size:13px !important; font-weight:600 !important;
+    height:42px !important; min-height:42px !important;
+  }
+  .toggle-inactive > button:hover {
+    background:#F1F5F9 !important;
+    border-color:#CBD5E1 !important;
+    color:var(--ink) !important;
+  }
 
   /* ── Inputs / selects (default everywhere) ── */
   div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
@@ -311,8 +306,7 @@ st.markdown("""
   }
   .stDateInput > div > div { background:#F8FAFC !important; border-radius:6px !important; }
 
-  /* ── Fixed-bar control polish: same 42px height + consistent borders ── */
-  /* Date / text / select inputs in the fixed filter bar */
+  /* ── Filter-bar control polish: uniform 42px height, consistent look ── */
   .stDateInput > div > div,
   div[data-baseweb="input"] > div,
   div[data-baseweb="select"] > div {
@@ -320,8 +314,8 @@ st.markdown("""
     border-radius:10px !important;
     border:1px solid var(--line) !important;
     background:#FFFFFF !important;
-    box-shadow:inset 0 1px 2px rgba(15,23,42,0.03);
-    transition:border-color .15s var(--ease), box-shadow .15s var(--ease);
+    box-shadow:inset 0 1px 3px rgba(15,23,42,0.04);
+    transition:border-color .18s var(--ease), box-shadow .18s var(--ease);
   }
   .stDateInput input,
   div[data-baseweb="input"] input,
@@ -329,12 +323,24 @@ st.markdown("""
     font-size:13px !important;
     color:var(--ink) !important;
     text-align:center !important;
+    font-weight:500 !important;
   }
-  /* hover lift */
+  /* Focus ring */
+  .stDateInput > div > div:focus-within,
+  div[data-baseweb="input"] > div:focus-within,
+  div[data-baseweb="select"] > div:focus-within {
+    border-color:var(--brand) !important;
+    box-shadow:0 0 0 3px rgba(37,99,235,0.12) !important;
+  }
+  /* Hover */
   .stDateInput > div > div:hover,
   div[data-baseweb="input"] > div:hover,
   div[data-baseweb="select"] > div:hover {
-    border-color:#CBD5E1 !important;
+    border-color:#94A3B8 !important;
+  }
+  /* Selectbox dropdown arrow — keep it centred with text */
+  div[data-baseweb="select"] [data-testid="stMarkdownContainer"] {
+    display:flex; align-items:center; justify-content:center;
   }
 
   /* ── Buttons ── */
@@ -650,22 +656,21 @@ _FU_LABEL = {
     "Pre-AMC":           "⏰  Pre-AMC",
     "8 Year Upgrade":    "🏆  8 Year Upgrade",
 }
-_SEC_LABEL = {
-    "Open":      "📋  Open",
-    "Attempted": "📞  Attempted's",
-}
-
-fc1, fc2, fc3, fc4, fc5 = st.columns(5, gap="small")
+fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 0.7], gap="small")
 with fc1:
-    st.radio(
-        "View",
-        options=_SEC_OPTS,
-        index=_SEC_OPTS.index(section),
-        key="_view_section",
-        format_func=lambda x: _SEC_LABEL.get(x, x),
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+    t1, t2 = st.columns(2, gap="small")
+    with t1:
+        st.markdown('<div class="toggle-' + ('active' if section == 'Open' else 'inactive') + '">', unsafe_allow_html=True)
+        if st.button("📋  Open Followup's", key="btn_open", use_container_width=True):
+            st.session_state["_view_section"] = "Open"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    with t2:
+        st.markdown('<div class="toggle-' + ('active' if section == 'Attempted' else 'inactive') + '">', unsafe_allow_html=True)
+        if st.button("📞  Attempted's", key="btn_att", use_container_width=True):
+            st.session_state["_view_section"] = "Attempted"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 with fc2:
     fu_filter = st.selectbox(
         "Follow-Up Stage",
@@ -691,6 +696,7 @@ with fc4:
         label_visibility="collapsed",
     )
 with fc5:
+    st.markdown('<div class="toggle-inactive">', unsafe_allow_html=True)
     if st.button("↻  Refresh", key="refresh_btn",
                  help="Reload data from the database",
                  use_container_width=True):
@@ -698,6 +704,7 @@ with fc5:
         try: st.cache_resource.clear()
         except Exception: pass
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # JS injection — walk the DOM to find the filter columns element-container
 # (sibling after #filter-anchor) and force position:fixed on it directly.
