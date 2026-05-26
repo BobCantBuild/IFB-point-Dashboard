@@ -284,8 +284,17 @@ def sync_api_to_db() -> tuple[bool, str]:
                     [row[c] for c in upsert_cols],
                 )
                 ins += 1
+        # Remove any record that is NOT in the current API response
+        # (clears old CSV-seeded rows and records removed from the API)
+        api_ids = df["customer_id"].tolist()
+        placeholders = ",".join("?" for _ in api_ids)
+        conn.execute(
+            f"DELETE FROM customers WHERE customer_id NOT IN ({placeholders})",
+            api_ids,
+        )
         conn.commit()
-        return True, f"✅ API sync OK — {ins} new · {upd} updated · {datetime.now().strftime('%H:%M:%S')}"
+        total_kept = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
+        return True, f"API sync OK — {ins} new · {upd} updated · {total_kept} records · {datetime.now().strftime('%H:%M:%S')}"
     except Exception as exc:
         return False, f"DB sync error: {exc}"
     finally:
@@ -348,25 +357,13 @@ def _migrate_db_text_id():
 
 @st.cache_resource
 def init_db_if_missing():
-    if DB_PATH.exists():
-        return
-    df = None
-    for src in [
-        Path(r"C:\Users\aswin\Downloads\IFB point customer dummy data.xlsx"),
-        Path(__file__).parent / "data.csv",
-    ]:
-        if src.exists():
-            df = pd.read_excel(src) if src.suffix == ".xlsx" else pd.read_csv(src)
-            break
-    if df is not None:
-        df = df.rename(columns=COL_MAP)
-        for col in ("purchase_date", "next_appointment"):
-            df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d")
-        df["phone_number"] = df["phone_number"].astype(str)
-        conn = sqlite3.connect(DB_PATH)
-        conn.executescript(DB_SCHEMA)
-        df.to_sql("customers", conn, if_exists="append", index=False)
-        conn.commit(); conn.close()
+    """Create the SQLite file and table schema if they don't exist yet.
+    Data is populated exclusively via sync_api_to_db() — no CSV seeding.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript(DB_SCHEMA)
+    conn.commit()
+    conn.close()
 
 
 # --------------------------------------------------------------------------- #
