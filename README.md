@@ -165,6 +165,64 @@ The API response is a JSON object with four ageing-bucket keys:
 
 ---
 
+## Refreshing data (manual — from IFB network)
+
+Run this one command from any PC on the IFB office network:
+
+```bash
+python refresh_data.py
+```
+
+That's it. The script will:
+1. Login to the IFB BSE API and fetch all customer records
+2. Write `data/api_data.json`
+3. Commit and push to GitHub
+4. Streamlit Cloud updates automatically within ~30 seconds
+
+Sample output:
+```
+  IFB Point Dashboard — Data Refresh
+  API  : https://bseapi.ifbsupport.com/api
+  Point: ADSF
+  User : IFBFollowUPAPP
+
+  ───────────────────────────────────────────────────────
+    Step 1 — Login as IFBFollowUPAPP
+  ───────────────────────────────────────────────────────
+    ✓ Login successful — token received
+
+  ───────────────────────────────────────────────────────
+    Step 2 — Fetch records for IFB Point 'ADSF'
+  ───────────────────────────────────────────────────────
+    · twoDays_details: 3 record(s)
+    · oneMonth_details: 12 record(s)
+    · fortySevenMonthDetails: 25 record(s)
+    · eightyFourMonthDetails: 8 record(s)
+    ✓ 48 total records fetched
+
+  ───────────────────────────────────────────────────────
+    Step 3 — Write data/api_data.json
+  ───────────────────────────────────────────────────────
+    ✓ Written → data/api_data.json
+
+  ───────────────────────────────────────────────────────
+    Step 4 — Commit & push to GitHub
+  ───────────────────────────────────────────────────────
+    ✓ git add
+    ✓ git commit
+    ✓ git push
+
+    🚀 Pushed! Streamlit Cloud will update within ~30 seconds.
+
+  ───────────────────────────────────────────────────────
+    Done
+  ───────────────────────────────────────────────────────
+    48 records are now live on Streamlit Cloud.
+    URL: https://ifb-point-dashboard.streamlit.app/
+```
+
+---
+
 ## Local development
 
 ```bash
@@ -175,14 +233,8 @@ cd ifbpoint-followup
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the app
+# 3. Run the app (reads existing data/api_data.json)
 streamlit run streamlit_app.py
-```
-
-The app reads `data/api_data.json` (already in the repo). To pull fresh data from the API while on the IFB network:
-
-```bash
-python scripts/sync_api.py
 ```
 
 ---
@@ -190,18 +242,11 @@ python scripts/sync_api.py
 ## GitHub Actions workflow
 
 **File:** `.github/workflows/sync-api.yml`
-**Schedule:** Every 30 minutes (`*/30 * * * *`) + manual trigger via *Actions → Run workflow*
+**Trigger:** Manual only — *Actions → Sync IFB BSE API data → Run workflow*
 
-Steps:
-1. Check out the repository
-2. Set up Python 3.12
-3. `pip install httpx`
-4. Run `scripts/sync_api.py` *(continue-on-error — a network failure skips this step without failing the job)*
-5. If `data/api_data.json` changed, commit and push with `[skip ci]`
+> **Note:** The cron schedule is disabled. GitHub Actions runs on Azure infrastructure, and `bseapi.ifbsupport.com` does not allow connections from Azure IPs. Use `python refresh_data.py` from the IFB office network instead.
 
-**Credentials** are read from GitHub repository secrets (`IFB_API_USER`, `IFB_API_PASS`, `IFB_POINT_CODE`). If secrets are not set, the defaults hardcoded in the workflow are used as fallback.
-
-To set secrets: GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**
+The workflow is kept for future use (e.g. if IFB IT whitelists GitHub's IP ranges, re-enabling the cron will make syncing fully automatic).
 
 ---
 

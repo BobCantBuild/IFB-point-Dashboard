@@ -1,14 +1,9 @@
 name: Sync IFB BSE API data
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"   # every 30 minutes
-  workflow_dispatch:         # manual "Run workflow" button on the Actions page
-  push:
-    branches: [main]
-    paths:
-      - "scripts/sync_api.py"
-      - ".github/workflows/sync-api.yml"
+  workflow_dispatch:   # manual "Run workflow" button on the Actions page only
+                       # Cron disabled — IFB API is not reachable from GitHub's
+                       # Azure runners. Use refresh_data.py from the IFB network instead.
 
 permissions:
   contents: write            # allow the bot to commit data/api_data.json back
