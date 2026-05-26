@@ -1,11 +1,11 @@
 {
-  "synced_at_utc": "2026-05-26T15:22:49+00:00",
+  "synced_at_utc": "2026-05-26T16:57:44+00:00",
   "ifb_point_code": "ADSF",
   "record_count": 5,
   "records": [
     {
       "customer_id": "CUST1001",
-      "customer_name": "Rakesh",
+      "customer_name": "Ramesh Kumar",
       "purchase_date": "2026-05-24",
       "installation_type": "Demo",
       "machine_type": "Washing Machine",
