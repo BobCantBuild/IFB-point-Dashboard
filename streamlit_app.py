@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -32,11 +32,11 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
         return "8 Year Upgrade"
 
 
-# ─── Live API integration ────────────────────────────────────────────────────
-# API is the SOLE source of customer records (fetched every page load via httpx).
-# SQLite stores ONLY the user-edited follow-up fields (status, next_appointment,
-# interested, remarks) — keyed by customer_id.  No caching, no migration,
-# no sync flags — errors surface immediately.
+# ─── Data architecture ───────────────────────────────────────────────────────
+# Primary source: data/api_data.json committed by GitHub Actions every 30 min.
+# Fallback: live httpx call (only works from IFB-whitelisted networks).
+# SQLite stores ONLY user-edited follow-up fields (status, next_appointment,
+# interested, remarks) — keyed by customer_id.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _API_BASE = "https://bseapi.ifbsupport.com/api"
@@ -414,12 +414,6 @@ st.markdown("""
     opacity:1 !important;
   }
 
-  /* ── Primary save button ── */
-  .stButton > button[kind="primary"] {
-    background:#2563EB !important; color:#fff !important;
-  }
-  .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
-
   /* ── Lead table (per-row st.columns) — clean minimal style ── */
   .th {
     background:#FFFFFF;
@@ -717,12 +711,8 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 # Section selector — read from session_state BEFORE filter logic runs
 # --------------------------------------------------------------------------- #
-_SEC_OPTS  = ["Open", "Attempted"]
-_SEC_EMOJI = {
-    "Open":      "📋",
-    "Attempted": "📞",
-}
-section = st.session_state.get("_view_section", "Open")
+_SEC_OPTS = ["Open", "Attempted"]
+section   = st.session_state.get("_view_section", "Open")
 if section not in _SEC_OPTS:
     section = "Open"
 
@@ -1003,9 +993,6 @@ def edit_lead_dialog(row: dict):
 
 
 # ── Table rendering ─────────────────────────────────────────────────────────
-# Editing is allowed in BOTH sections — a missed follow-up should be actionable.
-read_only = False
-
 if len(filtered) == 0:
     st.markdown(
         "<div style='text-align:center;padding:64px 20px;color:#94A3B8;"
@@ -1070,12 +1057,8 @@ else:
 
         # 0 — pencil edit icon (circular outlined button)
         with cols[0]:
-            if not read_only:
-                if st.button("✏️", key=f"edit_{cid}",
-                             help=f"Edit lead {cid}"):
-                    edit_lead_dialog(row.to_dict())
-            else:
-                st.markdown("<div class='td muted'>—</div>", unsafe_allow_html=True)
+            if st.button("✏️", key=f"edit_{cid}", help=f"Edit lead {cid}"):
+                edit_lead_dialog(row.to_dict())
 
         # 1–10 data cells
         cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
