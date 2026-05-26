@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 DB_PATH = Path(__file__).parent / "ifb_point.db"
 
@@ -175,24 +176,14 @@ st.markdown("""
     padding:0.7rem 1rem 0.3rem;
   }
 
-  /* ── FIXED filter panel ── */
-  /* anchor marker element-container — collapse it to nothing */
+  /* ── Filter panel anchor — collapse it ── */
   .element-container:has(#filter-anchor) {
     display:none !important;
   }
-  /* The element-container IMMEDIATELY after the anchor marker holds the
-     actual st.columns widgets. Both are direct siblings of the main
-     stVerticalBlock — the same level as the .fixed-header element-container —
-     so position:fixed works here exactly like it does for .fixed-header. */
-  .element-container:has(#filter-anchor) + .element-container {
-    position:fixed !important;
-    top:172px !important;
-    left:0 !important; right:0 !important;
-    z-index:9998 !important;
-    background:var(--bg) !important;
-    padding:0 1rem 0.6rem !important;
-    border-bottom:1px solid var(--line) !important;
-    box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
+  /* Hide the 0-height JS-injection iframe */
+  iframe[title="st_components_html_v1"],
+  [data-testid="stCustomComponentV1"] {
+    display:none !important; height:0 !important; min-height:0 !important;
   }
 
   /* ── Hero ── */
@@ -614,6 +605,49 @@ with fc3:
         "Search",
         placeholder="Customer ID / Name / Phone / Email",
     )
+
+# JS injection — walk the DOM to find the filter columns element-container
+# (sibling after #filter-anchor) and force position:fixed on it directly.
+# This bypasses all CSS selector reliability issues with Streamlit's DOM.
+components.html("""
+<script>
+(function(){
+  function fix(){
+    try{
+      var doc = window.parent.document;
+      var a = doc.getElementById('filter-anchor');
+      if(!a){ setTimeout(fix,120); return; }
+      // Walk up to the element-container that wraps the anchor
+      var ec = a;
+      while(ec && !(ec.classList && ec.classList.contains('element-container')))
+        ec = ec.parentElement;
+      if(!ec){ setTimeout(fix,120); return; }
+      // Next sibling element-container = the filter columns
+      var n = ec.nextElementSibling;
+      while(n && !(n.classList && n.classList.contains('element-container')))
+        n = n.nextElementSibling;
+      if(!n){ setTimeout(fix,120); return; }
+      // Apply fixed positioning via inline style (highest CSS priority)
+      n.style.setProperty('position','fixed','important');
+      n.style.setProperty('top','172px','important');
+      n.style.setProperty('left','0','important');
+      n.style.setProperty('right','0','important');
+      n.style.setProperty('z-index','9998','important');
+      n.style.setProperty('background','#F1F5F9','important');
+      n.style.setProperty('padding','0 1rem 0.6rem','important');
+      n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
+      n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
+    }catch(e){ setTimeout(fix,150); }
+  }
+  // Run on load and re-run on every Streamlit DOM update (rerun)
+  fix();
+  try{
+    new MutationObserver(function(){ fix(); })
+      .observe(window.parent.document.body, {childList:true, subtree:false});
+  }catch(e){}
+})();
+</script>
+""", height=0)
 
 
 # --------------------------------------------------------------------------- #
