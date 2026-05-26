@@ -618,15 +618,15 @@ with fc2:
         min_value=min_pd,
         max_value=max_pd,
         format="DD/MM/YYYY",
+        label_visibility="collapsed",
     )
 with fc3:
     search_q = st.text_input(
         "Search",
         placeholder="Customer ID / Name / Phone / Email",
+        label_visibility="collapsed",
     )
 with fc4:
-    # spacer to vertically align button with the inputs
-    st.markdown("<div style='height:21px;'></div>", unsafe_allow_html=True)
     if st.button("↻ Refresh", key="refresh_btn",
                  help="Reload data from the database",
                  use_container_width=True):
