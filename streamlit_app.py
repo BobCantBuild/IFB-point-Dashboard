@@ -16,16 +16,6 @@ STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 
 
-def _is_real_date(d) -> bool:
-    """True only for an actual datetime.date (not NaT, NaN, None, or a string)."""
-    if not isinstance(d, date):
-        return False
-    try:
-        return not pd.isna(d)
-    except (TypeError, ValueError):
-        return True
-
-
 def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
     if purchase_date is None:
         return None
@@ -40,50 +30,11 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
         return "8 Year Upgrade"
 
 
-# --------------------------------------------------------------------------- #
-# Data layer
-# --------------------------------------------------------------------------- #
-def get_conn():
-    return sqlite3.connect(DB_PATH)
-
-
-def load_all() -> pd.DataFrame:
-    with get_conn() as conn:
-        df = pd.read_sql_query("SELECT * FROM customers", conn)
-    df["purchase_date"]    = pd.to_datetime(df["purchase_date"],    errors="coerce").dt.date
-    df["next_appointment"] = pd.to_datetime(df["next_appointment"], errors="coerce").dt.date
-    _today = date.today()
-    df["customer_follow_up"] = df["purchase_date"].apply(
-        lambda d: compute_follow_up(d, _today)
-    )
-    return df
-
-
-def update_row(cid, status, next_appt, interested, remarks):
-    appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        cur = conn.execute(
-            "UPDATE customers SET status=?, next_appointment=?, interested=?, remarks=? "
-            "WHERE customer_id=?",
-            (status, appt_str, interested, remarks, cid),
-        )
-        conn.commit()
-        if cur.rowcount == 0:
-            raise RuntimeError(f"No row found with customer_id={cid}")
-    finally:
-        conn.close()
-
-
 # ─── Live API integration ────────────────────────────────────────────────────
-# Two endpoints from IFB BSE:
-#   POST /api/Auth/login                              → JWT Bearer token
-#   GET  /api/IFBPointFollowUp/GetInstallationAgeingDetails?IFBPointCode=…
-#                                                     → customer installation list
-#
-# Credentials + IFBPointCode come from .streamlit/secrets.toml (gitignored).
-# Set the same keys in Streamlit Cloud → App Settings → Secrets.
+# API is the SOLE source of customer records (fetched every page load via httpx).
+# SQLite stores ONLY the user-edited follow-up fields (status, next_appointment,
+# interested, remarks) — keyed by customer_id.  No caching, no migration,
+# no sync flags — errors surface immediately.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _API_BASE = "https://bseapi.ifbsupport.com/api"
@@ -91,228 +42,139 @@ _API_USER = "IFBFollowUPAPP"
 _API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 _API_CODE = "ADSF"
 
-# Columns synced from API → SQLite (follow-up fields are never overwritten)
-_UPSERT_COLS = ("customer_id", "ifb_point_id", "customer_name",
-                "purchase_date", "machine_type", "phone_number", "email_id")
-
-# Safety-net rename map for any PascalCase / camelCase API variants
-_FIELD_MAP: dict[str, str] = {
-    "CustomerID": "customer_id",   "CustomerId": "customer_id",
-    "CustomerName": "customer_name", "customerName": "customer_name",
-    "PurchaseDate": "purchase_date", "purchaseDate": "purchase_date",
-    "InstallationDate": "purchase_date",
-    "MachineType": "machine_type",  "ModelNumber": "machine_type",
-    "ProductCode": "machine_type",
-    "PhoneNumber": "phone_number",  "MobileNumber": "phone_number",
-    "CustomerMobile": "phone_number",
-    "EmailID": "email_id",          "CustomerEmail": "email_id",
-    "IFBPointID": "ifb_point_id",   "IFBPointId": "ifb_point_id",
-}
-
-
-def sync_api_to_db() -> tuple[bool, str]:
-    """
-    Login → fetch GetInstallationAgeingDetails → upsert into SQLite.
-    Errors are captured and returned as readable strings (never swallowed).
-    Follow-up fields (status / next_appointment / interested / remarks)
-    are NEVER overwritten — they stay as edited by the team.
-    """
-    try:
-        u = _API_USER
-        p = _API_PASS
-        code = _API_CODE
-        try:                        # prefer Streamlit secrets if configured
-            s = st.secrets["api"]
-            u    = s.get("username",       u)
-            p    = s.get("password",       p)
-            code = s.get("ifb_point_code", code)
-        except Exception:
-            pass
-
-        # ── Step 1: Login ──────────────────────────────────────────────────
-        with _req.Client(timeout=20) as client:
-            r_login = client.post(
-                f"{_API_BASE}/Auth/login",
-                json={"userName": u, "password": p},
-            )
-        if r_login.status_code != 200:
-            return False, f"Login failed — HTTP {r_login.status_code}: {r_login.text[:120]}"
-
-        j_login = r_login.json()
-        token = (
-            j_login.get("token") or
-            j_login.get("accessToken") or
-            j_login.get("access_token") or
-            (j_login.get("data") or {}).get("token") or
-            (j_login.get("result") or {}).get("token")
-        )
-        if not token:
-            return False, f"Login OK but no token found. Response keys: {list(j_login.keys())}"
-
-        # ── Step 2: Fetch customer data ────────────────────────────────────
-        with _req.Client(timeout=20) as client:
-            r_data = client.get(
-                f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
-                params={"IFBPointCode": code},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        if r_data.status_code != 200:
-            return False, f"Data fetch failed — HTTP {r_data.status_code}: {r_data.text[:120]}"
-
-        j_data = r_data.json()
-
-        # Merge all bucket arrays into one flat list
-        if isinstance(j_data, list):
-            records = j_data
-        else:
-            records = []
-            for key in ("data", "records", "result"):
-                if isinstance(j_data.get(key), list) and j_data[key]:
-                    records = j_data[key]
-                    break
-            if not records:
-                for v in j_data.values():
-                    if isinstance(v, list):
-                        records.extend(v)
-
-        if not records:
-            return False, f"API returned empty data. Top-level keys: {list(j_data.keys())}"
-
-    except Exception as exc:
-        return False, f"Network error — {type(exc).__name__}: {exc}"
-
-    # ── Step 3: Upsert into SQLite ─────────────────────────────────────────
-    try:
-        raw = pd.DataFrame(records)
-
-        # Rename any PascalCase/camelCase fields to our snake_case schema
-        seen: set[str] = set()
-        rename = {}
-        for src, tgt in _FIELD_MAP.items():
-            if src in raw.columns and tgt not in seen:
-                rename[src] = tgt
-                seen.add(tgt)
-        if rename:
-            raw = raw.rename(columns=rename)
-
-        if "customer_id" not in raw.columns:
-            return False, f"customer_id missing. API columns: {list(raw.columns)}"
-
-        upsert_cols = [c for c in _UPSERT_COLS if c in raw.columns]
-
-        if "purchase_date" in raw.columns:
-            raw["purchase_date"] = (
-                pd.to_datetime(raw["purchase_date"], errors="coerce")
-                .dt.strftime("%Y-%m-%d")
-            )
-        if "phone_number" in raw.columns:
-            raw["phone_number"] = raw["phone_number"].astype(str)
-
-        df = raw[upsert_cols].dropna(subset=["customer_id"])
-
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.executescript(DB_SCHEMA)
-        ins = upd = 0
-        for _, row in df.iterrows():
-            cid = str(row["customer_id"])
-            exists = conn.execute(
-                "SELECT 1 FROM customers WHERE customer_id=?", (cid,)
-            ).fetchone()
-            if exists:
-                non_id = [c for c in upsert_cols if c != "customer_id"]
-                set_sql = ", ".join(f"{c}=?" for c in non_id)
-                conn.execute(
-                    f"UPDATE customers SET {set_sql} WHERE customer_id=?",
-                    [row[c] for c in non_id] + [cid],
-                )
-                upd += 1
-            else:
-                ph = ", ".join("?" for _ in upsert_cols)
-                conn.execute(
-                    f"INSERT INTO customers ({', '.join(upsert_cols)}) VALUES ({ph})",
-                    [str(row[c]) if c == "customer_id" else row[c] for c in upsert_cols],
-                )
-                ins += 1
-
-        # Delete records no longer in API (removes stale / CSV data)
-        api_ids = [str(r["customer_id"]) for r in records if r.get("customer_id")]
-        if api_ids:
-            ph = ",".join("?" for _ in api_ids)
-            conn.execute(f"DELETE FROM customers WHERE customer_id NOT IN ({ph})", api_ids)
-
-        conn.commit()
-        kept = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
-        conn.close()
-        return True, f"API sync OK — {ins} new · {upd} updated · {kept} records · {datetime.now().strftime('%H:%M:%S')}"
-
-    except Exception as exc:
-        return False, f"DB error — {type(exc).__name__}: {exc}"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-COL_MAP = {
-    "IFB point ID": "ifb_point_id", "Customer_ID": "customer_id",
-    "Customer name": "customer_name", "Purchase Date": "purchase_date",
-    "Machine Type": "machine_type", "Phone number": "phone_number",
-    "Email ID": "email_id", "Status": "status",
-    "Next appointment": "next_appointment",
-    "Interested/ Not Interested": "interested", "Remarks": "remarks",
-}
-
-DB_SCHEMA = """CREATE TABLE IF NOT EXISTS customers (
-    ifb_point_id TEXT, customer_id TEXT PRIMARY KEY, customer_name TEXT,
-    purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
-    status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT);"""
-
-
-def _migrate_db_text_id():
-    """One-time migration: change customer_id from INTEGER → TEXT PRIMARY KEY.
-
-    The IFB BSE API returns string IDs (e.g. 'CUST1001').  SQLite's
-    INTEGER PRIMARY KEY rejects non-integer values, so we recreate the table
-    with TEXT type — preserving all existing status / remarks / appointment data.
-    Safe to call repeatedly; exits immediately if already TEXT.
-    """
-    if not DB_PATH.exists():
-        return
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        info = conn.execute("PRAGMA table_info(customers)").fetchall()
-        id_type = next((r[2].upper() for r in info if r[1] == "customer_id"), None)
-        if id_type in (None, "TEXT"):
-            return  # already correct, nothing to do
-        conn.executescript("""
-            BEGIN;
-            CREATE TABLE IF NOT EXISTS customers_new (
-                ifb_point_id TEXT, customer_id TEXT PRIMARY KEY, customer_name TEXT,
-                purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
-                status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT
-            );
-            INSERT OR IGNORE INTO customers_new
-                SELECT CAST(ifb_point_id AS TEXT), CAST(customer_id AS TEXT),
-                       customer_name, purchase_date, machine_type, phone_number,
-                       email_id, status, next_appointment, interested, remarks
-                FROM customers;
-            DROP TABLE customers;
-            ALTER TABLE customers_new RENAME TO customers;
-            COMMIT;
-        """)
-    except Exception:
-        pass
-    finally:
-        conn.close()
+DB_SCHEMA = """CREATE TABLE IF NOT EXISTS followups (
+    customer_id TEXT PRIMARY KEY,
+    status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT
+);"""
 
 
 @st.cache_resource
 def init_db_if_missing():
-    """Create the SQLite file and table schema if they don't exist yet.
-    Data is populated exclusively via sync_api_to_db() — no CSV seeding.
-    """
+    """Create the followups SQLite table on first call (idempotent)."""
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(DB_SCHEMA)
     conn.commit()
     conn.close()
+
+
+def fetch_api_records() -> list[dict]:
+    """
+    Login + GET GetInstallationAgeingDetails.  Returns a flat list of customer
+    dicts. Raises a RuntimeError with a clear message on any failure — never
+    silently swallows errors.
+    """
+    u, p, code = _API_USER, _API_PASS, _API_CODE
+    try:
+        s = st.secrets["api"]
+        u    = s.get("username",       u)
+        p    = s.get("password",       p)
+        code = s.get("ifb_point_code", code)
+    except Exception:
+        pass
+
+    # ── Login ──
+    with _req.Client(timeout=20) as client:
+        r1 = client.post(
+            f"{_API_BASE}/Auth/login",
+            json={"userName": u, "password": p},
+            headers={"Content-Type": "application/json"},
+        )
+    if r1.status_code != 200:
+        raise RuntimeError(f"Login HTTP {r1.status_code}: {r1.text[:200]}")
+    tok = r1.json().get("token")
+    if not tok:
+        raise RuntimeError(f"Login OK but no token in response. Keys: {list(r1.json().keys())}")
+
+    # ── Fetch ──
+    with _req.Client(timeout=25) as client:
+        r2 = client.get(
+            f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
+            params={"IFBPointCode": code},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+    if r2.status_code != 200:
+        raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
+
+    j = r2.json()
+    # IFB BSE returns 4 ageing-bucket arrays; merge into one flat list
+    records: list[dict] = []
+    if isinstance(j, list):
+        records = j
+    elif isinstance(j, dict):
+        for v in j.values():
+            if isinstance(v, list):
+                records.extend(v)
+    return records
+
+
+def load_all() -> pd.DataFrame:
+    """
+    Fetch customers from API, merge in local follow-up edits from SQLite,
+    compute customer_follow_up bucket.  Raises if the API call fails.
+    """
+    records = fetch_api_records()
+    if not records:
+        # Return empty frame with all expected columns so the UI doesn't crash
+        return pd.DataFrame(columns=[
+            "customer_id", "customer_name", "purchase_date", "machine_type",
+            "phone_number", "email_id", "ifb_point_id",
+            "status", "next_appointment", "interested", "remarks",
+            "customer_follow_up",
+        ])
+
+    df = pd.DataFrame(records)
+
+    # Coerce types
+    df["customer_id"]  = df["customer_id"].astype(str)
+    df["phone_number"] = df.get("phone_number", "").astype(str)
+    df["purchase_date"] = pd.to_datetime(
+        df.get("purchase_date"), errors="coerce"
+    ).dt.date
+
+    # Ensure all expected columns exist (some API responses may omit fields)
+    for col in ("customer_name", "machine_type", "email_id", "ifb_point_id"):
+        if col not in df.columns:
+            df[col] = None
+
+    # Merge in local follow-up edits (status, next_appointment, interested, remarks)
+    conn = sqlite3.connect(DB_PATH)
+    fu = pd.read_sql_query("SELECT * FROM followups", conn)
+    conn.close()
+    if not fu.empty:
+        fu["customer_id"] = fu["customer_id"].astype(str)
+        df = df.merge(fu, on="customer_id", how="left")
+    else:
+        for col in ("status", "next_appointment", "interested", "remarks"):
+            df[col] = None
+
+    df["next_appointment"] = pd.to_datetime(
+        df["next_appointment"], errors="coerce"
+    ).dt.date
+
+    today = date.today()
+    df["customer_follow_up"] = df["purchase_date"].apply(
+        lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
+    )
+    return df
+
+
+def update_row(cid, status, next_appt, interested, remarks):
+    """Write user edits to the followups table (INSERT OR REPLACE)."""
+    appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
+    cid = str(cid)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.executescript(DB_SCHEMA)
+        conn.execute(
+            "INSERT OR REPLACE INTO followups "
+            "(customer_id, status, next_appointment, interested, remarks) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (cid, status, appt_str, interested, remarks),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -787,22 +649,29 @@ st.markdown("""
 
 
 # --------------------------------------------------------------------------- #
-# Boot — init DB, then sync from API (once per session; again after Refresh)
+# Boot — fetch live API data on every page load (no caching, errors are visible)
 # --------------------------------------------------------------------------- #
 init_db_if_missing()
-_migrate_db_text_id()   # one-time: INTEGER → TEXT for customer_id
 
-# Try to pull fresh data from the IFB BSE API.
-# On success it upserts into SQLite so load_all() gets live records.
-# On failure the dashboard simply uses whatever is already in SQLite.
-if not st.session_state.get("_api_synced"):
-    _sync_ok, _sync_msg = sync_api_to_db()
-    st.session_state["_api_synced"]   = True
-    st.session_state["_api_sync_ok"]  = _sync_ok
-    st.session_state["_api_sync_msg"] = _sync_msg
+try:
+    df_all = load_all()
+    st.session_state["_api_sync_ok"]  = True
+    st.session_state["_api_sync_msg"] = (
+        f"Live API · {len(df_all)} records · {datetime.now().strftime('%H:%M:%S')}"
+    )
+except Exception as _exc:
+    # Surface the actual exception so we can debug Streamlit Cloud failures
+    st.session_state["_api_sync_ok"]  = False
+    st.session_state["_api_sync_msg"] = f"{type(_exc).__name__}: {_exc}"
+    df_all = pd.DataFrame(columns=[
+        "customer_id", "customer_name", "purchase_date", "machine_type",
+        "phone_number", "email_id", "ifb_point_id",
+        "status", "next_appointment", "interested", "remarks",
+        "customer_follow_up",
+    ])
+    st.error(f"⚠️ Unable to load data from IFB BSE API — {type(_exc).__name__}: {_exc}")
 
-df_all = load_all()
-today  = date.today()
+today = date.today()
 
 
 # --------------------------------------------------------------------------- #
@@ -955,10 +824,6 @@ with fc5:
         st.cache_data.clear()
         try: st.cache_resource.clear()
         except Exception: pass
-        # Force a fresh API pull on next run
-        st.session_state.pop("_api_synced",   None)
-        st.session_state.pop("_api_sync_ok",  None)
-        st.session_state.pop("_api_sync_msg", None)
         st.rerun()
 
 # JS injection — walk the DOM to find the filter columns element-container
