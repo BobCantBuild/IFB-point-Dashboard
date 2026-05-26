@@ -516,6 +516,23 @@ st.markdown("""
     padding:0 14px !important; font-size:12px !important;
   }
 
+  /* ── Status header dropdown — looks like a plain header cell ── */
+  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) div[data-baseweb="select"] > div {
+    background:#FFFFFF !important; border:0 !important;
+    border-bottom:1px solid #E2E8F0 !important;
+    border-radius:0 !important; box-shadow:none !important;
+    height:50px !important; min-height:50px !important;
+    font-size:12.5px !important; font-weight:600 !important;
+    color:#334155 !important; padding:0 14px !important;
+  }
+  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) div[data-baseweb="select"] > div:hover {
+    background:#F1F5F9 !important; color:#0F172A !important;
+  }
+  /* Tint the cell green when Contacted is selected */
+  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) [aria-selected="true"] ~ div[data-baseweb="select"] > div {
+    background:#F0FDF4 !important;
+  }
+
   /* ── Sortable column header buttons ── */
   /* Target buttons that live inside the header row (identified by .th siblings) */
   [data-testid="stHorizontalBlock"]:has(.th) .stButton > button {
@@ -798,12 +815,12 @@ if q:
         pass
     filtered = filtered[mask]
 
-# Status header cycle filter (0=all, 1=Contacted, 2=Not Contacted)
-st.session_state.setdefault("status_cycle", 0)
-_sc = st.session_state["status_cycle"]
-if _sc == 1:
+# Status header dropdown filter — read from session_state before widget renders
+_STATUS_FILTER_OPTS = ["All", "🟢  Contacted", "🔴  Not Contacted"]
+_sf = st.session_state.get("status_filter_sel", "All")
+if _sf == "🟢  Contacted":
     filtered = filtered[filtered["status"].fillna("") == "Contacted"]
-elif _sc == 2:
+elif _sf == "🔴  Not Contacted":
     filtered = filtered[filtered["status"].fillna("") == "Not Contacted"]
 
 _sec_help  = {
@@ -949,35 +966,17 @@ def _sort_hdr(col, label):
             st.session_state["sort_dir"] = "asc"
         st.rerun()
 
-def _status_cycle_hdr():
-    """3-state cycle: All → Contacted → Not Contacted → All."""
-    cycle = st.session_state.get("status_cycle", 0)
-    _cfg = {
-        0: "Status  ▾",
-        1: "🟢  Contacted",
-        2: "🔴  Not Contacted",
-    }
-    # Inject background colour for active states via a scoped style
-    if cycle == 1:
-        st.markdown(
-            "<style>[data-testid='stHorizontalBlock']:has(.th) "
-            "[data-testid='column']:nth-child(8) button{"
-            "background:#DCFCE7!important;color:#16A34A!important;"
-            "border-bottom:2px solid #16A34A!important;}</style>",
-            unsafe_allow_html=True,
-        )
-    elif cycle == 2:
-        st.markdown(
-            "<style>[data-testid='stHorizontalBlock']:has(.th) "
-            "[data-testid='column']:nth-child(8) button{"
-            "background:#FEE2E2!important;color:#DC2626!important;"
-            "border-bottom:2px solid #DC2626!important;}</style>",
-            unsafe_allow_html=True,
-        )
-    if st.button(_cfg[cycle], key="sort_status", use_container_width=True):
-        st.session_state["status_cycle"] = (cycle + 1) % 3
-        st.session_state["page_num"] = 1
-        st.rerun()
+def _status_filter_hdr():
+    """Compact selectbox in the Status header cell."""
+    st.selectbox(
+        "Status",
+        options=_STATUS_FILTER_OPTS,
+        index=_STATUS_FILTER_OPTS.index(
+            st.session_state.get("status_filter_sel", "All")
+        ),
+        key="status_filter_sel",
+        label_visibility="collapsed",
+    )
 
 # ── Table rendering ─────────────────────────────────────────────────────────
 # Editing is allowed in BOTH sections — a missed follow-up should be actionable.
@@ -1025,7 +1024,7 @@ else:
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
         if i == 7:
             with c:
-                _status_cycle_hdr()
+                _status_filter_hdr()
         elif i == 9:
             with c:
                 _sort_hdr("interested", "Interested?")
