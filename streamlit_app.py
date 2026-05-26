@@ -6,7 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
-import requests as _req
+import httpx as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -109,21 +109,22 @@ def _api_token() -> str | None:
     if not p:
         return None      # no credentials configured
     try:
-        r = _req.post(
-            f"{_API_BASE}/Auth/login",
-            json={"userName": u, "password": p},
-            timeout=10,
-        )
-        r.raise_for_status()
-        j = r.json()
-        # Try the field names most IFB BSE responses use
-        return (
-            j.get("token") or
-            j.get("accessToken") or
-            j.get("access_token") or
-            (j.get("data") or {}).get("token") or
-            (j.get("result") or {}).get("token")
-        )
+        with _req.Client() as client:
+            r = client.post(
+                f"{_API_BASE}/Auth/login",
+                json={"userName": u, "password": p},
+                timeout=10,
+            )
+            r.raise_for_status()
+            j = r.json()
+            # Try the field names most IFB BSE responses use
+            return (
+                j.get("token") or
+                j.get("accessToken") or
+                j.get("access_token") or
+                (j.get("data") or {}).get("token") or
+                (j.get("result") or {}).get("token")
+            )
     except Exception:
         return None
 
@@ -136,18 +137,19 @@ def _fetch_api_raw() -> list | None:
     if not tok:
         return None
     try:
-        r = _req.get(
-            f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
-            params={"IFBPointCode": code},
-            headers={"Authorization": f"Bearer {tok}"},
-            timeout=15,
-        )
-        r.raise_for_status()
-        j = r.json()
-        # API may return a bare list or wrap it inside a key
-        return j if isinstance(j, list) else (
-            j.get("data") or j.get("records") or j.get("result") or []
-        )
+        with _req.Client() as client:
+            r = client.get(
+                f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
+                params={"IFBPointCode": code},
+                headers={"Authorization": f"Bearer {tok}"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            j = r.json()
+            # API may return a bare list or wrap it inside a key
+            return j if isinstance(j, list) else (
+                j.get("data") or j.get("records") or j.get("result") or []
+            )
     except Exception:
         return None
 
