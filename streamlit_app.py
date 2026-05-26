@@ -89,17 +89,25 @@ def update_row(cid, status, next_appt, interested, remarks):
 _API_BASE = "https://bseapi.ifbsupport.com/api"
 
 
+_API_USER  = "IFBFollowUPAPP"
+_API_PASS  = "U29tZVJhbmRvbUJhc2U2NA=="   # service-account credential
+_API_CODE  = "ADSF"                         # your IFB Point branch code
+
+
 def _api_creds() -> tuple[str, str, str]:
-    """Return (username, password, ifb_point_code) from Streamlit secrets."""
+    """Return (username, password, ifb_point_code).
+    Reads from Streamlit secrets if configured; falls back to hard-coded defaults.
+    To override via Streamlit Cloud: App Settings → Secrets → add [api] block.
+    """
     try:
         s = st.secrets["api"]
         return (
-            s.get("username",       "IFBFollowUPAPP"),
-            s.get("password",       ""),
-            s.get("ifb_point_code", "ADSF"),
+            s.get("username",       _API_USER),
+            s.get("password",       _API_PASS),
+            s.get("ifb_point_code", _API_CODE),
         )
     except Exception:
-        return "IFBFollowUPAPP", "", "ADSF"
+        return _API_USER, _API_PASS, _API_CODE
 
 
 @st.cache_data(ttl=3300, show_spinner=False)   # cache token for 55 min (expires ~1 h)
