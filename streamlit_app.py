@@ -798,6 +798,14 @@ if q:
         pass
     filtered = filtered[mask]
 
+# Status header cycle filter (0=all, 1=Contacted, 2=Not Contacted)
+st.session_state.setdefault("status_cycle", 0)
+_sc = st.session_state["status_cycle"]
+if _sc == 1:
+    filtered = filtered[filtered["status"].fillna("") == "Contacted"]
+elif _sc == 2:
+    filtered = filtered[filtered["status"].fillna("") == "Not Contacted"]
+
 _sec_help  = {
     "Open":      "All leads matching your current filters.",
     "Attempted": "Leads where a follow-up was Contacted or Not Contacted.",
@@ -941,6 +949,36 @@ def _sort_hdr(col, label):
             st.session_state["sort_dir"] = "asc"
         st.rerun()
 
+def _status_cycle_hdr():
+    """3-state cycle: All → Contacted → Not Contacted → All."""
+    cycle = st.session_state.get("status_cycle", 0)
+    _cfg = {
+        0: "Status  ▾",
+        1: "🟢  Contacted",
+        2: "🔴  Not Contacted",
+    }
+    # Inject background colour for active states via a scoped style
+    if cycle == 1:
+        st.markdown(
+            "<style>[data-testid='stHorizontalBlock']:has(.th) "
+            "[data-testid='column']:nth-child(8) button{"
+            "background:#DCFCE7!important;color:#16A34A!important;"
+            "border-bottom:2px solid #16A34A!important;}</style>",
+            unsafe_allow_html=True,
+        )
+    elif cycle == 2:
+        st.markdown(
+            "<style>[data-testid='stHorizontalBlock']:has(.th) "
+            "[data-testid='column']:nth-child(8) button{"
+            "background:#FEE2E2!important;color:#DC2626!important;"
+            "border-bottom:2px solid #DC2626!important;}</style>",
+            unsafe_allow_html=True,
+        )
+    if st.button(_cfg[cycle], key="sort_status", use_container_width=True):
+        st.session_state["status_cycle"] = (cycle + 1) % 3
+        st.session_state["page_num"] = 1
+        st.rerun()
+
 # ── Table rendering ─────────────────────────────────────────────────────────
 # Editing is allowed in BOTH sections — a missed follow-up should be actionable.
 read_only = False
@@ -980,14 +1018,17 @@ else:
            "Machine Type", "Phone", "Email", "Status", "Next Appt",
            "Interested?", "Remarks"]
 
-    # Header row  (index 7 = Status, index 9 = Interested? are sortable)
-    _SORTABLE = {7: ("status", "Status"), 9: ("interested", "Interested?")}
+    # Header row
+    # index 7 = Status (3-state cycle), index 9 = Interested? (asc/desc sort)
     hdr = st.columns(R)
     last_i = len(HDR) - 1
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-        if i in _SORTABLE:
+        if i == 7:
             with c:
-                _sort_hdr(_SORTABLE[i][0], _SORTABLE[i][1])
+                _status_cycle_hdr()
+        elif i == 9:
+            with c:
+                _sort_hdr("interested", "Interested?")
         else:
             extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
             style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
