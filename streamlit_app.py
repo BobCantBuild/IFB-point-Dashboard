@@ -593,15 +593,23 @@ if section not in _SEC_OPTS:
 
 
 # --------------------------------------------------------------------------- #
-# Filters (fixed bar — date range + search only)
+# Filters (fixed bar — toggle | date range | search | refresh, one row)
 # --------------------------------------------------------------------------- #
-# Anchor marker — renders as its own element-container sibling, immediately
-# before the filter columns element-container.  CSS collapses it to nothing
-# and uses the adjacent-sibling selector (+) to fix the columns container.
+# Anchor marker — collapses to zero height; JS uses it to locate the next
+# sibling element-container (the filter columns) and force position:fixed.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
-fc1, fc2 = st.columns([1, 1], gap="medium")
+fc1, fc2, fc3, fc4 = st.columns([2.0, 1.8, 1.8, 0.6], gap="medium")
 with fc1:
+    st.radio(
+        "View",
+        options=_SEC_OPTS,
+        index=_SEC_OPTS.index(section),
+        key="_view_section",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+with fc2:
     min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
     max_pd = df_all["purchase_date"].dropna().max() or today
     date_range = st.date_input(
@@ -611,11 +619,21 @@ with fc1:
         max_value=max_pd,
         format="DD/MM/YYYY",
     )
-with fc2:
+with fc3:
     search_q = st.text_input(
         "Search",
         placeholder="Customer ID / Name / Phone / Email",
     )
+with fc4:
+    # spacer to vertically align button with the inputs
+    st.markdown("<div style='height:21px;'></div>", unsafe_allow_html=True)
+    if st.button("↻ Refresh", key="refresh_btn",
+                 help="Reload data from the database",
+                 use_container_width=True):
+        st.cache_data.clear()
+        try: st.cache_resource.clear()
+        except Exception: pass
+        st.rerun()
 
 # JS injection — walk the DOM to find the filter columns element-container
 # (sibling after #filter-anchor) and force position:fixed on it directly.
@@ -692,30 +710,11 @@ _sec_help  = {
     "Attempted Followup": "Leads where a follow-up was Contacted or Not Contacted.",
 }.get(section, "")
 
-sh1, sh2, sh3 = st.columns([3, 3.5, 1.1])
-with sh1:
-    st.radio(
-        "View",
-        options=_SEC_OPTS,
-        index=_SEC_OPTS.index(section),
-        key="_view_section",
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-with sh2:
-    st.markdown(f"""
-    <div class="sec">
-      <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
-      <span class="sec-help">{_sec_help}</span>
-    </div>""", unsafe_allow_html=True)
-with sh3:
-    if st.button("↻ Refresh", key="refresh_btn",
-                 help="Reload data from the database",
-                 use_container_width=True):
-        st.cache_data.clear()
-        try: st.cache_resource.clear()
-        except Exception: pass
-        st.rerun()
+st.markdown(f"""
+<div class="sec">
+  <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
+  <span class="sec-help">{_sec_help}</span>
+</div>""", unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------- #
