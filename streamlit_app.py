@@ -705,8 +705,6 @@ with sh1:
 with sh2:
     st.markdown(f"""
     <div class="sec">
-      <span class="dot"></span>
-      <h3>{section}</h3>
       <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
       <span class="sec-help">{_sec_help}</span>
     </div>""", unsafe_allow_html=True)
@@ -855,9 +853,9 @@ else:
     end   = min(start + PAGE_SIZE, total_rows)
     page_df = filtered.iloc[start:end]
 
-    # column ratios:  edit  follow-up  id    name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      2.7,       0.45, 1.25, 0.95, 1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
-    HDR = ["",       "Customer Follow-Up", "ID", "Customer Name", "Purchase Date",
+    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
+    R   = [0.4,      2.7,       1.25, 0.95, 1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
+    HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email", "Status", "Next Appt",
            "Interested?", "Remarks"]
 
@@ -897,20 +895,19 @@ else:
             else:
                 st.markdown("<div class='td muted'>—</div>", unsafe_allow_html=True)
 
-        # 1–11 data cells
-        cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",                  unsafe_allow_html=True)
-        cols[2].markdown(f"<div class='td center'>{cid}</div>",                                            unsafe_allow_html=True)
-        cols[3].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>",                unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",                   unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",                        unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",                        unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",                            unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",                       unsafe_allow_html=True)
-        cols[9].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>",                unsafe_allow_html=True)
-        cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",                unsafe_allow_html=True)
+        # 1–10 data cells
+        cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>", unsafe_allow_html=True)
+        cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",    unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
+        cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",  unsafe_allow_html=True)
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[11].markdown(
+        cols[10].markdown(
             f"<div class='td td-last' style='padding-right:48px;margin-right:8px;' title='{_rem_tip}'>"
             f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
