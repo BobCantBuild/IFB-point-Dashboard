@@ -603,7 +603,15 @@ if section not in _SEC_OPTS:
 # sibling element-container (the filter columns) and force position:fixed.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
-fc1, fc2, fc3, fc4 = st.columns([2, 1, 1, 1], gap="medium")
+_FU_OPTS = [
+    "All Follow-Up Stages",
+    "Post Purchase Delight Call",
+    "Usage & Experience Feedback Call",
+    "Pre-Warranty Expiry Engagement Call",
+    "7-Year Loyalty Upgrade Call",
+]
+
+fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 1], gap="medium")
 with fc1:
     st.radio(
         "View",
@@ -614,6 +622,12 @@ with fc1:
         label_visibility="collapsed",
     )
 with fc2:
+    fu_filter = st.selectbox(
+        "Follow-Up Stage",
+        options=_FU_OPTS,
+        label_visibility="collapsed",
+    )
+with fc3:
     min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
     max_pd = df_all["purchase_date"].dropna().max() or today
     date_range = st.date_input(
@@ -624,13 +638,13 @@ with fc2:
         format="DD/MM/YYYY",
         label_visibility="collapsed",
     )
-with fc3:
+with fc4:
     search_q = st.text_input(
         "Search",
         placeholder="Customer ID / Name / Phone / Email",
         label_visibility="collapsed",
     )
-with fc4:
+with fc5:
     if st.button("↻ Refresh", key="refresh_btn",
                  help="Reload data from the database",
                  use_container_width=True):
@@ -694,7 +708,11 @@ else:
     # "Open Followup" — all leads
     filtered = df_all.copy()
 
-# date range + search apply to BOTH sections
+# follow-up stage filter
+if fu_filter != "All Follow-Up Stages":
+    filtered = filtered[filtered["customer_follow_up"] == fu_filter]
+
+# date range + search apply to all sections
 if isinstance(date_range, tuple) and len(date_range) == 2:
     d0, d1 = date_range
     filtered = filtered[filtered["purchase_date"].between(d0, d1)]
