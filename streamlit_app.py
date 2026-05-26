@@ -540,15 +540,6 @@ not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
 
-# Today-relevant stats — what reps actually need to action right now
-_appt_series = df_all["next_appointment"]
-due_today  = int(sum(_is_real_date(d) and d == today for d in _appt_series))
-overdue    = int(sum(
-    _is_real_date(d) and d < today and s != "Contacted"
-    for d, s in zip(_appt_series, df_all["status"].fillna(""))
-))
-scheduled  = int(sum(_is_real_date(d) and d >= today for d in _appt_series))
-
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
 
@@ -582,14 +573,6 @@ st.markdown(f"""
       {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
       {sub("ss-indigo", fu.get("Pre-Warranty Expiry Engagement Call",0),  "Pre-Warranty")}
       {sub("ss-slate",  fu.get("7-Year Loyalty Upgrade Call",0),          "7-Year Loyalty")}
-    </div>
-  </div>
-  <div class="stat-group">
-    <div class="g-label">🔥 Action Required</div>
-    <div class="g-inner">
-      {sub("ss-red",    overdue,    "Overdue")}
-      {sub("ss-blue",   due_today,  "Due Today")}
-      {sub("ss-teal",   scheduled,  "Scheduled")}
     </div>
   </div>
 </div>""", unsafe_allow_html=True)
