@@ -87,218 +87,167 @@ def update_row(cid, status, next_appt, interested, remarks):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _API_BASE = "https://bseapi.ifbsupport.com/api"
+_API_USER = "IFBFollowUPAPP"
+_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
+_API_CODE = "ADSF"
 
+# Columns synced from API → SQLite (follow-up fields are never overwritten)
+_UPSERT_COLS = ("customer_id", "ifb_point_id", "customer_name",
+                "purchase_date", "machine_type", "phone_number", "email_id")
 
-_API_USER  = "IFBFollowUPAPP"
-_API_PASS  = "U29tZVJhbmRvbUJhc2U2NA=="   # service-account credential
-_API_CODE  = "ADSF"                         # your IFB Point branch code
-
-
-def _api_creds() -> tuple[str, str, str]:
-    """Return (username, password, ifb_point_code).
-    Reads from Streamlit secrets if configured; falls back to hard-coded defaults.
-    To override via Streamlit Cloud: App Settings → Secrets → add [api] block.
-    """
-    try:
-        s = st.secrets["api"]
-        return (
-            s.get("username",       _API_USER),
-            s.get("password",       _API_PASS),
-            s.get("ifb_point_code", _API_CODE),
-        )
-    except Exception:
-        return _API_USER, _API_PASS, _API_CODE
-
-
-@st.cache_data(ttl=3300, show_spinner=False)   # cache token for 55 min (expires ~1 h)
-def _api_token() -> str | None:
-    """Login and return a Bearer token, or None if the API is unreachable."""
-    u, p, _ = _api_creds()
-    if not p:
-        return None      # no credentials configured
-    try:
-        with _req.Client() as client:
-            r = client.post(
-                f"{_API_BASE}/Auth/login",
-                json={"userName": u, "password": p},
-                timeout=10,
-            )
-            r.raise_for_status()
-            j = r.json()
-            # Try the field names most IFB BSE responses use
-            return (
-                j.get("token") or
-                j.get("accessToken") or
-                j.get("access_token") or
-                (j.get("data") or {}).get("token") or
-                (j.get("result") or {}).get("token")
-            )
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=300, show_spinner=False)    # cache raw list for 5 min
-def _fetch_api_raw() -> list | None:
-    """Call GetInstallationAgeingDetails and return raw record list, or None.
-
-    The IFB BSE response is structured by ageing bucket:
-      {
-        "twoDays_details":         [...],   # Post-Purchase  (0–2 days)
-        "oneMonth_details":        [...],   # 1st 30 days call (3–30 days)
-        "fortySevenMonthDetails":  [...],   # Pre-AMC        (31–1460 days)
-        "eightyFourMonthDetails":  [...]    # 8 Year Upgrade (>1460 days)
-      }
-    We merge all buckets into one flat list.
-    """
-    _, _, code = _api_creds()
-    tok = _api_token()
-    if not tok:
-        return None
-    try:
-        with _req.Client() as client:
-            r = client.get(
-                f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
-                params={"IFBPointCode": code},
-                headers={"Authorization": f"Bearer {tok}"},
-                timeout=15,
-            )
-            r.raise_for_status()
-            j = r.json()
-
-        # Bare list response
-        if isinstance(j, list):
-            return j or None
-
-        # Single-key wrapper (data / records / result)
-        for key in ("data", "records", "result"):
-            if isinstance(j.get(key), list) and j[key]:
-                return j[key]
-
-        # IFB BSE ageing-bucket structure — merge all list values
-        merged: list = []
-        for v in j.values():
-            if isinstance(v, list):
-                merged.extend(v)
-        return merged or None
-
-    except Exception:
-        return None
-
-
-# ── Field-name mapping: API response key → our SQLite column ─────────────────
-# The live API already returns snake_case names matching our schema exactly:
-#   customer_id, customer_name, purchase_date, machine_type, phone_number, email_id
-# This map is a safety net for any PascalCase / camelCase variants.
-_API_FIELD_MAP: dict[str, str] = {
-    "CustomerID":        "customer_id",
-    "CustomerId":        "customer_id",
-    "CustomerName":      "customer_name",
-    "customerName":      "customer_name",
-    "PurchaseDate":      "purchase_date",
-    "InstallationDate":  "purchase_date",
-    "purchaseDate":      "purchase_date",
-    "MachineType":       "machine_type",
-    "ModelNumber":       "machine_type",
-    "ProductCode":       "machine_type",
-    "PhoneNumber":       "phone_number",
-    "MobileNumber":      "phone_number",
-    "CustomerMobile":    "phone_number",
-    "EmailID":           "email_id",
-    "CustomerEmail":     "email_id",
-    "IFBPointID":        "ifb_point_id",
-    "IFBPointId":        "ifb_point_id",
+# Safety-net rename map for any PascalCase / camelCase API variants
+_FIELD_MAP: dict[str, str] = {
+    "CustomerID": "customer_id",   "CustomerId": "customer_id",
+    "CustomerName": "customer_name", "customerName": "customer_name",
+    "PurchaseDate": "purchase_date", "purchaseDate": "purchase_date",
+    "InstallationDate": "purchase_date",
+    "MachineType": "machine_type",  "ModelNumber": "machine_type",
+    "ProductCode": "machine_type",
+    "PhoneNumber": "phone_number",  "MobileNumber": "phone_number",
+    "CustomerMobile": "phone_number",
+    "EmailID": "email_id",          "CustomerEmail": "email_id",
+    "IFBPointID": "ifb_point_id",   "IFBPointId": "ifb_point_id",
 }
-
-# Columns we upsert from API into SQLite (never touch follow-up tracking fields)
-_API_UPSERT_COLS = ("customer_id", "ifb_point_id", "customer_name",
-                    "purchase_date", "machine_type", "phone_number", "email_id")
 
 
 def sync_api_to_db() -> tuple[bool, str]:
     """
-    Pull the latest customer list from IFB BSE API and upsert base fields into
-    SQLite.  Follow-up fields (status, next_appointment, interested, remarks)
-    are NEVER overwritten — they're managed locally by the dashboard users.
-
-    Returns (success: bool, human-readable message: str).
+    Login → fetch GetInstallationAgeingDetails → upsert into SQLite.
+    Errors are captured and returned as readable strings (never swallowed).
+    Follow-up fields (status / next_appointment / interested / remarks)
+    are NEVER overwritten — they stay as edited by the team.
     """
-    records = _fetch_api_raw()
-    if not records:
-        return False, "API unreachable or returned no data — showing local data."
-
-    raw = pd.DataFrame(records)
-
-    # Apply field map (first match wins — avoid duplicate targets)
-    seen: set[str] = set()
-    rename: dict[str, str] = {}
-    for src, tgt in _API_FIELD_MAP.items():
-        if src in raw.columns and tgt not in seen:
-            rename[src] = tgt
-            seen.add(tgt)
-    if rename:
-        raw = raw.rename(columns=rename)
-
-    if "customer_id" not in raw.columns:
-        cols = list(raw.columns[:10])
-        return False, (
-            f"API field mapping failed — 'customer_id' not found. "
-            f"Actual columns: {cols}. Update _API_FIELD_MAP in the source."
-        )
-
-    upsert_cols = [c for c in _API_UPSERT_COLS if c in raw.columns]
-
-    # Normalise
-    if "purchase_date" in raw.columns:
-        raw["purchase_date"] = (
-            pd.to_datetime(raw["purchase_date"], errors="coerce")
-            .dt.strftime("%Y-%m-%d")
-        )
-    if "phone_number" in raw.columns:
-        raw["phone_number"] = raw["phone_number"].astype(str)
-
-    df = raw[upsert_cols].dropna(subset=["customer_id"])
-
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     try:
+        u = _API_USER
+        p = _API_PASS
+        code = _API_CODE
+        try:                        # prefer Streamlit secrets if configured
+            s = st.secrets["api"]
+            u    = s.get("username",       u)
+            p    = s.get("password",       p)
+            code = s.get("ifb_point_code", code)
+        except Exception:
+            pass
+
+        # ── Step 1: Login ──────────────────────────────────────────────────
+        with _req.Client(timeout=20) as client:
+            r_login = client.post(
+                f"{_API_BASE}/Auth/login",
+                json={"userName": u, "password": p},
+            )
+        if r_login.status_code != 200:
+            return False, f"Login failed — HTTP {r_login.status_code}: {r_login.text[:120]}"
+
+        j_login = r_login.json()
+        token = (
+            j_login.get("token") or
+            j_login.get("accessToken") or
+            j_login.get("access_token") or
+            (j_login.get("data") or {}).get("token") or
+            (j_login.get("result") or {}).get("token")
+        )
+        if not token:
+            return False, f"Login OK but no token found. Response keys: {list(j_login.keys())}"
+
+        # ── Step 2: Fetch customer data ────────────────────────────────────
+        with _req.Client(timeout=20) as client:
+            r_data = client.get(
+                f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
+                params={"IFBPointCode": code},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        if r_data.status_code != 200:
+            return False, f"Data fetch failed — HTTP {r_data.status_code}: {r_data.text[:120]}"
+
+        j_data = r_data.json()
+
+        # Merge all bucket arrays into one flat list
+        if isinstance(j_data, list):
+            records = j_data
+        else:
+            records = []
+            for key in ("data", "records", "result"):
+                if isinstance(j_data.get(key), list) and j_data[key]:
+                    records = j_data[key]
+                    break
+            if not records:
+                for v in j_data.values():
+                    if isinstance(v, list):
+                        records.extend(v)
+
+        if not records:
+            return False, f"API returned empty data. Top-level keys: {list(j_data.keys())}"
+
+    except Exception as exc:
+        return False, f"Network error — {type(exc).__name__}: {exc}"
+
+    # ── Step 3: Upsert into SQLite ─────────────────────────────────────────
+    try:
+        raw = pd.DataFrame(records)
+
+        # Rename any PascalCase/camelCase fields to our snake_case schema
+        seen: set[str] = set()
+        rename = {}
+        for src, tgt in _FIELD_MAP.items():
+            if src in raw.columns and tgt not in seen:
+                rename[src] = tgt
+                seen.add(tgt)
+        if rename:
+            raw = raw.rename(columns=rename)
+
+        if "customer_id" not in raw.columns:
+            return False, f"customer_id missing. API columns: {list(raw.columns)}"
+
+        upsert_cols = [c for c in _UPSERT_COLS if c in raw.columns]
+
+        if "purchase_date" in raw.columns:
+            raw["purchase_date"] = (
+                pd.to_datetime(raw["purchase_date"], errors="coerce")
+                .dt.strftime("%Y-%m-%d")
+            )
+        if "phone_number" in raw.columns:
+            raw["phone_number"] = raw["phone_number"].astype(str)
+
+        df = raw[upsert_cols].dropna(subset=["customer_id"])
+
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.executescript(DB_SCHEMA)
         ins = upd = 0
         for _, row in df.iterrows():
-            cid = row["customer_id"]
+            cid = str(row["customer_id"])
             exists = conn.execute(
                 "SELECT 1 FROM customers WHERE customer_id=?", (cid,)
             ).fetchone()
             if exists:
                 non_id = [c for c in upsert_cols if c != "customer_id"]
                 set_sql = ", ".join(f"{c}=?" for c in non_id)
-                vals = [row[c] for c in non_id] + [cid]
                 conn.execute(
-                    f"UPDATE customers SET {set_sql} WHERE customer_id=?", vals
+                    f"UPDATE customers SET {set_sql} WHERE customer_id=?",
+                    [row[c] for c in non_id] + [cid],
                 )
                 upd += 1
             else:
                 ph = ", ".join("?" for _ in upsert_cols)
                 conn.execute(
-                    f"INSERT INTO customers ({', '.join(upsert_cols)}) "
-                    f"VALUES ({ph})",
-                    [row[c] for c in upsert_cols],
+                    f"INSERT INTO customers ({', '.join(upsert_cols)}) VALUES ({ph})",
+                    [str(row[c]) if c == "customer_id" else row[c] for c in upsert_cols],
                 )
                 ins += 1
-        # Remove any record that is NOT in the current API response
-        # (clears old CSV-seeded rows and records removed from the API)
-        api_ids = df["customer_id"].tolist()
-        placeholders = ",".join("?" for _ in api_ids)
-        conn.execute(
-            f"DELETE FROM customers WHERE customer_id NOT IN ({placeholders})",
-            api_ids,
-        )
+
+        # Delete records no longer in API (removes stale / CSV data)
+        api_ids = [str(r["customer_id"]) for r in records if r.get("customer_id")]
+        if api_ids:
+            ph = ",".join("?" for _ in api_ids)
+            conn.execute(f"DELETE FROM customers WHERE customer_id NOT IN ({ph})", api_ids)
+
         conn.commit()
-        total_kept = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
-        return True, f"API sync OK — {ins} new · {upd} updated · {total_kept} records · {datetime.now().strftime('%H:%M:%S')}"
-    except Exception as exc:
-        return False, f"DB sync error: {exc}"
-    finally:
+        kept = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
         conn.close()
+        return True, f"API sync OK — {ins} new · {upd} updated · {kept} records · {datetime.now().strftime('%H:%M:%S')}"
+
+    except Exception as exc:
+        return False, f"DB error — {type(exc).__name__}: {exc}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -872,10 +821,10 @@ def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
 
 _sync_ok  = st.session_state.get("_api_sync_ok",  False)
-_sync_msg = st.session_state.get("_api_sync_msg", "Not synced yet")
-_api_badge = (
-    f'<span class="api-ok">🟢&nbsp;API Synced</span>'   if _sync_ok else
-    f'<span class="api-err" title="{_sync_msg}">🔴&nbsp;Local data</span>'
+_sync_msg = st.session_state.get("_api_sync_msg", "Syncing…")
+_badge_html = (
+    '<span class="api-ok">🟢&nbsp;API Synced</span>' if _sync_ok else
+    '<span class="api-err">🔴&nbsp;Sync failed</span>'
 )
 
 st.markdown(f"""
@@ -887,7 +836,7 @@ st.markdown(f"""
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       <span class="pill">LIVE</span>
-      {_api_badge}
+      {_badge_html}
     </div>
   </div>
   <div class="stats-row">
