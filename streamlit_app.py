@@ -454,6 +454,33 @@ st.markdown("""
   /* Restore breathing room inside the filter panel */
   .panel + div [data-testid="stHorizontalBlock"] { gap:14px !important; }
 
+  /* ── Filter bar row: vertical centering + edge breathing room ── */
+  /* Target the horizontal block that contains the toggle radiogroup */
+  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"]) {
+    align-items: center !important;
+    gap: 10px !important;
+  }
+  /* Every column inside the filter bar */
+  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
+    > [data-testid="column"] {
+    overflow: visible !important;
+  }
+  /* Give element-containers inside filter bar columns side breathing room
+     so box-shadows / rounded corners are never clipped */
+  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
+    > [data-testid="column"] .element-container {
+    padding: 0 3px !important;
+    overflow: visible !important;
+  }
+  /* Vertically center the single widget inside each column */
+  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
+    > [data-testid="column"] > div {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: stretch !important;
+    overflow: visible !important;
+  }
+
   /* ── Legacy data editor polish (kept for stats/etc) ── */
   [data-testid="stDataFrame"] {
     border:1px solid #E2E8F0; border-radius:14px; overflow:hidden;
@@ -723,7 +750,8 @@ components.html("""
       n.style.setProperty('right','0','important');
       n.style.setProperty('z-index','9998','important');
       n.style.setProperty('background','#F1F5F9','important');
-      n.style.setProperty('padding','6px 18px 10px','important');
+      n.style.setProperty('padding','10px 24px','important');
+      n.style.setProperty('overflow','visible','important');
       n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
     }catch(e){ setTimeout(fix,150); }
