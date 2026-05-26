@@ -131,7 +131,17 @@ def _api_token() -> str | None:
 
 @st.cache_data(ttl=300, show_spinner=False)    # cache raw list for 5 min
 def _fetch_api_raw() -> list | None:
-    """Call GetInstallationAgeingDetails and return raw record list, or None."""
+    """Call GetInstallationAgeingDetails and return raw record list, or None.
+
+    The IFB BSE response is structured by ageing bucket:
+      {
+        "twoDays_details":         [...],   # Post-Purchase  (0–2 days)
+        "oneMonth_details":        [...],   # 1st 30 days call (3–30 days)
+        "fortySevenMonthDetails":  [...],   # Pre-AMC        (31–1460 days)
+        "eightyFourMonthDetails":  [...]    # 8 Year Upgrade (>1460 days)
+      }
+    We merge all buckets into one flat list.
+    """
     _, _, code = _api_creds()
     tok = _api_token()
     if not tok:
@@ -146,54 +156,49 @@ def _fetch_api_raw() -> list | None:
             )
             r.raise_for_status()
             j = r.json()
-            # API may return a bare list or wrap it inside a key
-            return j if isinstance(j, list) else (
-                j.get("data") or j.get("records") or j.get("result") or []
-            )
+
+        # Bare list response
+        if isinstance(j, list):
+            return j or None
+
+        # Single-key wrapper (data / records / result)
+        for key in ("data", "records", "result"):
+            if isinstance(j.get(key), list) and j[key]:
+                return j[key]
+
+        # IFB BSE ageing-bucket structure — merge all list values
+        merged: list = []
+        for v in j.values():
+            if isinstance(v, list):
+                merged.extend(v)
+        return merged or None
+
     except Exception:
         return None
 
 
 # ── Field-name mapping: API response key → our SQLite column ─────────────────
-# If the real API uses different names, update the LEFT-hand keys below.
-# You can check the raw response by enabling "Show raw API response" in the
-# sidebar (add st.sidebar.checkbox("Debug API") and print _fetch_api_raw()).
+# The live API already returns snake_case names matching our schema exactly:
+#   customer_id, customer_name, purchase_date, machine_type, phone_number, email_id
+# This map is a safety net for any PascalCase / camelCase variants.
 _API_FIELD_MAP: dict[str, str] = {
-    # Customer identity
     "CustomerID":        "customer_id",
     "CustomerId":        "customer_id",
-    "customerID":        "customer_id",
-    "customerId":        "customer_id",
-    # IFB Point branch
-    "IFBPointID":        "ifb_point_id",
-    "IFBPointId":        "ifb_point_id",
-    "ifbPointId":        "ifb_point_id",
-    # Name
     "CustomerName":      "customer_name",
     "customerName":      "customer_name",
-    "Name":              "customer_name",
-    # Phone
-    "CustomerMobile":    "phone_number",
-    "MobileNumber":      "phone_number",
-    "PhoneNumber":       "phone_number",
-    "Mobile":            "phone_number",
-    "Phone":             "phone_number",
-    # Email
-    "CustomerEmail":     "email_id",
-    "EmailID":           "email_id",
-    "Email":             "email_id",
-    # Machine / product
-    "ProductCode":       "machine_type",
-    "ModelNumber":       "machine_type",
-    "MachineType":       "machine_type",
-    "ProductName":       "machine_type",
-    "Model":             "machine_type",
-    # Dates
     "PurchaseDate":      "purchase_date",
     "InstallationDate":  "purchase_date",
-    "SaleDate":          "purchase_date",
     "purchaseDate":      "purchase_date",
-    "installationDate":  "purchase_date",
+    "MachineType":       "machine_type",
+    "ModelNumber":       "machine_type",
+    "ProductCode":       "machine_type",
+    "PhoneNumber":       "phone_number",
+    "MobileNumber":      "phone_number",
+    "CustomerMobile":    "phone_number",
+    "EmailID":           "email_id",
+    "CustomerEmail":     "email_id",
+    "IFBPointID":        "ifb_point_id",
+    "IFBPointId":        "ifb_point_id",
 }
 
 # Columns we upsert from API into SQLite (never touch follow-up tracking fields)
@@ -290,9 +295,47 @@ COL_MAP = {
 }
 
 DB_SCHEMA = """CREATE TABLE IF NOT EXISTS customers (
-    ifb_point_id INTEGER, customer_id INTEGER PRIMARY KEY, customer_name TEXT,
+    ifb_point_id TEXT, customer_id TEXT PRIMARY KEY, customer_name TEXT,
     purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
     status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT);"""
+
+
+def _migrate_db_text_id():
+    """One-time migration: change customer_id from INTEGER → TEXT PRIMARY KEY.
+
+    The IFB BSE API returns string IDs (e.g. 'CUST1001').  SQLite's
+    INTEGER PRIMARY KEY rejects non-integer values, so we recreate the table
+    with TEXT type — preserving all existing status / remarks / appointment data.
+    Safe to call repeatedly; exits immediately if already TEXT.
+    """
+    if not DB_PATH.exists():
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        info = conn.execute("PRAGMA table_info(customers)").fetchall()
+        id_type = next((r[2].upper() for r in info if r[1] == "customer_id"), None)
+        if id_type in (None, "TEXT"):
+            return  # already correct, nothing to do
+        conn.executescript("""
+            BEGIN;
+            CREATE TABLE IF NOT EXISTS customers_new (
+                ifb_point_id TEXT, customer_id TEXT PRIMARY KEY, customer_name TEXT,
+                purchase_date TEXT, machine_type TEXT, phone_number TEXT, email_id TEXT,
+                status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT
+            );
+            INSERT OR IGNORE INTO customers_new
+                SELECT CAST(ifb_point_id AS TEXT), CAST(customer_id AS TEXT),
+                       customer_name, purchase_date, machine_type, phone_number,
+                       email_id, status, next_appointment, interested, remarks
+                FROM customers;
+            DROP TABLE customers;
+            ALTER TABLE customers_new RENAME TO customers;
+            COMMIT;
+        """)
+    except Exception:
+        pass
+    finally:
+        conn.close()
 
 
 @st.cache_resource
@@ -793,6 +836,7 @@ st.markdown("""
 # Boot — init DB, then sync from API (once per session; again after Refresh)
 # --------------------------------------------------------------------------- #
 init_db_if_missing()
+_migrate_db_text_id()   # one-time: INTEGER → TEXT for customer_id
 
 # Try to pull fresh data from the IFB BSE API.
 # On success it upserts into SQLite so load_all() gets live records.
@@ -1052,10 +1096,8 @@ if q:
     mask = (filtered["customer_name"].str.contains(q, case=False, na=False) |
             filtered["phone_number"].str.contains(q, case=False, na=False)  |
             filtered["email_id"].str.contains(q, case=False, na=False))
-    try:
-        mask |= (filtered["customer_id"] == int(q))
-    except ValueError:
-        pass
+    # also match on the customer_id string directly
+    mask |= filtered["customer_id"].astype(str).str.contains(q, case=False, na=False)
     filtered = filtered[mask]
 
 # Status header dropdown filter — read from session_state before widget renders
@@ -1114,7 +1156,7 @@ def _fmt_date(d):
 # ── Modal dialog ────────────────────────────────────────────────────────────
 @st.dialog("✏️  Edit Lead")
 def edit_lead_dialog(row: dict):
-    cid = int(row["customer_id"])
+    cid = str(row["customer_id"])
     name = row.get("customer_name") or "—"
     machine = row.get("machine_type") or "—"
 
@@ -1292,7 +1334,7 @@ else:
 
     # Data rows
     for ri, (_, row) in enumerate(page_df.iterrows()):
-        cid = int(row["customer_id"])
+        cid = str(row["customer_id"])
         cols = st.columns(R)
 
         # 0 — pencil edit icon (circular outlined button)
