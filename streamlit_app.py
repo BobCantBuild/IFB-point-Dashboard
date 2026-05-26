@@ -175,20 +175,25 @@ st.markdown("""
     padding:0.7rem 1rem 0.3rem;
   }
 
-  /* ── FIXED filter panel — same DOM level as .fixed-header ── */
-  /* The outer .element-container is a direct child of the main stVerticalBlock,
-     exactly like the element-container wrapping .fixed-header. Target it via
-     the direct-child combinator so we never accidentally hit an inner wrapper. */
-  [data-testid="stVerticalBlock"] > .element-container:has(#filter-anchor) {
+  /* ── FIXED filter panel ── */
+  /* anchor marker element-container — collapse it to nothing */
+  .element-container:has(#filter-anchor) {
+    display:none !important;
+  }
+  /* The element-container IMMEDIATELY after the anchor marker holds the
+     actual st.columns widgets. Both are direct siblings of the main
+     stVerticalBlock — the same level as the .fixed-header element-container —
+     so position:fixed works here exactly like it does for .fixed-header. */
+  .element-container:has(#filter-anchor) + .element-container {
     position:fixed !important;
     top:172px !important;
     left:0 !important; right:0 !important;
     z-index:9998 !important;
     background:var(--bg) !important;
-    padding:0.4rem 1rem 0.5rem !important;
+    padding:0 1rem 0.6rem !important;
+    border-bottom:1px solid var(--line) !important;
+    box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
   }
-  /* hide the injected anchor span itself */
-  #filter-anchor { display:none !important; }
 
   /* ── Hero ── */
   .hero {
@@ -269,12 +274,6 @@ st.markdown("""
     background:#fff; border:1px solid var(--line); border-radius:16px;
     padding:14px 20px 6px; margin-bottom:18px;
     box-shadow:var(--shadow-sm);
-  }
-  /* Streamlit native bordered container — filter panel */
-  [data-testid="stContainer"]:has(div[data-baseweb="input"]) {
-    background:#fff !important; border-radius:12px !important;
-    box-shadow:var(--shadow-sm);
-    padding-top:10px !important; padding-bottom:10px !important;
   }
 
   /* ── Section pill ── */
@@ -586,32 +585,35 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 # Filters
 # --------------------------------------------------------------------------- #
-with st.container(border=True):
-    st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
-    fc1, fc2, fc3 = st.columns([1.5, 1.6, 1.6], gap="medium")
-    with fc1:
-        _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
-        section = st.radio(
-            "View",
-            ["Today's Lead", "Missed Follow Up's"],
-            format_func=lambda s: f"{_section_emoji[s]}  {s}",
-            horizontal=True,
-        )
-    with fc2:
-        min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
-        max_pd = df_all["purchase_date"].dropna().max() or today
-        date_range = st.date_input(
-            "Lead Date Range",
-            value=(min_pd, max_pd),
-            min_value=min_pd,
-            max_value=max_pd,
-            format="DD/MM/YYYY",
-        )
-    with fc3:
-        search_q = st.text_input(
-            "Search",
-            placeholder="Customer ID / Name / Phone / Email",
-        )
+# Anchor marker — renders as its own element-container sibling, immediately
+# before the filter columns element-container.  CSS collapses it to nothing
+# and uses the adjacent-sibling selector (+) to fix the columns container.
+st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
+
+fc1, fc2, fc3 = st.columns([1.5, 1.6, 1.6], gap="medium")
+with fc1:
+    _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
+    section = st.radio(
+        "View",
+        ["Today's Lead", "Missed Follow Up's"],
+        format_func=lambda s: f"{_section_emoji[s]}  {s}",
+        horizontal=True,
+    )
+with fc2:
+    min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
+    max_pd = df_all["purchase_date"].dropna().max() or today
+    date_range = st.date_input(
+        "Lead Date Range",
+        value=(min_pd, max_pd),
+        min_value=min_pd,
+        max_value=max_pd,
+        format="DD/MM/YYYY",
+    )
+with fc3:
+    search_q = st.text_input(
+        "Search",
+        placeholder="Customer ID / Name / Phone / Email",
+    )
 
 
 # --------------------------------------------------------------------------- #
