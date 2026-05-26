@@ -852,10 +852,6 @@ if not st.session_state.get("_api_synced"):
     st.session_state["_api_sync_ok"]  = _sync_ok
     st.session_state["_api_sync_msg"] = _sync_msg
 
-if not DB_PATH.exists():
-    st.error("Database not found — API sync also failed. Run `python seed_db.py` to seed local data.")
-    st.stop()
-
 df_all = load_all()
 today  = date.today()
 
@@ -985,8 +981,9 @@ with fc2:
         label_visibility="collapsed",
     )
 with fc3:
-    min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
-    max_pd = df_all["purchase_date"].dropna().max() or today
+    _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
+    min_pd = min(_pds) if _pds else date(2019, 1, 1)
+    max_pd = max(_pds) if _pds else today
     date_range = st.date_input(
         "📅  Lead Date Range",
         value=(min_pd, max_pd),
