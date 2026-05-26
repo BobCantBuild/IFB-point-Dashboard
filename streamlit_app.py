@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
+import requests as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -75,6 +76,208 @@ def update_row(cid, status, next_appt, interested, remarks):
         conn.close()
 
 
+# ─── Live API integration ────────────────────────────────────────────────────
+# Two endpoints from IFB BSE:
+#   POST /api/Auth/login                              → JWT Bearer token
+#   GET  /api/IFBPointFollowUp/GetInstallationAgeingDetails?IFBPointCode=…
+#                                                     → customer installation list
+#
+# Credentials + IFBPointCode come from .streamlit/secrets.toml (gitignored).
+# Set the same keys in Streamlit Cloud → App Settings → Secrets.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_API_BASE = "https://bseapi.ifbsupport.com/api"
+
+
+def _api_creds() -> tuple[str, str, str]:
+    """Return (username, password, ifb_point_code) from Streamlit secrets."""
+    try:
+        s = st.secrets["api"]
+        return (
+            s.get("username",       "IFBFollowUPAPP"),
+            s.get("password",       ""),
+            s.get("ifb_point_code", "ADSF"),
+        )
+    except Exception:
+        return "IFBFollowUPAPP", "", "ADSF"
+
+
+@st.cache_data(ttl=3300, show_spinner=False)   # cache token for 55 min (expires ~1 h)
+def _api_token() -> str | None:
+    """Login and return a Bearer token, or None if the API is unreachable."""
+    u, p, _ = _api_creds()
+    if not p:
+        return None      # no credentials configured
+    try:
+        r = _req.post(
+            f"{_API_BASE}/Auth/login",
+            json={"userName": u, "password": p},
+            timeout=10,
+        )
+        r.raise_for_status()
+        j = r.json()
+        # Try the field names most IFB BSE responses use
+        return (
+            j.get("token") or
+            j.get("accessToken") or
+            j.get("access_token") or
+            (j.get("data") or {}).get("token") or
+            (j.get("result") or {}).get("token")
+        )
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)    # cache raw list for 5 min
+def _fetch_api_raw() -> list | None:
+    """Call GetInstallationAgeingDetails and return raw record list, or None."""
+    _, _, code = _api_creds()
+    tok = _api_token()
+    if not tok:
+        return None
+    try:
+        r = _req.get(
+            f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
+            params={"IFBPointCode": code},
+            headers={"Authorization": f"Bearer {tok}"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        j = r.json()
+        # API may return a bare list or wrap it inside a key
+        return j if isinstance(j, list) else (
+            j.get("data") or j.get("records") or j.get("result") or []
+        )
+    except Exception:
+        return None
+
+
+# ── Field-name mapping: API response key → our SQLite column ─────────────────
+# If the real API uses different names, update the LEFT-hand keys below.
+# You can check the raw response by enabling "Show raw API response" in the
+# sidebar (add st.sidebar.checkbox("Debug API") and print _fetch_api_raw()).
+_API_FIELD_MAP: dict[str, str] = {
+    # Customer identity
+    "CustomerID":        "customer_id",
+    "CustomerId":        "customer_id",
+    "customerID":        "customer_id",
+    "customerId":        "customer_id",
+    # IFB Point branch
+    "IFBPointID":        "ifb_point_id",
+    "IFBPointId":        "ifb_point_id",
+    "ifbPointId":        "ifb_point_id",
+    # Name
+    "CustomerName":      "customer_name",
+    "customerName":      "customer_name",
+    "Name":              "customer_name",
+    # Phone
+    "CustomerMobile":    "phone_number",
+    "MobileNumber":      "phone_number",
+    "PhoneNumber":       "phone_number",
+    "Mobile":            "phone_number",
+    "Phone":             "phone_number",
+    # Email
+    "CustomerEmail":     "email_id",
+    "EmailID":           "email_id",
+    "Email":             "email_id",
+    # Machine / product
+    "ProductCode":       "machine_type",
+    "ModelNumber":       "machine_type",
+    "MachineType":       "machine_type",
+    "ProductName":       "machine_type",
+    "Model":             "machine_type",
+    # Dates
+    "PurchaseDate":      "purchase_date",
+    "InstallationDate":  "purchase_date",
+    "SaleDate":          "purchase_date",
+    "purchaseDate":      "purchase_date",
+    "installationDate":  "purchase_date",
+}
+
+# Columns we upsert from API into SQLite (never touch follow-up tracking fields)
+_API_UPSERT_COLS = ("customer_id", "ifb_point_id", "customer_name",
+                    "purchase_date", "machine_type", "phone_number", "email_id")
+
+
+def sync_api_to_db() -> tuple[bool, str]:
+    """
+    Pull the latest customer list from IFB BSE API and upsert base fields into
+    SQLite.  Follow-up fields (status, next_appointment, interested, remarks)
+    are NEVER overwritten — they're managed locally by the dashboard users.
+
+    Returns (success: bool, human-readable message: str).
+    """
+    records = _fetch_api_raw()
+    if not records:
+        return False, "API unreachable or returned no data — showing local data."
+
+    raw = pd.DataFrame(records)
+
+    # Apply field map (first match wins — avoid duplicate targets)
+    seen: set[str] = set()
+    rename: dict[str, str] = {}
+    for src, tgt in _API_FIELD_MAP.items():
+        if src in raw.columns and tgt not in seen:
+            rename[src] = tgt
+            seen.add(tgt)
+    if rename:
+        raw = raw.rename(columns=rename)
+
+    if "customer_id" not in raw.columns:
+        cols = list(raw.columns[:10])
+        return False, (
+            f"API field mapping failed — 'customer_id' not found. "
+            f"Actual columns: {cols}. Update _API_FIELD_MAP in the source."
+        )
+
+    upsert_cols = [c for c in _API_UPSERT_COLS if c in raw.columns]
+
+    # Normalise
+    if "purchase_date" in raw.columns:
+        raw["purchase_date"] = (
+            pd.to_datetime(raw["purchase_date"], errors="coerce")
+            .dt.strftime("%Y-%m-%d")
+        )
+    if "phone_number" in raw.columns:
+        raw["phone_number"] = raw["phone_number"].astype(str)
+
+    df = raw[upsert_cols].dropna(subset=["customer_id"])
+
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.executescript(DB_SCHEMA)
+        ins = upd = 0
+        for _, row in df.iterrows():
+            cid = row["customer_id"]
+            exists = conn.execute(
+                "SELECT 1 FROM customers WHERE customer_id=?", (cid,)
+            ).fetchone()
+            if exists:
+                non_id = [c for c in upsert_cols if c != "customer_id"]
+                set_sql = ", ".join(f"{c}=?" for c in non_id)
+                vals = [row[c] for c in non_id] + [cid]
+                conn.execute(
+                    f"UPDATE customers SET {set_sql} WHERE customer_id=?", vals
+                )
+                upd += 1
+            else:
+                ph = ", ".join("?" for _ in upsert_cols)
+                conn.execute(
+                    f"INSERT INTO customers ({', '.join(upsert_cols)}) "
+                    f"VALUES ({ph})",
+                    [row[c] for c in upsert_cols],
+                )
+                ins += 1
+        conn.commit()
+        return True, f"✅ API sync OK — {ins} new · {upd} updated · {datetime.now().strftime('%H:%M:%S')}"
+    except Exception as exc:
+        return False, f"DB sync error: {exc}"
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 COL_MAP = {
     "IFB point ID": "ifb_point_id", "Customer_ID": "customer_id",
     "Customer name": "customer_name", "Purchase Date": "purchase_date",
@@ -555,6 +758,19 @@ st.markdown("""
     color:var(--brand) !important; background:#EFF6FF !important;
   }
 
+  /* ── API sync status badges ── */
+  .api-ok {
+    font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;
+    background:rgba(16,185,129,0.12); color:#34D399;
+    border:1px solid rgba(16,185,129,0.30); letter-spacing:0.3px;
+  }
+  .api-err {
+    font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;
+    background:rgba(220,38,38,0.10); color:#F87171;
+    border:1px solid rgba(220,38,38,0.25); letter-spacing:0.3px;
+    cursor:help;
+  }
+
   /* ── Print-friendly: hide chrome, show full data ── */
   @media print {
     .stApp { background:#FFFFFF !important; overflow:visible !important; }
@@ -572,11 +788,21 @@ st.markdown("""
 
 
 # --------------------------------------------------------------------------- #
-# Boot
+# Boot — init DB, then sync from API (once per session; again after Refresh)
 # --------------------------------------------------------------------------- #
 init_db_if_missing()
+
+# Try to pull fresh data from the IFB BSE API.
+# On success it upserts into SQLite so load_all() gets live records.
+# On failure the dashboard simply uses whatever is already in SQLite.
+if not st.session_state.get("_api_synced"):
+    _sync_ok, _sync_msg = sync_api_to_db()
+    st.session_state["_api_synced"]   = True
+    st.session_state["_api_sync_ok"]  = _sync_ok
+    st.session_state["_api_sync_msg"] = _sync_msg
+
 if not DB_PATH.exists():
-    st.error("Database not found. Run `python seed_db.py` locally.")
+    st.error("Database not found — API sync also failed. Run `python seed_db.py` to seed local data.")
     st.stop()
 
 df_all = load_all()
@@ -598,13 +824,24 @@ fu           = df_all["customer_follow_up"].value_counts().to_dict()
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
 
+_sync_ok  = st.session_state.get("_api_sync_ok",  False)
+_sync_msg = st.session_state.get("_api_sync_msg", "Not synced yet")
+_api_badge = (
+    f'<span class="api-ok">🟢&nbsp;API Synced</span>'   if _sync_ok else
+    f'<span class="api-err" title="{_sync_msg}">🔴&nbsp;Local data</span>'
+)
+
 st.markdown(f"""
 <div class="fixed-header">
   <div class="hero">
     <div>
       <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
+      <p style="margin:4px 0 0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
     </div>
-    <span class="pill">LIVE</span>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+      <span class="pill">LIVE</span>
+      {_api_badge}
+    </div>
   </div>
   <div class="stats-row">
     <div class="stat-solo">
@@ -715,12 +952,16 @@ with fc4:
     )
 with fc5:
     if st.button("↻  Refresh", key="refresh_btn",
-                 help="Reload data from the database",
+                 help="Re-sync from API and reload",
                  use_container_width=True,
                  type="secondary"):
         st.cache_data.clear()
         try: st.cache_resource.clear()
         except Exception: pass
+        # Force a fresh API pull on next run
+        st.session_state.pop("_api_synced",   None)
+        st.session_state.pop("_api_sync_ok",  None)
+        st.session_state.pop("_api_sync_msg", None)
         st.rerun()
 
 # JS injection — walk the DOM to find the filter columns element-container
