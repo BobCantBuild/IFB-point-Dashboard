@@ -472,21 +472,6 @@ st.markdown("""
     height:34px !important; display:inline-flex !important; align-items:center !important;
   }
 
-  /* Refresh + Export buttons in section header row — light style */
-  [data-testid="stDownloadButton"] > button {
-    background:#FFFFFF !important; color:#0F172A !important;
-    border:1px solid #CBD5E1 !important;
-    height:42px !important; min-height:42px !important;
-    padding:0 14px !important; font-size:13px !important; font-weight:600 !important;
-    border-radius:8px !important;
-  }
-  [data-testid="stDownloadButton"] > button:hover {
-    background:#EFF6FF !important; border-color:#2563EB !important; color:#2563EB !important;
-  }
-  [data-testid="stDownloadButton"] > button[disabled] {
-    background:#F8FAFC !important; color:#CBD5E1 !important; border-color:#E2E8F0 !important;
-  }
-
   /* ── Print-friendly: hide chrome, show full data ── */
   @media print {
     .stApp { background:#FFFFFF !important; overflow:visible !important; }
@@ -546,9 +531,8 @@ def sub(cls, val, lbl):
 st.markdown(f"""
 <div class="stats-row">
   <div class="stat-solo">
-    <div class="s-label">👥 Total Leads</div>
+    <div class="s-label">👥 Total Follow Up's</div>
     <div class="s-value">{total}</div>
-    <div class="s-sub">in database</div>
   </div>
   <div class="stat-group">
     <div class="g-label">📞 Contact Status</div>
@@ -642,7 +626,7 @@ _sec_help  = ("Leads with overdue Next Appointment and not yet contacted."
               if section == "Missed Follow Up's" else
               "All leads matching your current filters.")
 
-sh1, sh2, sh3 = st.columns([6, 1.1, 1.4])
+sh1, sh2 = st.columns([6, 1.1])
 with sh1:
     st.markdown(f"""
     <div class="sec">
@@ -659,28 +643,6 @@ with sh2:
         try: st.cache_resource.clear()
         except Exception: pass
         st.rerun()
-with sh3:
-    def _iso(d):
-        if _is_real_date(d):
-            try: return d.strftime("%Y-%m-%d")
-            except Exception: return ""
-        return ""
-    _export_df = filtered.copy()
-    for _c in ("purchase_date", "next_appointment"):
-        if _c in _export_df.columns:
-            _export_df[_c] = _export_df[_c].apply(_iso)
-    _csv_bytes = _export_df.to_csv(index=False).encode("utf-8-sig")
-    _safe_section = section.replace("'", "").replace(" ", "_")
-    st.download_button(
-        f"📥 Export CSV ({len(filtered)})",
-        _csv_bytes,
-        f"ifb_leads_{_safe_section}_{today.strftime('%Y%m%d')}.csv",
-        "text/csv",
-        key="export_csv",
-        use_container_width=True,
-        disabled=(len(filtered) == 0),
-        help="Download the currently filtered leads as CSV",
-    )
 
 
 # --------------------------------------------------------------------------- #
