@@ -454,33 +454,6 @@ st.markdown("""
   /* Restore breathing room inside the filter panel */
   .panel + div [data-testid="stHorizontalBlock"] { gap:14px !important; }
 
-  /* ── Filter bar row: vertical centering + edge breathing room ── */
-  /* Target the horizontal block that contains the toggle radiogroup */
-  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"]) {
-    align-items: center !important;
-    gap: 10px !important;
-  }
-  /* Every column inside the filter bar */
-  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
-    > [data-testid="column"] {
-    overflow: visible !important;
-  }
-  /* Give element-containers inside filter bar columns side breathing room
-     so box-shadows / rounded corners are never clipped */
-  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
-    > [data-testid="column"] .element-container {
-    padding: 0 3px !important;
-    overflow: visible !important;
-  }
-  /* Vertically center the single widget inside each column */
-  [data-testid="stHorizontalBlock"]:has(div[role="radiogroup"])
-    > [data-testid="column"] > div {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: stretch !important;
-    overflow: visible !important;
-  }
-
   /* ── Legacy data editor polish (kept for stats/etc) ── */
   [data-testid="stDataFrame"] {
     border:1px solid #E2E8F0; border-radius:14px; overflow:hidden;
@@ -750,10 +723,35 @@ components.html("""
       n.style.setProperty('right','0','important');
       n.style.setProperty('z-index','9998','important');
       n.style.setProperty('background','#F1F5F9','important');
-      n.style.setProperty('padding','10px 24px','important');
+      n.style.setProperty('padding','0 22px','important');
+      n.style.setProperty('min-height','62px','important');
       n.style.setProperty('overflow','visible','important');
       n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
+
+      // Vertically centre the columns row
+      var hb = n.querySelector('[data-testid="stHorizontalBlock"]');
+      if(hb){
+        hb.style.setProperty('align-items','center','important');
+        hb.style.setProperty('height','62px','important');
+        hb.style.setProperty('overflow','visible','important');
+      }
+      // Allow overflow on every column so rounded corners/shadows never clip
+      var cols = n.querySelectorAll('[data-testid="column"]');
+      for(var i=0;i<cols.length;i++){
+        cols[i].style.setProperty('overflow','visible','important');
+        cols[i].style.setProperty('align-self','center','important');
+      }
+      // Centre the widget wrapper inside each column and add side padding
+      var colDivs = n.querySelectorAll('[data-testid="column"] > div');
+      for(var i=0;i<colDivs.length;i++){
+        colDivs[i].style.setProperty('display','flex','important');
+        colDivs[i].style.setProperty('flex-direction','column','important');
+        colDivs[i].style.setProperty('justify-content','center','important');
+        colDivs[i].style.setProperty('overflow','visible','important');
+        colDivs[i].style.setProperty('padding','0 5px','important');
+        colDivs[i].style.setProperty('height','62px','important');
+      }
     }catch(e){ setTimeout(fix,150); }
   }
   // Run on load and re-run on every Streamlit DOM update (rerun)
