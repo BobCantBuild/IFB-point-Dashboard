@@ -1,4 +1,4 @@
-# Database (regenerate via seed_db.py)
+# SQLite — runtime artifact (stores staff edits, recreated automatically)
 *.db
 *.db-journal
 *.sqlite

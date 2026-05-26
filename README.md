@@ -9,87 +9,94 @@ Live app → **https://ifb-point-dashboard.streamlit.app/**
 ## How the data flows — end to end
 
 ```
-IFB BSE API
-(bseapi.ifbsupport.com)
-        │
-        │  POST /api/Auth/login  →  JWT token
-        │  GET  /api/IFBPointFollowUp/GetInstallationAgeingDetails
-        │
-        ▼
-GitHub Actions (runs every 30 min on Azure infra)
-  scripts/sync_api.py
-        │
-        │  writes  ──►  data/api_data.json  (committed to repo)
-        │
-        ▼
-GitHub Repository
-  data/api_data.json   ← single source of truth for customer records
-        │
-        │  Streamlit Cloud reads this file at every page load
-        ▼
-streamlit_app.py
-  load_all()
-    ├── reads data/api_data.json          (customer base records)
-    └── reads ifb_point.db / followups    (staff edits — status, remarks, etc.)
-        │
-        ▼
-  Dashboard UI  (visible at ifb-point-dashboard.streamlit.app)
+                IFB BSE API
+                (bseapi.ifbsupport.com)
+                       ▲
+                       │  reachable only from
+                       │  IFB office network
+                       │
+            ┌──────────┴──────────┐
+            │  Your PC on IFB LAN │
+            │   refresh_data.py   │
+            └──────────┬──────────┘
+                       │  1. POST /api/Auth/login  →  JWT token
+                       │  2. GET  /api/IFBPointFollowUp/GetInstallationAgeingDetails
+                       │  3. Write data/api_data.json
+                       │  4. git add / commit / push
+                       ▼
+                GitHub Repository
+                  data/api_data.json  ← single source of truth
+                       │
+                       │  Streamlit Cloud auto-redeploys
+                       │  on every push to main
+                       ▼
+                Streamlit Cloud
+                  streamlit_app.py
+                    ├── reads data/api_data.json     (customer records)
+                    └── reads ifb_point.db           (staff edits)
+                       │
+                       ▼
+                Dashboard UI
+                (ifb-point-dashboard.streamlit.app)
 ```
 
 ---
 
-## Why GitHub Actions is in the middle
+## Refreshing data — the manual workflow
 
-`bseapi.ifbsupport.com` is behind a corporate firewall that only allows connections from IFB's own network and from whitelisted cloud IPs.
+The IFB API (`bseapi.ifbsupport.com`) is behind a firewall that only accepts connections from the IFB office network. Streamlit Cloud (Google Cloud) and GitHub Actions (Microsoft Azure) are both blocked. So data has to be refreshed from a machine inside the IFB office:
 
-| Environment | IPs | Can reach API? |
-|---|---|---|
-| Streamlit Cloud | Google Cloud Platform | ❌ Blocked |
-| GitHub Actions | Microsoft Azure | ✅ Allowed |
-| Your local machine (on IFB network) | IFB LAN | ✅ Allowed |
+```bash
+python refresh_data.py
+```
 
-Because Streamlit Cloud cannot call the API directly, a **GitHub Actions relay** is used:
+That single command:
+1. Calls `scripts/sync_api.py` — logs in, fetches records, writes `data/api_data.json`
+2. Detects whether the file actually changed
+3. If changed → commits and pushes to GitHub with `[skip ci]`
+4. Streamlit Cloud picks up the new data within ~30 seconds
 
-1. GitHub Actions runs `scripts/sync_api.py` every 30 minutes on Azure infrastructure.
-2. The script logs in, fetches all installation records, and writes them to `data/api_data.json`.
-3. The file is committed back to the repository with `[skip ci]` so it does not trigger another run.
-4. Streamlit Cloud reads `data/api_data.json` from the repo on every page load — no outbound API call needed.
+If `api_data.json` hasn't changed, no commit is made — safe to run as often as you like.
 
-If the API is temporarily unreachable the step is skipped (`continue-on-error: true`), the previous `api_data.json` is kept, and no failure email is sent.
+| Environment | Can reach the IFB API? |
+|---|---|
+| Your PC on IFB office LAN | ✅ Yes |
+| Streamlit Cloud (GCP) | ❌ Blocked |
+| GitHub Actions (Azure) | ❌ Blocked |
 
 ---
 
 ## What the dashboard shows
 
 ### Fixed header (always visible)
-- **Hero bar** — app title, sync status badge (`API Synced` / `Sync failed`), timestamp of last successful sync.
+- **Hero bar** — app title, sync status badge, timestamp of last successful sync, snapshot record count.
 - **Stats row** — Total follow-ups · Contact status (Contacted / Not Contacted / Empty) · Interest (Interested / Not Interested / Empty) · Follow-Up Stage breakdown.
 
 ### Filter bar (pinned below header)
+
 | Control | Purpose |
 |---|---|
-| Open Followup's / Attempted's | Toggle between all leads and leads where contact was attempted |
+| Open Followup's / Attempted's | Toggle between all leads vs. leads where contact was already attempted |
 | Follow-Up Stage dropdown | Filter by bucket (Post-Purchase / 1st 30 days / Pre-AMC / 8 Year Upgrade) |
 | Date range picker | Filter by purchase date |
 | Search box | Free-text search across name, phone, email, customer ID |
-| ↻ Refresh | Clears Streamlit cache and reloads data |
+| ↻ Refresh | Clears Streamlit cache and reloads from `api_data.json` |
 
-### Data table
-11 columns per row:
+### Data table — 11 columns
 
-| Col | Field | Source |
+| Column | Source | Editable |
 |---|---|---|
-| ✏️ | Edit button | — |
-| Customer Follow-Up | Computed bucket (see below) | Calculated |
-| Customer Name | `customer_name` | API |
-| Purchase Date | `purchase_date` | API |
-| Machine Type | `machine_type` | API |
-| Phone | `phone_number` | API |
-| Email | `email_id` | API |
-| Status | Contacted / Not Contacted | Staff edit (SQLite) |
-| Next Appt | Next appointment date | Staff edit (SQLite) |
-| Interested? | Interested / Not Interested | Staff edit (SQLite) |
-| Remarks | Free-text notes | Staff edit (SQLite) |
+| ✏️ Edit | — | — |
+| Customer Follow-Up | Computed bucket | — |
+| Customer Name | API | — |
+| Purchase Date | API | — |
+| Machine Type | API | — |
+| Phone | API | — |
+| Email | API | — |
+| Status | SQLite (`followups`) | ✅ |
+| Next Appt | SQLite (`followups`) | ✅ |
+| Interested? | SQLite (`followups`) | ✅ |
+| Remarks | SQLite (`followups`) | ✅ |
 
 ### Follow-Up bucket logic
 
@@ -97,11 +104,11 @@ If the API is temporarily unreachable the step is skipped (`continue-on-error: t
 |---|---|
 | 0 – 2 | Post-Purchase |
 | 3 – 30 | 1st 30 days call |
-| 31 – 1460 (4 years) | Pre-AMC |
+| 31 – 1460 (≈ 4 years) | Pre-AMC |
 | 1461 + | 8 Year Upgrade |
 
 ### Edit dialog
-Clicking ✏️ opens a modal where staff can set Status, Next Appointment, Interested?, and Remarks. On save the values are written to `ifb_point.db` (SQLite) on Streamlit Cloud's ephemeral disk. They persist for the life of the deployment but will reset if the app is redeployed (limitation of Streamlit's free tier — a persistent DB like Supabase or PlanetScale would be needed to keep edits long-term).
+Clicking ✏️ opens a modal where staff can set Status, Next Appointment, Interested?, and Remarks. Saved values go to `ifb_point.db` (SQLite) on Streamlit Cloud's local disk. They persist between app runs but reset on full redeployment (Streamlit Cloud free-tier limitation — use a hosted DB like Supabase if long-term persistence is required).
 
 ---
 
@@ -109,23 +116,26 @@ Clicking ✏️ opens a modal where staff can set Status, Next Appointment, Inte
 
 ```
 IFB point Dashboard/
-├── streamlit_app.py              # Main app — UI, data loading, edit dialog
-├── requirements.txt              # Python dependencies
+│
+├── streamlit_app.py          ← Main app (UI, data loading, edit dialog)
+├── refresh_data.py           ← Run this from IFB network to refresh data
+├── requirements.txt          ← Python dependencies
+├── README.md                 ← This file
 │
 ├── data/
-│   └── api_data.json             # Snapshot of API records (auto-updated by Actions)
+│   └── api_data.json         ← API snapshot (committed to repo, updated by refresh_data.py)
 │
 ├── scripts/
-│   └── sync_api.py               # GitHub Actions script: login → fetch → write JSON
+│   └── sync_api.py           ← Pure fetch-and-write logic (used by refresh_data.py)
 │
-├── .github/
-│   └── workflows/
-│       └── sync-api.yml          # Workflow: runs sync_api.py every 30 min
+├── .github/workflows/
+│   └── sync-api.yml          ← Manual-only workflow (dormant — Azure IPs blocked)
 │
 ├── .streamlit/
-│   └── secrets.toml              # Local dev secrets (gitignored — never committed)
+│   ├── config.toml           ← Streamlit theme
+│   └── secrets.toml          ← Local-only secrets (gitignored)
 │
-└── ifb_point.db                  # SQLite DB for staff edits (created at runtime, gitignored)
+└── ifb_point.db              ← SQLite for staff edits (runtime, gitignored)
 ```
 
 ---
@@ -136,10 +146,10 @@ IFB point Dashboard/
 
 | Step | Method | Endpoint | Purpose |
 |---|---|---|---|
-| 1 | POST | `/Auth/login` | Authenticate, get JWT token |
-| 2 | GET | `/IFBPointFollowUp/GetInstallationAgeingDetails?IFBPointCode=ADSF` | Fetch all customer records |
+| 1 | `POST` | `/Auth/login` | Authenticate → returns JWT token |
+| 2 | `GET` | `/IFBPointFollowUp/GetInstallationAgeingDetails?IFBPointCode=ADSF` | Fetch all customer records |
 
-The API response is a JSON object with four ageing-bucket keys:
+The response is a JSON object with four ageing-bucket keys, flattened into one array:
 
 ```json
 {
@@ -150,13 +160,11 @@ The API response is a JSON object with four ageing-bucket keys:
 }
 ```
 
-`sync_api.py` flattens all four lists into a single `records` array in `api_data.json`.
-
-**Key API fields → dashboard columns:**
+**Field mapping (API → dashboard):**
 
 | API field | Dashboard column |
 |---|---|
-| `customer_id` | (primary key, not shown) |
+| `customer_id` | (primary key, hidden) |
 | `customer_name` | Customer Name |
 | `purchase_date` | Purchase Date |
 | `machine_type` | Machine Type |
@@ -165,76 +173,35 @@ The API response is a JSON object with four ageing-bucket keys:
 
 ---
 
-## Refreshing data (manual — from IFB network)
-
-Run this one command from any PC on the IFB office network:
-
-```bash
-python refresh_data.py
-```
-
-That's it. The script will:
-1. Login to the IFB BSE API and fetch all customer records
-2. Write `data/api_data.json`
-3. Commit and push to GitHub
-4. Streamlit Cloud updates automatically within ~30 seconds
-
-Sample output:
-```
-  IFB Point Dashboard — Data Refresh
-  API  : https://bseapi.ifbsupport.com/api
-  Point: ADSF
-  User : IFBFollowUPAPP
-
-  ───────────────────────────────────────────────────────
-    Step 1 — Login as IFBFollowUPAPP
-  ───────────────────────────────────────────────────────
-    ✓ Login successful — token received
-
-  ───────────────────────────────────────────────────────
-    Step 2 — Fetch records for IFB Point 'ADSF'
-  ───────────────────────────────────────────────────────
-    · twoDays_details: 3 record(s)
-    · oneMonth_details: 12 record(s)
-    · fortySevenMonthDetails: 25 record(s)
-    · eightyFourMonthDetails: 8 record(s)
-    ✓ 48 total records fetched
-
-  ───────────────────────────────────────────────────────
-    Step 3 — Write data/api_data.json
-  ───────────────────────────────────────────────────────
-    ✓ Written → data/api_data.json
-
-  ───────────────────────────────────────────────────────
-    Step 4 — Commit & push to GitHub
-  ───────────────────────────────────────────────────────
-    ✓ git add
-    ✓ git commit
-    ✓ git push
-
-    🚀 Pushed! Streamlit Cloud will update within ~30 seconds.
-
-  ───────────────────────────────────────────────────────
-    Done
-  ───────────────────────────────────────────────────────
-    48 records are now live on Streamlit Cloud.
-    URL: https://ifb-point-dashboard.streamlit.app/
-```
-
----
-
 ## Local development
 
 ```bash
-# 1. Clone
+# 1. Clone the repo
 git clone https://github.com/IFB-Analytics/ifbpoint-followup.git
 cd ifbpoint-followup
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the app (reads existing data/api_data.json)
+# 3. Run the dashboard (reads the existing api_data.json)
 streamlit run streamlit_app.py
+```
+
+The dashboard will open at `http://localhost:8501` and use the JSON snapshot already in the repo. You don't need API access to develop locally.
+
+---
+
+## Deployment (Streamlit Cloud)
+
+The app is already deployed at https://ifb-point-dashboard.streamlit.app/. Auto-redeploys happen on every push to `main`.
+
+Streamlit Cloud secrets (already configured) — *only used by the live-API fallback path, which never fires in normal operation since the JSON file is the primary source*:
+
+```toml
+[api]
+username       = "IFBFollowUPAPP"
+password       = "U29tZVJhbmRvbUJhc2U2NA=="
+ifb_point_code = "ADSF"
 ```
 
 ---
@@ -244,26 +211,21 @@ streamlit run streamlit_app.py
 **File:** `.github/workflows/sync-api.yml`
 **Trigger:** Manual only — *Actions → Sync IFB BSE API data → Run workflow*
 
-> **Note:** The cron schedule is disabled. GitHub Actions runs on Azure infrastructure, and `bseapi.ifbsupport.com` does not allow connections from Azure IPs. Use `python refresh_data.py` from the IFB office network instead.
+The cron schedule is **disabled** because GitHub Actions runs on Azure IPs which the IFB firewall blocks. The workflow stays in the repo for future use — if IFB IT ever whitelists GitHub's IP ranges (see https://api.github.com/meta), re-enabling the cron will make syncing fully automatic.
 
-The workflow is kept for future use (e.g. if IFB IT whitelists GitHub's IP ranges, re-enabling the cron will make syncing fully automatic).
+For now, **use `python refresh_data.py` from the IFB office network**.
 
 ---
 
-## Deployment (Streamlit Cloud)
+## Architecture decisions
 
-1. Push code to the GitHub repo connected to Streamlit Cloud.
-2. Streamlit Cloud auto-deploys on every push to `main`.
-3. In Streamlit Cloud app settings → **Secrets**, add:
-
-```toml
-[api]
-username       = "IFBFollowUPAPP"
-password       = "U29tZVJhbmRvbUJhc2U2NA=="
-ifb_point_code = "ADSF"
-```
-
-*(These are only used by the live API fallback path — normally the app reads `data/api_data.json` and never calls the API directly.)*
+| Decision | Rationale |
+|---|---|
+| API data lives in `data/api_data.json` (committed to repo) | Streamlit Cloud can't reach the IFB API directly. Reading a committed JSON file eliminates the network hop. |
+| Staff edits live in SQLite (`followups` table) | API records change with every sync; staff edits must survive that. Keyed by `customer_id`. |
+| `refresh_data.py` is the single entry-point for refreshing | Combines API fetch + git push so users have one command to remember. |
+| `scripts/sync_api.py` is kept as the canonical fetch logic | Used by both `refresh_data.py` (local) and the GitHub Actions workflow (dormant). |
+| No CSV / Excel seed files | All customer data comes from the API. Removed `data.csv` and `seed_db.py` after migration. |
 
 ---
 
@@ -271,6 +233,6 @@ ifb_point_code = "ADSF"
 
 | Limitation | Detail |
 |---|---|
-| Staff edits are ephemeral | SQLite lives on Streamlit Cloud's temporary disk. Edits survive re-runs but are lost on redeployment. Use a hosted DB for persistence. |
-| Data freshness | `api_data.json` is at most 30 minutes stale (GitHub Actions cron cadence). |
-| API firewall | Only Azure IPs (GitHub Actions) can reach the IFB API. Direct calls from Streamlit Cloud or other GCP-based services will time out. |
+| Staff edits are ephemeral | SQLite lives on Streamlit Cloud's local disk. Edits survive between sessions but may reset on a full redeploy. Use Supabase / PlanetScale / similar for long-term persistence. |
+| Data freshness is manual | `api_data.json` updates only when someone runs `refresh_data.py`. There is no automated sync until IFB IT whitelists Azure/GCP IPs. |
+| API firewall | Only the IFB office network can reach `bseapi.ifbsupport.com`. Streamlit Cloud and GitHub Actions are both blocked. |
