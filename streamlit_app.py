@@ -158,45 +158,31 @@ st.markdown("""
 
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
-  /* Allow sticky children — do not clip them */
-  section[data-testid="stMain"] { overflow-y:auto !important; }
   .block-container {
-    padding-top:1.4rem; padding-bottom:2rem;
+    /* push scrollable content below the fixed header band */
+    padding-top:260px !important; padding-bottom:2rem;
     max-width:1700px;
-    overflow:visible !important;
   }
-  [data-testid="stVerticalBlock"] { overflow:visible !important; }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
 
-  /* ── Sticky header band (hero + stats) ── */
+  /* ── FIXED header band (hero + stats) — truly pinned, never scrolls ── */
   .fixed-header {
-    position:sticky;
-    top:0;
-    z-index:1001;
+    position:fixed;
+    top:0; left:0; right:0;
+    z-index:9999;
     background:var(--bg);
-    padding-bottom:6px;
-    /* Bleed background edge-to-edge so nothing shows behind on wide screens */
-  }
-  .fixed-header::before {
-    content:''; position:absolute;
-    top:-30px; left:-9999px; right:-9999px; bottom:0;
-    background:var(--bg); z-index:-1;
+    padding:0.7rem 1rem 0.3rem;
   }
 
-  /* ── Sticky filter panel — sits immediately below fixed-header ── */
-  /* target the element-container that wraps the bordered filter stContainer */
+  /* ── FIXED filter panel — sits right below the fixed header band ── */
   .element-container:has([data-testid="stVerticalBlockBorderWrapper"]:has(div[data-baseweb="input"])) {
-    position:sticky;
-    top:170px;
-    z-index:1000;
-    background:var(--bg);
-    padding-bottom:8px;
-  }
-  .element-container:has([data-testid="stVerticalBlockBorderWrapper"]:has(div[data-baseweb="input"]))::before {
-    content:''; position:absolute;
-    top:0; left:-9999px; right:-9999px; bottom:0;
-    background:var(--bg); z-index:-1;
+    position:fixed !important;
+    top:172px !important;
+    left:0 !important; right:0 !important;
+    z-index:9998 !important;
+    background:var(--bg) !important;
+    padding:0 1rem 0.5rem !important;
   }
 
   /* ── Hero ── */
