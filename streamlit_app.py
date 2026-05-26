@@ -647,8 +647,8 @@ _FU_LABEL = {
     "7-Year Loyalty Upgrade Call":          "🏆  7-Year Loyalty Upgrade Call",
 }
 _SEC_LABEL = {
-    "Open Followup":      "📋  Open",
-    "Attempted Followup": "📞  Attempted",
+    "Open Followup":      "📋  Open Followup's",
+    "Attempted Followup": "📞  Attempted Followup's",
 }
 
 fc1, fc2, fc3, fc4, fc5 = st.columns(5, gap="small")
@@ -683,7 +683,7 @@ with fc3:
 with fc4:
     search_q = st.text_input(
         "Search",
-        placeholder="🔍  Customer ID / Name / Phone / Email",
+        placeholder="🔍  Name · Phone · Email · ID",
         label_visibility="collapsed",
     )
 with fc5:
