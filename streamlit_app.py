@@ -273,7 +273,7 @@ st.markdown("""
     box-shadow:var(--shadow-sm);
   }
 
-  /* ── Section pill ── */
+  /* ── Section pill — fills column width, options spread evenly ── */
   div[role="radiogroup"] {
     gap:4px !important; background:#F1F5F9; padding:4px !important;
     border-radius:10px; border:1px solid var(--line);
@@ -281,17 +281,20 @@ st.markdown("""
     height:42px !important; box-sizing:border-box !important;
     display:flex !important; flex-direction:row !important;
     flex-wrap:nowrap !important;
-    align-items:center !important; justify-content:center !important;
-    width:fit-content !important; max-width:100%;
+    align-items:center !important;
+    width:100% !important;          /* fill the column — never overflows */
   }
   div[role="radiogroup"] > label {
     background:transparent; border-radius:7px;
-    padding:0 14px !important; height:34px !important;
-    display:inline-flex !important; align-items:center !important;
-    flex-shrink:0 !important; white-space:nowrap !important;
+    padding:0 6px !important; height:34px !important;
+    display:flex !important; align-items:center !important;
+    justify-content:center !important;  /* text centred inside each pill */
+    flex:1 1 0 !important;              /* equal width, fill available space */
+    white-space:nowrap !important;
     margin:0 !important; cursor:pointer; color:var(--slate) !important;
     font-weight:600; font-size:13px;
     transition:all .2s var(--ease);
+    text-align:center !important;
   }
   div[role="radiogroup"] > label:hover { background:#E2E8F0; color:var(--ink) !important; }
   div[role="radiogroup"] > label[data-checked="true"],
@@ -325,6 +328,7 @@ st.markdown("""
   div[data-baseweb="select"] [role="combobox"] {
     font-size:13px !important;
     color:var(--ink) !important;
+    text-align:center !important;
   }
   /* hover lift */
   .stDateInput > div > div:hover,
@@ -729,28 +733,20 @@ components.html("""
       n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
 
-      // Vertically centre the columns row
+      // Vertically centre the columns row inside the fixed bar
       var hb = n.querySelector('[data-testid="stHorizontalBlock"]');
       if(hb){
         hb.style.setProperty('align-items','center','important');
         hb.style.setProperty('height','62px','important');
-        hb.style.setProperty('overflow','visible','important');
       }
-      // Allow overflow on every column so rounded corners/shadows never clip
-      var cols = n.querySelectorAll('[data-testid="column"]');
-      for(var i=0;i<cols.length;i++){
-        cols[i].style.setProperty('overflow','visible','important');
-        cols[i].style.setProperty('align-self','center','important');
-      }
-      // Centre the widget wrapper inside each column and add side padding
+      // Centre each column's inner wrapper and add side padding for spacing
       var colDivs = n.querySelectorAll('[data-testid="column"] > div');
       for(var i=0;i<colDivs.length;i++){
         colDivs[i].style.setProperty('display','flex','important');
         colDivs[i].style.setProperty('flex-direction','column','important');
         colDivs[i].style.setProperty('justify-content','center','important');
-        colDivs[i].style.setProperty('overflow','visible','important');
-        colDivs[i].style.setProperty('padding','0 5px','important');
         colDivs[i].style.setProperty('height','62px','important');
+        colDivs[i].style.setProperty('padding','0 6px','important');
       }
     }catch(e){ setTimeout(fix,150); }
   }
