@@ -594,45 +594,6 @@ st.markdown("""
     padding:0 14px !important; font-size:12px !important;
   }
 
-  /* ── Status header dropdown — looks like a plain header cell ── */
-  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) div[data-baseweb="select"] > div {
-    background:#FFFFFF !important; border:0 !important;
-    border-bottom:1px solid #E2E8F0 !important;
-    border-radius:0 !important; box-shadow:none !important;
-    height:50px !important; min-height:50px !important;
-    font-size:12.5px !important; font-weight:600 !important;
-    color:#334155 !important; padding:0 14px !important;
-  }
-  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) div[data-baseweb="select"] > div:hover {
-    background:#F1F5F9 !important; color:#0F172A !important;
-  }
-  /* Tint the cell green when Contacted is selected */
-  [data-testid="stHorizontalBlock"]:has(.th) [data-testid="column"]:has([data-baseweb="select"]) [aria-selected="true"] ~ div[data-baseweb="select"] > div {
-    background:#F0FDF4 !important;
-  }
-
-  /* ── Sortable column header buttons ── */
-  /* Target buttons that live inside the header row (identified by .th siblings) */
-  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button {
-    background:#FFFFFF !important; color:#334155 !important;
-    border:0 !important; border-bottom:1px solid #E2E8F0 !important;
-    border-radius:0 !important; box-shadow:none !important;
-    height:50px !important; min-height:50px !important;
-    width:100% !important; padding:0 14px !important;
-    font-size:12.5px !important; font-weight:600 !important;
-    letter-spacing:0.2px !important;
-    justify-content:flex-start !important; align-items:center !important;
-    display:flex !important; white-space:nowrap !important;
-    transition:background .15s, color .15s;
-  }
-  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button:hover {
-    background:#F1F5F9 !important; color:#0F172A !important;
-  }
-  /* Active sort column — brand-tinted header */
-  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button.sort-active {
-    color:var(--brand) !important; background:#EFF6FF !important;
-  }
-
   /* ── API sync status badges ── */
   .api-ok {
     font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;
@@ -927,14 +888,6 @@ if q:
     mask |= filtered["customer_id"].astype(str).str.contains(q, case=False, na=False)
     filtered = filtered[mask]
 
-# Status header dropdown filter — read from session_state before widget renders
-_STATUS_FILTER_OPTS = ["All", "🟢  Contacted", "🔴  Not Contacted"]
-_sf = st.session_state.get("status_filter_sel", "All")
-if _sf == "🟢  Contacted":
-    filtered = filtered[filtered["status"].fillna("") == "Contacted"]
-elif _sf == "🔴  Not Contacted":
-    filtered = filtered[filtered["status"].fillna("") == "Not Contacted"]
-
 _sec_help  = {
     "Open":      "All leads matching your current filters.",
     "Attempted": "Leads where a follow-up was Contacted or Not Contacted.",
@@ -1049,47 +1002,6 @@ def edit_lead_dialog(row: dict):
             st.rerun()
 
 
-# ── Sort state ──────────────────────────────────────────────────────────────
-st.session_state.setdefault("sort_col", None)
-st.session_state.setdefault("sort_dir", "asc")
-
-_sort_col = st.session_state["sort_col"]
-_sort_dir = st.session_state["sort_dir"]
-
-# Apply sort to filtered before pagination
-if _sort_col and _sort_col in filtered.columns:
-    filtered = filtered.sort_values(
-        _sort_col,
-        ascending=(_sort_dir == "asc"),
-        na_position="last",
-    )
-
-def _sort_hdr(col, label):
-    """Render a clickable sort header button with directional triangle."""
-    if _sort_col == col:
-        icon = " ▲" if _sort_dir == "asc" else " ▼"
-    else:
-        icon = " ▾"
-    if st.button(f"{label}{icon}", key=f"sort_{col}", use_container_width=True):
-        if st.session_state["sort_col"] == col:
-            st.session_state["sort_dir"] = "desc" if _sort_dir == "asc" else "asc"
-        else:
-            st.session_state["sort_col"] = col
-            st.session_state["sort_dir"] = "asc"
-        st.rerun()
-
-def _status_filter_hdr():
-    """Compact selectbox in the Status header cell."""
-    st.selectbox(
-        "Status",
-        options=_STATUS_FILTER_OPTS,
-        index=_STATUS_FILTER_OPTS.index(
-            st.session_state.get("status_filter_sel", "All")
-        ),
-        key="status_filter_sel",
-        label_visibility="collapsed",
-    )
-
 # ── Table rendering ─────────────────────────────────────────────────────────
 # Editing is allowed in BOTH sections — a missed follow-up should be actionable.
 read_only = False
@@ -1130,20 +1042,12 @@ else:
            "Interested?", "Remarks"]
 
     # Header row
-    # index 7 = Status (3-state cycle), index 9 = Interested? (asc/desc sort)
     hdr = st.columns(R)
     last_i = len(HDR) - 1
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-        if i == 7:
-            with c:
-                _status_filter_hdr()
-        elif i == 9:
-            with c:
-                _sort_hdr("interested", "Interested?")
-        else:
-            extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-            style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
-            c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
+        extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
+        style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
+        c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
 
     def _status_chip(v):
         s = _safe(v)
