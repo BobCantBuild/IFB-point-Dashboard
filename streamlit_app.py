@@ -30,7 +30,7 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
         return None
     days = (today - purchase_date).days
     if days <= 2:
-        return "Post Purchase Delight Call"
+        return "Post-Purchase"
     elif days <= 30:
         return "1st 30 days call"
     elif days <= 1460:
@@ -606,7 +606,7 @@ st.markdown(f"""
     <div class="stat-group">
       <div class="g-label">🎯 Follow-Up Stage</div>
       <div class="g-inner">
-        {sub("ss-blue",   fu.get("Post Purchase Delight Call",0),          "Post Purchase")}
+        {sub("ss-blue",   fu.get("Post-Purchase",0),          "Post Purchase")}
         {sub("ss-teal",   fu.get("1st 30 days call",0),  "1st 30 Days")}
         {sub("ss-indigo", fu.get("Pre-AMC",0),           "Pre-AMC")}
         {sub("ss-slate",  fu.get("8 Year Upgrade",0),    "8 Year Upgrade")}
@@ -638,14 +638,14 @@ st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
 _FU_OPTS = [
     "All Follow-Up Stages",
-    "Post Purchase Delight Call",
+    "Post-Purchase",
     "1st 30 days call",
     "Pre-AMC",
     "8 Year Upgrade",
 ]
 _FU_LABEL = {
     "All Follow-Up Stages":                 "🌐  All Follow-Up Stages",
-    "Post Purchase Delight Call":           "🎉  Post Purchase Delight Call",
+    "Post-Purchase":           "🎉  Post-Purchase",
     "1st 30 days call":  "🔄  1st 30 days call",
     "Pre-AMC":           "⏰  Pre-AMC",
     "8 Year Upgrade":    "🏆  8 Year Upgrade",
