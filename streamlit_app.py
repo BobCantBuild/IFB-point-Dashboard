@@ -635,14 +635,26 @@ _FU_OPTS = [
     "Pre-Warranty Expiry Engagement Call",
     "7-Year Loyalty Upgrade Call",
 ]
+_FU_LABEL = {
+    "All Follow-Up Stages":                 "🌐  All Follow-Up Stages",
+    "Post Purchase Delight Call":           "🎉  Post Purchase Delight Call",
+    "Usage & Experience Feedback Call":     "🔄  Usage & Experience Feedback Call",
+    "Pre-Warranty Expiry Engagement Call":  "⏰  Pre-Warranty Expiry Engagement Call",
+    "7-Year Loyalty Upgrade Call":          "🏆  7-Year Loyalty Upgrade Call",
+}
+_SEC_LABEL = {
+    "Open Followup":      "📋  Open",
+    "Attempted Followup": "📞  Attempted",
+}
 
-fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 1], gap="small")
+fc1, fc2, fc3, fc4, fc5 = st.columns(5, gap="small")
 with fc1:
     st.radio(
         "View",
         options=_SEC_OPTS,
         index=_SEC_OPTS.index(section),
         key="_view_section",
+        format_func=lambda x: _SEC_LABEL.get(x, x),
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -650,13 +662,14 @@ with fc2:
     fu_filter = st.selectbox(
         "Follow-Up Stage",
         options=_FU_OPTS,
+        format_func=lambda x: _FU_LABEL.get(x, x),
         label_visibility="collapsed",
     )
 with fc3:
     min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
     max_pd = df_all["purchase_date"].dropna().max() or today
     date_range = st.date_input(
-        "Lead Date Range",
+        "📅  Lead Date Range",
         value=(min_pd, max_pd),
         min_value=min_pd,
         max_value=max_pd,
@@ -666,11 +679,11 @@ with fc3:
 with fc4:
     search_q = st.text_input(
         "Search",
-        placeholder="Customer ID / Name / Phone / Email",
+        placeholder="🔍  Customer ID / Name / Phone / Email",
         label_visibility="collapsed",
     )
 with fc5:
-    if st.button("↻ Refresh", key="refresh_btn",
+    if st.button("↻  Refresh", key="refresh_btn",
                  help="Reload data from the database",
                  use_container_width=True):
         st.cache_data.clear()
