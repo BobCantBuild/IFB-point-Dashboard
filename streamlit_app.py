@@ -599,7 +599,7 @@ if section not in _SEC_OPTS:
 # sibling element-container (the filter columns) and force position:fixed.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
-fc1, fc2, fc3, fc4 = st.columns([2.0, 1.8, 1.8, 0.6], gap="medium")
+fc1, fc2, fc3, fc4 = st.columns([1, 1, 1, 1], gap="medium")
 with fc1:
     st.radio(
         "View",
