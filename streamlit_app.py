@@ -581,12 +581,16 @@ st.markdown(f"""
 # and uses the adjacent-sibling selector (+) to fix the columns container.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
-fc1, fc2, fc3 = st.columns([1.5, 1.6, 1.6], gap="medium")
+fc1, fc2, fc3 = st.columns([2.3, 1.35, 1.35], gap="medium")
 with fc1:
-    _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
+    _section_emoji = {
+        "Open Followup":     "📋",
+        "Attempted Followup":"📞",
+        "Missed Follow Up's":"⚠️",
+    }
     section = st.radio(
         "View",
-        ["Today's Lead", "Missed Follow Up's"],
+        ["Open Followup", "Attempted Followup", "Missed Follow Up's"],
         format_func=lambda s: f"{_section_emoji[s]}  {s}",
         horizontal=True,
     )
@@ -661,7 +665,12 @@ if section == "Missed Follow Up's":
     )
     not_contacted = df_all["status"].fillna("").astype(str) != "Contacted"
     filtered = df_all[past_appt & not_contacted].copy()
+elif section == "Attempted Followup":
+    # Leads where a follow-up was attempted — status is either Contacted or Not Contacted
+    attempted_mask = df_all["status"].fillna("").isin(["Contacted", "Not Contacted"])
+    filtered = df_all[attempted_mask].copy()
 else:
+    # "Open Followup" — all leads
     filtered = df_all.copy()
 
 # date range + search apply to BOTH sections
@@ -680,9 +689,11 @@ if q:
     filtered = filtered[mask]
 
 _sec_label = section
-_sec_help  = ("Leads with overdue Next Appointment and not yet contacted."
-              if section == "Missed Follow Up's" else
-              "All leads matching your current filters.")
+_sec_help  = {
+    "Open Followup":      "All leads matching your current filters.",
+    "Attempted Followup": "Leads where a follow-up was Contacted or Not Contacted.",
+    "Missed Follow Up's": "Leads with overdue Next Appointment and not yet contacted.",
+}.get(section, "")
 
 sh1, sh2 = st.columns([6, 1.1])
 with sh1:
@@ -910,9 +921,7 @@ else:
             st.session_state["page_num"] = page - 1
             st.rerun()
     with pc2:
-        cap = ("Click the ✏️ icon on any row to open the edit dialog."
-               if not read_only else
-               "Switch to Today's Lead to edit records.")
+        cap = "Click the ✏️ icon on any row to open the edit dialog."
         showing_from = start + 1 if total_rows else 0
         st.markdown(
             f"<div style='text-align:center;padding:10px 0;color:var(--slate);"
