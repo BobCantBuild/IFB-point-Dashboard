@@ -574,27 +574,29 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Filters
+# Section selector — read from session_state BEFORE filter logic runs
+# --------------------------------------------------------------------------- #
+_SEC_OPTS  = ["Open Followup", "Attempted Followup", "Missed Follow Up's"]
+_SEC_EMOJI = {
+    "Open Followup":      "📋",
+    "Attempted Followup": "📞",
+    "Missed Follow Up's": "⚠️",
+}
+section = st.session_state.get("_view_section", "Open Followup")
+if section not in _SEC_OPTS:
+    section = "Open Followup"
+
+
+# --------------------------------------------------------------------------- #
+# Filters (fixed bar — date range + search only)
 # --------------------------------------------------------------------------- #
 # Anchor marker — renders as its own element-container sibling, immediately
 # before the filter columns element-container.  CSS collapses it to nothing
 # and uses the adjacent-sibling selector (+) to fix the columns container.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
-fc1, fc2, fc3 = st.columns([2.3, 1.35, 1.35], gap="medium")
+fc1, fc2 = st.columns([1, 1], gap="medium")
 with fc1:
-    _section_emoji = {
-        "Open Followup":     "📋",
-        "Attempted Followup":"📞",
-        "Missed Follow Up's":"⚠️",
-    }
-    section = st.radio(
-        "View",
-        ["Open Followup", "Attempted Followup", "Missed Follow Up's"],
-        format_func=lambda s: f"{_section_emoji[s]}  {s}",
-        horizontal=True,
-    )
-with fc2:
     min_pd = df_all["purchase_date"].dropna().min() or date(2019, 1, 1)
     max_pd = df_all["purchase_date"].dropna().max() or today
     date_range = st.date_input(
@@ -604,7 +606,7 @@ with fc2:
         max_value=max_pd,
         format="DD/MM/YYYY",
     )
-with fc3:
+with fc2:
     search_q = st.text_input(
         "Search",
         placeholder="Customer ID / Name / Phone / Email",
@@ -688,23 +690,31 @@ if q:
         pass
     filtered = filtered[mask]
 
-_sec_label = section
 _sec_help  = {
     "Open Followup":      "All leads matching your current filters.",
     "Attempted Followup": "Leads where a follow-up was Contacted or Not Contacted.",
     "Missed Follow Up's": "Leads with overdue Next Appointment and not yet contacted.",
 }.get(section, "")
 
-sh1, sh2 = st.columns([6, 1.1])
+sh1, sh2, sh3 = st.columns([3, 3.5, 1.1])
 with sh1:
+    st.radio(
+        "View",
+        options=_SEC_OPTS,
+        index=_SEC_OPTS.index(section),
+        key="_view_section",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+with sh2:
     st.markdown(f"""
     <div class="sec">
       <span class="dot"></span>
-      <h3>{_sec_label}</h3>
+      <h3>{section}</h3>
       <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
       <span class="sec-help">{_sec_help}</span>
     </div>""", unsafe_allow_html=True)
-with sh2:
+with sh3:
     if st.button("↻ Refresh", key="refresh_btn",
                  help="Reload data from the database",
                  use_container_width=True):
