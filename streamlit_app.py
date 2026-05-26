@@ -175,15 +175,21 @@ st.markdown("""
     padding:0.7rem 1rem 0.3rem;
   }
 
-  /* ── FIXED filter panel — sits right below the fixed header band ── */
-  .element-container:has([data-testid="stVerticalBlockBorderWrapper"]:has(div[data-baseweb="input"])) {
+  /* ── FIXED filter panel — anchored via #filter-anchor marker ── */
+  /* target the stVerticalBlockBorderWrapper that contains our marker */
+  [data-testid="stVerticalBlockBorderWrapper"]:has(#filter-anchor) {
     position:fixed !important;
     top:172px !important;
     left:0 !important; right:0 !important;
     z-index:9998 !important;
     background:var(--bg) !important;
-    padding:0 1rem 0.5rem !important;
+    padding:0.4rem 1rem 0.6rem !important;
+    border-radius:0 !important;
+    border-left:0 !important; border-right:0 !important;
+    box-shadow:0 2px 8px rgba(15,23,42,.06) !important;
   }
+  /* hide the injected anchor span itself */
+  #filter-anchor { display:none !important; }
 
   /* ── Hero ── */
   .hero {
@@ -582,6 +588,7 @@ st.markdown(f"""
 # Filters
 # --------------------------------------------------------------------------- #
 with st.container(border=True):
+    st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
     fc1, fc2, fc3 = st.columns([1.5, 1.6, 1.6], gap="medium")
     with fc1:
         _section_emoji = {"Today's Lead": "📞", "Missed Follow Up's": "⚠️"}
