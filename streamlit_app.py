@@ -158,12 +158,46 @@ st.markdown("""
 
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
+  /* Allow sticky children — do not clip them */
+  section[data-testid="stMain"] { overflow-y:auto !important; }
   .block-container {
     padding-top:1.4rem; padding-bottom:2rem;
     max-width:1700px;
+    overflow:visible !important;
   }
+  [data-testid="stVerticalBlock"] { overflow:visible !important; }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
+
+  /* ── Sticky header band (hero + stats) ── */
+  .fixed-header {
+    position:sticky;
+    top:0;
+    z-index:1001;
+    background:var(--bg);
+    padding-bottom:6px;
+    /* Bleed background edge-to-edge so nothing shows behind on wide screens */
+  }
+  .fixed-header::before {
+    content:''; position:absolute;
+    top:-30px; left:-9999px; right:-9999px; bottom:0;
+    background:var(--bg); z-index:-1;
+  }
+
+  /* ── Sticky filter panel — sits immediately below fixed-header ── */
+  /* target the element-container that wraps the bordered filter stContainer */
+  .element-container:has([data-testid="stVerticalBlockBorderWrapper"]:has(div[data-baseweb="input"])) {
+    position:sticky;
+    top:170px;
+    z-index:1000;
+    background:var(--bg);
+    padding-bottom:8px;
+  }
+  .element-container:has([data-testid="stVerticalBlockBorderWrapper"]:has(div[data-baseweb="input"]))::before {
+    content:''; position:absolute;
+    top:0; left:-9999px; right:-9999px; bottom:0;
+    background:var(--bg); z-index:-1;
+  }
 
   /* ── Hero ── */
   .hero {
@@ -502,19 +536,7 @@ today  = date.today()
 
 
 # --------------------------------------------------------------------------- #
-# Hero
-# --------------------------------------------------------------------------- #
-st.markdown(f"""
-<div class="hero">
-  <div>
-    <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
-  </div>
-  <span class="pill">LIVE</span>
-</div>""", unsafe_allow_html=True)
-
-
-# --------------------------------------------------------------------------- #
-# Stats row
+# Fixed header — hero + stats in one sticky block
 # --------------------------------------------------------------------------- #
 total        = len(df_all)
 contacted    = int((df_all["status"]     == "Contacted").sum())
@@ -529,34 +551,42 @@ def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
 
 st.markdown(f"""
-<div class="stats-row">
-  <div class="stat-solo">
-    <div class="s-label">👥 Total Follow Up's</div>
-    <div class="s-value">{total}</div>
-  </div>
-  <div class="stat-group">
-    <div class="g-label">📞 Contact Status</div>
-    <div class="g-inner">
-      {sub("ss-green", contacted,    "Contacted")}
-      {sub("ss-red",   not_cont,     "Not Contacted")}
-      {sub("ss-grey",  s_empty,      "Empty")}
+<div class="fixed-header">
+  <div class="hero">
+    <div>
+      <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
     </div>
+    <span class="pill">LIVE</span>
   </div>
-  <div class="stat-group">
-    <div class="g-label">💬 Interest</div>
-    <div class="g-inner">
-      {sub("ss-green", interested,   "Interested")}
-      {sub("ss-red",   not_interest, "Not Interested")}
-      {sub("ss-grey",  i_empty,      "Empty")}
+  <div class="stats-row">
+    <div class="stat-solo">
+      <div class="s-label">👥 Total Follow Up's</div>
+      <div class="s-value">{total}</div>
     </div>
-  </div>
-  <div class="stat-group">
-    <div class="g-label">🎯 Follow-Up Stage</div>
-    <div class="g-inner">
-      {sub("ss-blue",   fu.get("Post Purchase Delight Call",0),          "Post Purchase")}
-      {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
-      {sub("ss-indigo", fu.get("Pre-Warranty Expiry Engagement Call",0),  "Pre-Warranty")}
-      {sub("ss-slate",  fu.get("7-Year Loyalty Upgrade Call",0),          "7-Year Loyalty")}
+    <div class="stat-group">
+      <div class="g-label">📞 Contact Status</div>
+      <div class="g-inner">
+        {sub("ss-green", contacted,    "Contacted")}
+        {sub("ss-red",   not_cont,     "Not Contacted")}
+        {sub("ss-grey",  s_empty,      "Empty")}
+      </div>
+    </div>
+    <div class="stat-group">
+      <div class="g-label">💬 Interest</div>
+      <div class="g-inner">
+        {sub("ss-green", interested,   "Interested")}
+        {sub("ss-red",   not_interest, "Not Interested")}
+        {sub("ss-grey",  i_empty,      "Empty")}
+      </div>
+    </div>
+    <div class="stat-group">
+      <div class="g-label">🎯 Follow-Up Stage</div>
+      <div class="g-inner">
+        {sub("ss-blue",   fu.get("Post Purchase Delight Call",0),          "Post Purchase")}
+        {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
+        {sub("ss-indigo", fu.get("Pre-Warranty Expiry Engagement Call",0),  "Pre-Warranty")}
+        {sub("ss-slate",  fu.get("7-Year Loyalty Upgrade Call",0),          "7-Year Loyalty")}
+      </div>
     </div>
   </div>
 </div>""", unsafe_allow_html=True)
