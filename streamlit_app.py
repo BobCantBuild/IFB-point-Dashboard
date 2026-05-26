@@ -298,11 +298,36 @@ st.markdown("""
   }
   div[role="radiogroup"] > label > div:first-child { display:none !important; }
 
-  /* ── Inputs / selects ── */
+  /* ── Inputs / selects (default everywhere) ── */
   div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
     background:#F8FAFC !important; border-radius:6px !important; border:1px solid #E2E8F0 !important;
   }
   .stDateInput > div > div { background:#F8FAFC !important; border-radius:6px !important; }
+
+  /* ── Fixed-bar control polish: same 42px height + consistent borders ── */
+  /* Date / text / select inputs in the fixed filter bar */
+  .stDateInput > div > div,
+  div[data-baseweb="input"] > div,
+  div[data-baseweb="select"] > div {
+    min-height:42px !important; height:42px !important;
+    border-radius:10px !important;
+    border:1px solid var(--line) !important;
+    background:#FFFFFF !important;
+    box-shadow:inset 0 1px 2px rgba(15,23,42,0.03);
+    transition:border-color .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .stDateInput input,
+  div[data-baseweb="input"] input,
+  div[data-baseweb="select"] [role="combobox"] {
+    font-size:13px !important;
+    color:var(--ink) !important;
+  }
+  /* hover lift */
+  .stDateInput > div > div:hover,
+  div[data-baseweb="input"] > div:hover,
+  div[data-baseweb="select"] > div:hover {
+    border-color:#CBD5E1 !important;
+  }
 
   /* ── Buttons ── */
   .stButton > button {
@@ -611,7 +636,7 @@ _FU_OPTS = [
     "7-Year Loyalty Upgrade Call",
 ]
 
-fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 1], gap="medium")
+fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 1], gap="small")
 with fc1:
     st.radio(
         "View",
@@ -681,7 +706,7 @@ components.html("""
       n.style.setProperty('right','0','important');
       n.style.setProperty('z-index','9998','important');
       n.style.setProperty('background','#F1F5F9','important');
-      n.style.setProperty('padding','0 1rem 0.6rem','important');
+      n.style.setProperty('padding','6px 18px 10px','important');
       n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
     }catch(e){ setTimeout(fix,150); }
