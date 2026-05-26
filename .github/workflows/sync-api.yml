@@ -27,6 +27,7 @@ jobs:
         run: pip install httpx
 
       - name: Fetch IFB BSE API → data/api_data.json
+        continue-on-error: true          # API unreachable = skip, not fail; existing JSON is preserved
         env:
           IFB_API_USER:    ${{ secrets.IFB_API_USER    || 'IFBFollowUPAPP' }}
           IFB_API_PASS:    ${{ secrets.IFB_API_PASS    || 'U29tZVJhbmRvbUJhc2U2NA==' }}
