@@ -619,14 +619,14 @@ st.markdown(f"""
 # --------------------------------------------------------------------------- #
 # Section selector — read from session_state BEFORE filter logic runs
 # --------------------------------------------------------------------------- #
-_SEC_OPTS  = ["Open Followup", "Attempted Followup"]
+_SEC_OPTS  = ["Open", "Attempted"]
 _SEC_EMOJI = {
-    "Open Followup":      "📋",
-    "Attempted Followup": "📞",
+    "Open":      "📋",
+    "Attempted": "📞",
 }
-section = st.session_state.get("_view_section", "Open Followup")
+section = st.session_state.get("_view_section", "Open")
 if section not in _SEC_OPTS:
-    section = "Open Followup"
+    section = "Open"
 
 
 # --------------------------------------------------------------------------- #
@@ -651,8 +651,8 @@ _FU_LABEL = {
     "7-Year Loyalty Upgrade Call":          "🏆  7-Year Loyalty Upgrade Call",
 }
 _SEC_LABEL = {
-    "Open Followup":      "📋  Open Followup's",
-    "Attempted Followup": "📞  Attempted Followup's",
+    "Open":      "📋  Open",
+    "Attempted": "📞  Attempted's",
 }
 
 fc1, fc2, fc3, fc4, fc5 = st.columns(5, gap="small")
@@ -764,7 +764,7 @@ components.html("""
 # --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
-if section == "Attempted Followup":
+if section == "Attempted":
     # Leads where a follow-up was attempted — status is Contacted or Not Contacted
     attempted_mask = df_all["status"].fillna("").isin(["Contacted", "Not Contacted"])
     filtered = df_all[attempted_mask].copy()
@@ -792,8 +792,8 @@ if q:
     filtered = filtered[mask]
 
 _sec_help  = {
-    "Open Followup":      "All leads matching your current filters.",
-    "Attempted Followup": "Leads where a follow-up was Contacted or Not Contacted.",
+    "Open":      "All leads matching your current filters.",
+    "Attempted": "Leads where a follow-up was Contacted or Not Contacted.",
 }.get(section, "")
 
 st.markdown(f"""
