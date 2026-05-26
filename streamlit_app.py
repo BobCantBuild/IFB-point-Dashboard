@@ -245,10 +245,11 @@ st.markdown("""
     padding:14px 20px 6px; margin-bottom:18px;
     box-shadow:var(--shadow-sm);
   }
-  /* Streamlit native bordered container */
+  /* Streamlit native bordered container — filter panel */
   [data-testid="stContainer"]:has(div[data-baseweb="input"]) {
-    background:#fff !important; border-radius:16px !important;
+    background:#fff !important; border-radius:12px !important;
     box-shadow:var(--shadow-sm);
+    padding-top:10px !important; padding-bottom:10px !important;
   }
 
   /* ── Section pill ── */
@@ -444,31 +445,32 @@ st.markdown("""
   /* Label above every filter control */
   [data-testid="stContainer"] label[data-testid="stWidgetLabel"],
   [data-testid="stContainer"] [data-testid="stWidgetLabel"] > div {
-    font-size:11px !important; font-weight:700 !important;
+    font-size:10px !important; font-weight:700 !important;
     color:var(--slate) !important; text-transform:uppercase !important;
     letter-spacing:0.7px !important;
-    margin-bottom:6px !important;
+    margin-bottom:3px !important;
   }
-  /* All inputs (date/text/select) — 44px tall, same border style */
+  /* All inputs (date/text/select) — 34px tall, compact */
   [data-testid="stContainer"] div[data-baseweb="input"] > div,
   [data-testid="stContainer"] div[data-baseweb="select"] > div,
   [data-testid="stContainer"] .stDateInput > div > div {
     background:#FFFFFF !important;
     border:1px solid var(--line) !important;
-    border-radius:10px !important;
-    min-height:44px !important;
+    border-radius:8px !important;
+    min-height:34px !important;
   }
   [data-testid="stContainer"] input,
   [data-testid="stContainer"] .stDateInput input {
-    height:42px !important; font-size:13.5px !important;
+    height:32px !important; font-size:12.5px !important;
   }
-  /* Radio pill row — match the 44px height of the other inputs */
+  /* Radio pill row — match the 34px height of the other inputs */
   [data-testid="stContainer"] div[role="radiogroup"] {
-    height:44px !important;
-    padding:5px !important;
+    height:34px !important;
+    padding:3px !important;
   }
   [data-testid="stContainer"] div[role="radiogroup"] > label {
-    height:34px !important; display:inline-flex !important; align-items:center !important;
+    height:28px !important; display:inline-flex !important; align-items:center !important;
+    padding:0 14px !important; font-size:12px !important;
   }
 
   /* ── Print-friendly: hide chrome, show full data ── */
