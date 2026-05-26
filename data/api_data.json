@@ -1,0 +1,52 @@
+{
+  "synced_at_utc": "2026-05-26T15:22:49+00:00",
+  "ifb_point_code": "ADSF",
+  "record_count": 5,
+  "records": [
+    {
+      "customer_id": "CUST1001",
+      "customer_name": "Ramesh Kumar",
+      "purchase_date": "2026-05-24",
+      "installation_type": "Demo",
+      "machine_type": "Washing Machine",
+      "phone_number": "9876543210",
+      "email_id": "ramesh@gmail.com"
+    },
+    {
+      "customer_id": "CUST1002",
+      "customer_name": "Suresh Babu",
+      "purchase_date": "2026-05-25",
+      "installation_type": "Standard",
+      "machine_type": "Dish Washer",
+      "phone_number": "9123456780",
+      "email_id": "suresh@gmail.com"
+    },
+    {
+      "customer_id": "CUST2001",
+      "customer_name": "Priya Sharma",
+      "purchase_date": "2026-04-20",
+      "installation_type": "Premium",
+      "machine_type": "Microwave Oven",
+      "phone_number": "9988776655",
+      "email_id": "priya@gmail.com"
+    },
+    {
+      "customer_id": "CUST3001",
+      "customer_name": "Arun Raj",
+      "purchase_date": "2022-06-15",
+      "installation_type": "Standard",
+      "machine_type": "Refrigerator",
+      "phone_number": "9871234567",
+      "email_id": "suresh@gmail.com"
+    },
+    {
+      "customer_id": "CUST4001",
+      "customer_name": "Meena Devi",
+      "purchase_date": "2019-05-10",
+      "installation_type": "Premium",
+      "machine_type": "Air Conditioner",
+      "phone_number": "9001122334",
+      "email_id": "meena@gmail.com"
+    }
+  ]
+}

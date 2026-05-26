@@ -1,6 +1,7 @@
 """IFB Point Dashboard — Streamlit UI backed by SQLite."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -10,7 +11,8 @@ import httpx as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
-DB_PATH = Path(__file__).parent / "ifb_point.db"
+DB_PATH   = Path(__file__).parent / "ifb_point.db"
+DATA_FILE = Path(__file__).parent / "data" / "api_data.json"
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -57,11 +59,9 @@ def init_db_if_missing():
     conn.close()
 
 
-def fetch_api_records() -> list[dict]:
-    """
-    Login + GET GetInstallationAgeingDetails.  Returns a flat list of customer
-    dicts. Raises a RuntimeError with a clear message on any failure — never
-    silently swallows errors.
+def _fetch_live_api() -> list[dict]:
+    """Direct API call via httpx — only works from networks IFB whitelisted.
+    Used as a fallback when data/api_data.json is missing (local development).
     """
     u, p, code = _API_USER, _API_PASS, _API_CODE
     try:
@@ -72,7 +72,6 @@ def fetch_api_records() -> list[dict]:
     except Exception:
         pass
 
-    # ── Login ──
     with _req.Client(timeout=20) as client:
         r1 = client.post(
             f"{_API_BASE}/Auth/login",
@@ -83,9 +82,8 @@ def fetch_api_records() -> list[dict]:
         raise RuntimeError(f"Login HTTP {r1.status_code}: {r1.text[:200]}")
     tok = r1.json().get("token")
     if not tok:
-        raise RuntimeError(f"Login OK but no token in response. Keys: {list(r1.json().keys())}")
+        raise RuntimeError(f"Login OK but no token. Keys: {list(r1.json().keys())}")
 
-    # ── Fetch ──
     with _req.Client(timeout=25) as client:
         r2 = client.get(
             f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
@@ -96,7 +94,6 @@ def fetch_api_records() -> list[dict]:
         raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
 
     j = r2.json()
-    # IFB BSE returns 4 ageing-bucket arrays; merge into one flat list
     records: list[dict] = []
     if isinstance(j, list):
         records = j
@@ -107,20 +104,37 @@ def fetch_api_records() -> list[dict]:
     return records
 
 
-def load_all() -> pd.DataFrame:
+def fetch_api_records() -> tuple[list[dict], str]:
+    """Return (records, source_label).
+    Streamlit Cloud is firewalled out of bseapi.ifbsupport.com, so the
+    primary data source is the JSON snapshot kept fresh by GitHub Actions.
+    Live API is attempted only if the snapshot is missing.
     """
-    Fetch customers from API, merge in local follow-up edits from SQLite,
-    compute customer_follow_up bucket.  Raises if the API call fails.
+    if DATA_FILE.exists():
+        blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        records = blob.get("records", []) if isinstance(blob, dict) else (blob or [])
+        synced  = blob.get("synced_at_utc", "?") if isinstance(blob, dict) else "?"
+        return records, f"snapshot · synced {synced} UTC"
+
+    records = _fetch_live_api()
+    return records, "live API"
+
+
+def load_all() -> tuple[pd.DataFrame, str]:
     """
-    records = fetch_api_records()
+    Fetch customers, merge in local follow-up edits, compute follow-up bucket.
+    Returns (df, source_label) so the UI can show where the data came from.
+    Raises if no data is available at all.
+    """
+    records, source = fetch_api_records()
     if not records:
-        # Return empty frame with all expected columns so the UI doesn't crash
-        return pd.DataFrame(columns=[
+        empty = pd.DataFrame(columns=[
             "customer_id", "customer_name", "purchase_date", "machine_type",
             "phone_number", "email_id", "ifb_point_id",
             "status", "next_appointment", "interested", "remarks",
             "customer_follow_up",
         ])
+        return empty, source
 
     df = pd.DataFrame(records)
 
@@ -155,7 +169,7 @@ def load_all() -> pd.DataFrame:
     df["customer_follow_up"] = df["purchase_date"].apply(
         lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
     )
-    return df
+    return df, source
 
 
 def update_row(cid, status, next_appt, interested, remarks):
@@ -654,13 +668,10 @@ st.markdown("""
 init_db_if_missing()
 
 try:
-    df_all = load_all()
+    df_all, _source = load_all()
     st.session_state["_api_sync_ok"]  = True
-    st.session_state["_api_sync_msg"] = (
-        f"Live API · {len(df_all)} records · {datetime.now().strftime('%H:%M:%S')}"
-    )
+    st.session_state["_api_sync_msg"] = f"{_source} · {len(df_all)} records"
 except Exception as _exc:
-    # Surface the actual exception so we can debug Streamlit Cloud failures
     st.session_state["_api_sync_ok"]  = False
     st.session_state["_api_sync_msg"] = f"{type(_exc).__name__}: {_exc}"
     df_all = pd.DataFrame(columns=[
@@ -669,7 +680,7 @@ except Exception as _exc:
         "status", "next_appointment", "interested", "remarks",
         "customer_follow_up",
     ])
-    st.error(f"⚠️ Unable to load data from IFB BSE API — {type(_exc).__name__}: {_exc}")
+    st.error(f"⚠️ Unable to load data — {type(_exc).__name__}: {_exc}")
 
 today = date.today()
 

@@ -1,0 +1,46 @@
+name: Sync IFB BSE API data
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+  workflow_dispatch:         # manual "Run workflow" button on the Actions page
+  push:
+    branches: [main]
+    paths:
+      - "scripts/sync_api.py"
+      - ".github/workflows/sync-api.yml"
+
+permissions:
+  contents: write            # allow the bot to commit data/api_data.json back
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Fetch IFB BSE API → data/api_data.json
+        env:
+          IFB_API_USER:    ${{ secrets.IFB_API_USER    || 'IFBFollowUPAPP' }}
+          IFB_API_PASS:    ${{ secrets.IFB_API_PASS    || 'U29tZVJhbmRvbUJhc2U2NA==' }}
+          IFB_POINT_CODE:  ${{ secrets.IFB_POINT_CODE  || 'ADSF' }}
+        run: python scripts/sync_api.py
+
+      - name: Commit updated snapshot (if changed)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/api_data.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(data): refresh api_data.json [skip ci]"
+            git push
+          fi
