@@ -5,7 +5,7 @@
   "records": [
     {
       "customer_id": "CUST1001",
-      "customer_name": "Ramesh Kumar",
+      "customer_name": "Rakesh",
       "purchase_date": "2026-05-24",
       "installation_type": "Demo",
       "machine_type": "Washing Machine",
