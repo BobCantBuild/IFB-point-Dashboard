@@ -32,11 +32,11 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
     if days <= 2:
         return "Post Purchase Delight Call"
     elif days <= 30:
-        return "Usage & Experience Feedback Call"
+        return "1st 30 days call"
     elif days <= 1460:
-        return "Pre-Warranty Expiry Engagement Call"
+        return "Pre-AMC"
     else:
-        return "7-Year Loyalty Upgrade Call"
+        return "8 Year Upgrade"
 
 
 # --------------------------------------------------------------------------- #
@@ -607,9 +607,9 @@ st.markdown(f"""
       <div class="g-label">🎯 Follow-Up Stage</div>
       <div class="g-inner">
         {sub("ss-blue",   fu.get("Post Purchase Delight Call",0),          "Post Purchase")}
-        {sub("ss-teal",   fu.get("Usage & Experience Feedback Call",0),     "Usage & Exp.")}
-        {sub("ss-indigo", fu.get("Pre-Warranty Expiry Engagement Call",0),  "Pre-Warranty")}
-        {sub("ss-slate",  fu.get("7-Year Loyalty Upgrade Call",0),          "7-Year Loyalty")}
+        {sub("ss-teal",   fu.get("1st 30 days call",0),  "1st 30 Days")}
+        {sub("ss-indigo", fu.get("Pre-AMC",0),           "Pre-AMC")}
+        {sub("ss-slate",  fu.get("8 Year Upgrade",0),    "8 Year Upgrade")}
       </div>
     </div>
   </div>
@@ -639,16 +639,16 @@ st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 _FU_OPTS = [
     "All Follow-Up Stages",
     "Post Purchase Delight Call",
-    "Usage & Experience Feedback Call",
-    "Pre-Warranty Expiry Engagement Call",
-    "7-Year Loyalty Upgrade Call",
+    "1st 30 days call",
+    "Pre-AMC",
+    "8 Year Upgrade",
 ]
 _FU_LABEL = {
     "All Follow-Up Stages":                 "🌐  All Follow-Up Stages",
     "Post Purchase Delight Call":           "🎉  Post Purchase Delight Call",
-    "Usage & Experience Feedback Call":     "🔄  Usage & Experience Feedback Call",
-    "Pre-Warranty Expiry Engagement Call":  "⏰  Pre-Warranty Expiry Engagement Call",
-    "7-Year Loyalty Upgrade Call":          "🏆  7-Year Loyalty Upgrade Call",
+    "1st 30 days call":  "🔄  1st 30 days call",
+    "Pre-AMC":           "⏰  Pre-AMC",
+    "8 Year Upgrade":    "🏆  8 Year Upgrade",
 }
 _SEC_LABEL = {
     "Open":      "📋  Open",
