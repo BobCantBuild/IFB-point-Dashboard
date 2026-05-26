@@ -273,32 +273,6 @@ st.markdown("""
     box-shadow:var(--shadow-sm);
   }
 
-  /* ── Toggle button pair (Open / Attempted) ── */
-  /* Active pill — primary blue */
-  .toggle-active > button {
-    background:linear-gradient(135deg,var(--brand) 0%,var(--brand-d) 100%) !important;
-    color:#fff !important;
-    border:none !important;
-    box-shadow:0 2px 8px rgba(37,99,235,0.30) !important;
-    border-radius:10px !important;
-    font-size:13px !important; font-weight:700 !important;
-    height:42px !important; min-height:42px !important;
-  }
-  /* Inactive pill — ghost */
-  .toggle-inactive > button {
-    background:#FFFFFF !important;
-    color:var(--slate) !important;
-    border:1px solid var(--line) !important;
-    box-shadow:none !important;
-    border-radius:10px !important;
-    font-size:13px !important; font-weight:600 !important;
-    height:42px !important; min-height:42px !important;
-  }
-  .toggle-inactive > button:hover {
-    background:#F1F5F9 !important;
-    border-color:#CBD5E1 !important;
-    color:var(--ink) !important;
-  }
 
   /* ── Inputs / selects (default everywhere) ── */
   div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
@@ -424,14 +398,19 @@ st.markdown("""
     background:#F1F5F9 !important; border-color:#94A3B8 !important; color:#0F172A !important;
   }
 
-  /* Polished primary button (dialog Save) */
+  /* Primary button — dark blue (active toggle + dialog Save) */
   .stButton > button[kind="primary"] {
-    background:#2563EB !important; color:#FFFFFF !important; border:0 !important;
+    background:linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 100%) !important;
+    color:#FFFFFF !important; border:0 !important;
+    box-shadow:0 2px 8px rgba(29,78,216,0.35) !important;
     height:42px !important; min-height:42px !important;
-    padding:0 18px !important; font-size:13px !important; font-weight:600 !important;
-    border-radius:8px !important;
+    padding:0 18px !important; font-size:13px !important; font-weight:700 !important;
+    border-radius:10px !important;
   }
-  .stButton > button[kind="primary"]:hover { background:#1D4ED8 !important; }
+  .stButton > button[kind="primary"]:hover {
+    background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%) !important;
+    box-shadow:0 4px 12px rgba(29,78,216,0.45) !important;
+  }
 
   /* Pencil edit button — circular icon, ONLY inside table rows */
   [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
@@ -660,17 +639,17 @@ fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 0.7], gap="small")
 with fc1:
     t1, t2 = st.columns(2, gap="small")
     with t1:
-        st.markdown('<div class="toggle-' + ('active' if section == 'Open' else 'inactive') + '">', unsafe_allow_html=True)
-        if st.button("📋  Open Followup's", key="btn_open", use_container_width=True):
+        if st.button("📋  Open Followup's", key="btn_open",
+                     use_container_width=True,
+                     type="primary" if section == "Open" else "secondary"):
             st.session_state["_view_section"] = "Open"
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
     with t2:
-        st.markdown('<div class="toggle-' + ('active' if section == 'Attempted' else 'inactive') + '">', unsafe_allow_html=True)
-        if st.button("📞  Attempted's", key="btn_att", use_container_width=True):
+        if st.button("📞  Attempted's", key="btn_att",
+                     use_container_width=True,
+                     type="primary" if section == "Attempted" else "secondary"):
             st.session_state["_view_section"] = "Attempted"
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 with fc2:
     fu_filter = st.selectbox(
         "Follow-Up Stage",
@@ -696,15 +675,14 @@ with fc4:
         label_visibility="collapsed",
     )
 with fc5:
-    st.markdown('<div class="toggle-inactive">', unsafe_allow_html=True)
     if st.button("↻  Refresh", key="refresh_btn",
                  help="Reload data from the database",
-                 use_container_width=True):
+                 use_container_width=True,
+                 type="secondary"):
         st.cache_data.clear()
         try: st.cache_resource.clear()
         except Exception: pass
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # JS injection — walk the DOM to find the filter columns element-container
 # (sibling after #filter-anchor) and force position:fixed on it directly.
