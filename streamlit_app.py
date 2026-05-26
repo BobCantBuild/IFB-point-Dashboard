@@ -516,6 +516,28 @@ st.markdown("""
     padding:0 14px !important; font-size:12px !important;
   }
 
+  /* ── Sortable column header buttons ── */
+  /* Target buttons that live inside the header row (identified by .th siblings) */
+  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button {
+    background:#FFFFFF !important; color:#334155 !important;
+    border:0 !important; border-bottom:1px solid #E2E8F0 !important;
+    border-radius:0 !important; box-shadow:none !important;
+    height:50px !important; min-height:50px !important;
+    width:100% !important; padding:0 14px !important;
+    font-size:12.5px !important; font-weight:600 !important;
+    letter-spacing:0.2px !important;
+    justify-content:flex-start !important; align-items:center !important;
+    display:flex !important; white-space:nowrap !important;
+    transition:background .15s, color .15s;
+  }
+  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button:hover {
+    background:#F1F5F9 !important; color:#0F172A !important;
+  }
+  /* Active sort column — brand-tinted header */
+  [data-testid="stHorizontalBlock"]:has(.th) .stButton > button.sort-active {
+    color:var(--brand) !important; background:#EFF6FF !important;
+  }
+
   /* ── Print-friendly: hide chrome, show full data ── */
   @media print {
     .stApp { background:#FFFFFF !important; overflow:visible !important; }
@@ -890,6 +912,35 @@ def edit_lead_dialog(row: dict):
             st.rerun()
 
 
+# ── Sort state ──────────────────────────────────────────────────────────────
+st.session_state.setdefault("sort_col", None)
+st.session_state.setdefault("sort_dir", "asc")
+
+_sort_col = st.session_state["sort_col"]
+_sort_dir = st.session_state["sort_dir"]
+
+# Apply sort to filtered before pagination
+if _sort_col and _sort_col in filtered.columns:
+    filtered = filtered.sort_values(
+        _sort_col,
+        ascending=(_sort_dir == "asc"),
+        na_position="last",
+    )
+
+def _sort_hdr(col, label):
+    """Render a clickable sort header button with directional triangle."""
+    if _sort_col == col:
+        icon = " ▲" if _sort_dir == "asc" else " ▼"
+    else:
+        icon = " ▾"
+    if st.button(f"{label}{icon}", key=f"sort_{col}", use_container_width=True):
+        if st.session_state["sort_col"] == col:
+            st.session_state["sort_dir"] = "desc" if _sort_dir == "asc" else "asc"
+        else:
+            st.session_state["sort_col"] = col
+            st.session_state["sort_dir"] = "asc"
+        st.rerun()
+
 # ── Table rendering ─────────────────────────────────────────────────────────
 # Editing is allowed in BOTH sections — a missed follow-up should be actionable.
 read_only = False
@@ -929,13 +980,18 @@ else:
            "Machine Type", "Phone", "Email", "Status", "Next Appt",
            "Interested?", "Remarks"]
 
-    # Header row
+    # Header row  (index 7 = Status, index 9 = Interested? are sortable)
+    _SORTABLE = {7: ("status", "Status"), 9: ("interested", "Interested?")}
     hdr = st.columns(R)
     last_i = len(HDR) - 1
     for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-        extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-        style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
-        c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
+        if i in _SORTABLE:
+            with c:
+                _sort_hdr(_SORTABLE[i][0], _SORTABLE[i][1])
+        else:
+            extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
+            style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
+            c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
 
     def _status_chip(v):
         s = _safe(v)
