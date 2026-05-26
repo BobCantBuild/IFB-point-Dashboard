@@ -275,12 +275,16 @@ st.markdown("""
 
   /* ── Section pill ── */
   div[role="radiogroup"] {
-    gap:4px !important; background:#F1F5F9; padding:5px;
-    border-radius:12px; border:1px solid var(--line); width:fit-content;
+    gap:4px !important; background:#F1F5F9; padding:4px !important;
+    border-radius:10px; border:1px solid var(--line); width:fit-content;
     box-shadow:inset 0 1px 2px rgba(15,23,42,0.04);
+    height:42px !important; box-sizing:border-box !important;
+    display:inline-flex !important; align-items:center !important;
   }
   div[role="radiogroup"] > label {
-    background:transparent; border-radius:8px; padding:8px 20px !important;
+    background:transparent; border-radius:7px;
+    padding:0 18px !important; height:34px !important;
+    display:inline-flex !important; align-items:center !important;
     margin:0 !important; cursor:pointer; color:var(--slate) !important;
     font-weight:600; font-size:13px;
     transition:all .2s var(--ease);
