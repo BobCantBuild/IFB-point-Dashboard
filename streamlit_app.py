@@ -171,7 +171,7 @@ st.markdown("""
       radial-gradient(circle at 90% 0%, rgba(37,99,235,0.28) 0%, rgba(37,99,235,0) 55%),
       radial-gradient(circle at 0% 100%, rgba(56,189,248,0.15) 0%, rgba(56,189,248,0) 50%),
       linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
-    border-radius:18px; padding:24px 30px;
+    border-radius:18px; padding:16px 30px;
     margin-bottom:18px;
     display:flex; align-items:center; justify-content:space-between;
     box-shadow:var(--shadow-lg);
@@ -507,7 +507,6 @@ st.markdown(f"""
 <div class="hero">
   <div>
     <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
-    <p>Sales Engagement Console &nbsp;·&nbsp; {today.strftime('%A, %d %B %Y')}</p>
   </div>
   <span class="pill">LIVE</span>
 </div>""", unsafe_allow_html=True)
