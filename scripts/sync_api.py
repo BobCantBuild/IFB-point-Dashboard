@@ -131,21 +131,40 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
 
     lead_date = datetime.now().strftime("%d-%m-%Y")
     inserted  = 0
+    skipped   = 0
 
     with sqlite3.connect(DB_FILE) as conn:
         _ensure_api_leads_table(conn)
+
+        # Backfill any pre-existing rows that have an empty key (one-time)
+        conn.execute("""
+            UPDATE api_leads
+               SET key = ifb_point || '-' || customer_id || '-' || "serialNo"
+             WHERE key IS NULL OR key = ''
+        """)
+
         for bucket_key, _stage in BUCKET_STAGE.items():
             for raw in payload.get(bucket_key, []):
                 if not isinstance(raw, dict):
                     continue
-                values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
                 cust_id = str(raw.get("customer_id", "") or "").strip()
                 serial  = str(raw.get("serialNo",    "") or "").strip()
-                # Key format: ifb_point-customer_id-serialNo (Option C)
                 key_val = f"{point_code}-{cust_id}-{serial}"
-                cur = conn.execute(
+
+                # Key-based idempotency: if key already exists, leave the row
+                # alone — don't modify, don't re-insert. (User-edited columns
+                # status/next_appointment/interested/remarks are preserved.)
+                exists = conn.execute(
+                    "SELECT 1 FROM api_leads WHERE key = ? LIMIT 1", (key_val,)
+                ).fetchone()
+                if exists:
+                    skipped += 1
+                    continue
+
+                values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
+                conn.execute(
                     """
-                    INSERT OR IGNORE INTO api_leads
+                    INSERT INTO api_leads
                       (ifb_point, key, lead_date, follow_up,
                        customer_id, customer_name, purchase_date, installationdate,
                        machine_type, phone_number, alt_number, email_id,
@@ -154,16 +173,11 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                     """,
                     (point_code, key_val, lead_date, bucket_key, *values),
                 )
-                inserted += cur.rowcount if cur.rowcount > 0 else 0
+                inserted += 1
 
-        # Backfill existing rows that have an empty key (one-time migration)
-        conn.execute("""
-            UPDATE api_leads
-               SET key = ifb_point || '-' || customer_id || '-' || "serialNo"
-             WHERE key IS NULL OR key = ''
-        """)
         conn.commit()
 
+    print(f"[sync_api] SQLite: {inserted} new, {skipped} skipped (key exists)")
     return inserted
 
 

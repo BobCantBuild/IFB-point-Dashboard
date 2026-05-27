@@ -366,12 +366,184 @@ def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[
     return records
 
 
+def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
+    """Mirror of sync_api.py table definition — kept in sync to allow bootstrap."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_leads (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ifb_point       TEXT,
+            key             TEXT,
+            lead_date       TEXT,
+            follow_up       TEXT,
+            customer_id     TEXT,
+            customer_name   TEXT,
+            purchase_date   TEXT,
+            installationdate TEXT,
+            machine_type    TEXT,
+            phone_number    TEXT,
+            alt_number      TEXT,
+            email_id        TEXT,
+            "pinCode"       TEXT,
+            "serialNo"      TEXT,
+            status            TEXT,
+            next_appointment  TEXT,
+            interested        TEXT,
+            remarks           TEXT,
+            UNIQUE (ifb_point, customer_id, lead_date, follow_up)
+        )
+    """)
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
+    for c in ("status", "next_appointment", "interested", "remarks"):
+        if c not in existing:
+            conn.execute(f"ALTER TABLE api_leads ADD COLUMN {c} TEXT")
+    conn.commit()
+
+
+# Reverse map: customer_follow_up stage → API bucket key (for bootstrap)
+_STAGE_TO_BUCKET = {
+    "Post-Purchase":     "twoDays_details",
+    "1st 30 days call":  "oneMonth_details",
+    "Pre-AMC":           "fortySevenMonthDetails",
+    "8 Year Upgrade":    "eightyFourMonthDetails",
+}
+
+
+def _bootstrap_sqlite_from_json(ifb_point_code: str) -> None:
+    """
+    Cold-start bootstrap: if api_leads has no rows for this IFB Point,
+    populate them from data/api_data.json. Cloud rebuilds wipe SQLite —
+    this restores the catalogue on every restart.
+
+    User edits (status/next_appointment/interested/remarks) come from
+    followups.json and are merged in by the caller after bootstrap.
+    """
+    if not DATA_FILE.exists():
+        return
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            _ensure_api_leads_table(conn)
+            cnt = conn.execute(
+                "SELECT COUNT(*) FROM api_leads WHERE ifb_point = ?",
+                (ifb_point_code,),
+            ).fetchone()[0]
+            if cnt > 0:
+                return
+
+            blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            if not isinstance(blob, dict):
+                return
+            records = [r for r in blob.get("records", []) if isinstance(r, dict)]
+            point_code = str(blob.get("ifb_point_code", ifb_point_code) or ifb_point_code)
+            lead_date  = _dt.now().strftime("%d-%m-%Y")
+
+            for r in records:
+                cust_id = str(r.get("customer_id", "") or "").strip()
+                serial  = str(r.get("serial_no") or r.get("serialNo", "") or "").strip()
+                key_val = f"{point_code}-{cust_id}-{serial}"
+                bucket  = _STAGE_TO_BUCKET.get(r.get("customer_follow_up", ""), "")
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO api_leads
+                      (ifb_point, key, lead_date, follow_up,
+                       customer_id, customer_name, purchase_date, installationdate,
+                       machine_type, phone_number, alt_number, email_id,
+                       "pinCode", "serialNo")
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        point_code, key_val, lead_date, bucket,
+                        cust_id,
+                        r.get("customer_name", ""),
+                        str(r.get("purchase_date") or ""),
+                        str(r.get("installation_date") or r.get("installationdate") or ""),
+                        r.get("machine_type", ""),
+                        r.get("phone_number", ""),
+                        r.get("alt_number", ""),
+                        r.get("email_id", ""),
+                        r.get("pin_code") or r.get("pinCode") or "",
+                        serial,
+                    ),
+                )
+
+            # Merge in user-edited fields from followups.json (if any)
+            fu = _read_followups()
+            for cid, row in fu.items():
+                conn.execute(
+                    """
+                    UPDATE api_leads
+                       SET status = ?, next_appointment = ?, interested = ?, remarks = ?
+                     WHERE customer_id = ?
+                    """,
+                    (row.get("status"), row.get("next_appointment"),
+                     row.get("interested"), row.get("remarks"), str(cid)),
+                )
+            conn.commit()
+    except Exception:
+        pass  # best-effort — JSON fallback still works
+
+
+def _load_records_from_sqlite(ifb_point_code: str) -> list[dict]:
+    """Read all rows for this IFB Point from SQLite and shape them like
+    api_data.json records (so downstream load_all() processing stays the same)."""
+    if not DB_PATH.exists():
+        return []
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """SELECT * FROM api_leads WHERE ifb_point = ?""",
+                (ifb_point_code,),
+            ).fetchall()
+    except Exception:
+        return []
+
+    bucket_to_stage = {
+        "twoDays_details":        "Post-Purchase",
+        "oneMonth_details":       "1st 30 days call",
+        "fortySevenMonthDetails": "Pre-AMC",
+        "eightyFourMonthDetails": "8 Year Upgrade",
+    }
+    out: list[dict] = []
+    for r in rows:
+        out.append({
+            "customer_id":       r["customer_id"],
+            "customer_name":     r["customer_name"],
+            "purchase_date":     r["purchase_date"],
+            "installation_date": r["installationdate"],
+            "machine_type":      r["machine_type"],
+            "phone_number":      r["phone_number"],
+            "alt_number":        r["alt_number"],
+            "email_id":          r["email_id"],
+            "pin_code":          r["pinCode"],
+            "serial_no":         r["serialNo"],
+            "ifb_point_code":    r["ifb_point"],
+            "customer_follow_up": bucket_to_stage.get(r["follow_up"] or "", r["follow_up"] or ""),
+            # User-edited fields read straight from SQLite
+            "status":           r["status"],
+            "next_appointment": r["next_appointment"],
+            "interested":       r["interested"],
+            "remarks":          r["remarks"],
+        })
+    return out
+
+
 def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list[dict], str]:
     """Return (records, source_label).
-    Streamlit Cloud is firewalled out of bseapi.ifbsupport.com, so the
-    primary data source is the JSON snapshot kept fresh by GitHub Actions.
-    Live API is attempted only if the snapshot is missing.
+
+    New flow (SQLite-first):
+      1. Bootstrap SQLite from api_data.json if empty for this IFB Point.
+      2. Read records from SQLite — this is the source of truth.
+      3. Fall back to JSON snapshot only if SQLite is somehow empty.
     """
+    # Step 1: ensure SQLite has data for this IFB Point
+    _bootstrap_sqlite_from_json(ifb_point_code)
+
+    # Step 2: read from SQLite
+    sql_records = _load_records_from_sqlite(ifb_point_code)
+    if sql_records:
+        return sql_records, f"sqlite · {len(sql_records)} rows"
+
+    # Step 3: fallback to JSON (should rarely happen after bootstrap)
     if DATA_FILE.exists():
         try:
             blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
