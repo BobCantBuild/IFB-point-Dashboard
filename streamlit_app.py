@@ -251,6 +251,8 @@ st.markdown("""
   }
   header[data-testid="stHeader"] { background:transparent; }
   #MainMenu, footer { visibility:hidden; }
+  /* Hide Share, Star, Edit, GitHub icons in top right */
+  [data-testid="stToolbar"] { display:none !important; }
 
   /* ── FIXED header band (hero + stats) — truly pinned, never scrolls ── */
   .fixed-header {
