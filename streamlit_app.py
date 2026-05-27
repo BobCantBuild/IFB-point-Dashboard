@@ -692,7 +692,7 @@ st.markdown(f"""
   </div>
   <div class="stats-row">
     <div class="stat-solo">
-      <div class="s-label">🏪 Franchise Code</div>
+      <div class="s-label">🏪 IFB Point Code</div>
       <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code}</div>
     </div>
     <div class="stat-solo">
