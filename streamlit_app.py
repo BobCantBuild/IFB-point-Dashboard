@@ -1046,12 +1046,15 @@ st.markdown("""
 
   /* Status/Interested chips with colored dots */
   .chip {
-    display:inline-flex; align-items:center; gap:8px;
-    font-size:13.5px; color:#1E293B;
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; color:#1E293B;
+    white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+    max-width:100%;
   }
   .chip::before {
     content:''; width:8px; height:8px; border-radius:50%;
-    background:#CBD5E1;
+    background:#CBD5E1; flex-shrink:0;
   }
   .chip.green::before  { background:#16A34A; }
   .chip.red::before    { background:#DC2626; }
@@ -1198,7 +1201,7 @@ st.markdown("""
 
   /* ── Filter rows layout ── */
   .filter-wrap { max-width:1700px; margin:0 auto; }
-  .filter-row-gap { height:14px; }
+  .filter-row-gap { height:22px; }
 
   /* ── API sync status badges ── */
   .api-ok {
@@ -1653,7 +1656,7 @@ else:
     page_df = filtered.iloc[start:end]
 
     # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      2.7,       1.5,  1.0,    1.5,    1.0,   1.8,   1.0,   1.0,  1.1,  2.5]
+    R   = [0.4,      1.8,       1.7,  1.1,    1.5,    1.0,   1.7,   1.3,   1.1,  1.5,  2.2]
     HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email",
            "Status", "Next Appt", "Interested?", "Remarks"]
@@ -1692,7 +1695,15 @@ else:
 
         # 1–10 data cells
         cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
-        cols[2].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>", unsafe_allow_html=True)
+        # Customer name: fall back to a labelled placeholder so blank-name rows
+        # (incomplete records from the API) stay visually identifiable.
+        _name_raw = (str(row.get('customer_name') or '')).strip()
+        if _name_raw:
+            _name_html = f"<b>{_safe(_name_raw)}</b>"
+        else:
+            _mt = str(row.get('machine_type') or '').strip() or 'Customer'
+            _name_html = f"<span style='color:#94A3B8;font-style:italic;'>(unnamed {_mt.lower()})</span>"
+        cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
         cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",    unsafe_allow_html=True)
         cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
         cols[5].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
