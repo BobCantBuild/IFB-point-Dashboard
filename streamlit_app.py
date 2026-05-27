@@ -869,7 +869,7 @@ components.html("""
 
       // Measure actual rendered height of filter bar content
       var filterBarH = Math.ceil(n.getBoundingClientRect().height);
-      if(filterBarH < 20) filterBarH = 30;  // fallback minimum
+      if(filterBarH < 20) filterBarH = 3;  // fallback minimum
       n.style.setProperty('min-height', filterBarH + 'px','important');
 
       var totalPinned = headerH + filterBarH + 2;
