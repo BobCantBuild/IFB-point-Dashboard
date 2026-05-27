@@ -8,7 +8,7 @@ To switch IFB Point franchise, change IFB_POINT_CODE below — that's it.
 from __future__ import annotations
 
 # ─── Change this when switching IFB Point franchise ──────────────────────────
-IFB_POINT_CODE = "1018638"
+IFB_POINT_CODE = "1016070"
 
 # ─── API credentials (rarely change) ─────────────────────────────────────────
 API_BASE = "https://bseapi.ifbsupport.com/api"
