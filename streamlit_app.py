@@ -662,6 +662,15 @@ _badge_html = (
     '<span class="api-err">🔴&nbsp;Sync failed</span>'
 )
 
+# Read Franchise / IFB Point Code from the JSON snapshot (falls back to _API_CODE)
+_ifb_code = _API_CODE
+if DATA_FILE.exists():
+    try:
+        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        _ifb_code = _blob.get("ifb_point_code", _API_CODE) or _API_CODE
+    except Exception:
+        pass
+
 st.markdown(f"""
 <div class="fixed-header">
   <div class="hero">
@@ -675,6 +684,10 @@ st.markdown(f"""
     </div>
   </div>
   <div class="stats-row">
+    <div class="stat-solo">
+      <div class="s-label">🏪 Franchise Code</div>
+      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code}</div>
+    </div>
     <div class="stat-solo">
       <div class="s-label">👥 Total Follow Up's</div>
       <div class="s-value">{total}</div>
