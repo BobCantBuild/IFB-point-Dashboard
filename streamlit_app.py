@@ -295,20 +295,28 @@ def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
     cid = str(cid)
 
+    print(f"[update_row] Writing to DB_PATH={DB_PATH}")
+    print(f"[update_row] DB file exists: {DB_PATH.exists()}")
+
     with sqlite3.connect(DB_PATH) as conn:
+        print(f"[update_row] Connected to {DB_PATH}")
         conn.execute(
             """INSERT OR REPLACE INTO followups
                (customer_id, status, next_appointment, interested, remarks, updated_at)
                VALUES (?, ?, ?, ?, ?, datetime('now'))""",
             (cid, status, appt_str, interested, remarks),
         )
+        print(f"[update_row] INSERT executed for customer_id={cid}")
         conn.commit()
+        print(f"[update_row] COMMIT executed")
+
         row = conn.execute(
             """SELECT customer_id, status, next_appointment,
                       interested, remarks, updated_at
                FROM followups WHERE customer_id = ?""",
             (cid,),
         ).fetchone()
+        print(f"[update_row] Read-back result: {row}")
 
     if row is None:
         raise RuntimeError(f"Save appeared to succeed but followup row {cid!r} is missing.")
@@ -1300,3 +1308,28 @@ else:
                      use_container_width=True, disabled=(page >= total_pages)):
             st.session_state["page_num"] = page + 1
             st.rerun()
+
+
+# ─── DEBUG PANEL ─────────────────────────────────────────────────────────────
+st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
+with st.expander("🔧 DEBUG — SQLite Health Check"):
+    st.write(f"**DB_PATH**: `{DB_PATH}`")
+    st.write(f"**File exists**: {DB_PATH.exists()}")
+    st.write(f"**File writable**: {_os.access(DB_PATH, _os.W_OK) if DB_PATH.exists() else 'N/A'}")
+    st.write(f"**Parent writable**: {_os.access(DB_PATH.parent, _os.W_OK)}")
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cu_count = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
+            fu_count = conn.execute("SELECT COUNT(*) FROM followups").fetchone()[0]
+        st.write(f"**customers table**: {cu_count} rows")
+        st.write(f"**followups table**: {fu_count} rows")
+
+        if fu_count > 0:
+            st.write("**Last 5 rows in followups table:**")
+            fu_df_debug = _load_followups().tail(5)
+            st.dataframe(fu_df_debug, use_container_width=True)
+        else:
+            st.info("⚠️ followups table is EMPTY — no saves are persisting!")
+    except Exception as e:
+        st.error(f"❌ DEBUG query failed: {type(e).__name__}: {e}")
