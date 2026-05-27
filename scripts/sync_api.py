@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ PASSWORD = os.environ.get("IFB_API_PASS",   API_PASS)
 IFB_CODE = os.environ.get("IFB_POINT_CODE", IFB_POINT_CODE)  # env var still overrides for CI
 
 OUT_FILE = REPO_ROOT / "data" / "api_data.json"
+DB_FILE  = REPO_ROOT / "ifb_point.db"
 
 # Maps API bucket keys → customer_follow_up stage label shown in the dashboard
 BUCKET_STAGE = {
@@ -67,6 +69,82 @@ def _normalise_record(rec: dict, stage: str, point_code: str, point_name: str) -
         "ifb_point_name":    point_name,
         "customer_follow_up": stage,
     }
+
+
+# Columns that mirror the raw API field names (so the DB matches the source 1:1).
+_API_COLS = (
+    "customer_id", "customer_name", "purchase_date", "installationdate",
+    "machine_type", "phone_number", "alt_number", "email_id",
+    "pinCode", "serialNo",
+)
+
+
+def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
+    """Create the api_leads table if missing. Hyphenated column quoted in SQL."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_leads (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ifb_point       TEXT,
+            key             TEXT,
+            lead_date       TEXT,
+            follow_up       TEXT,
+            customer_id     TEXT,
+            customer_name   TEXT,
+            purchase_date   TEXT,
+            installationdate TEXT,
+            machine_type    TEXT,
+            phone_number    TEXT,
+            alt_number      TEXT,
+            email_id        TEXT,
+            "pinCode"       TEXT,
+            "serialNo"      TEXT,
+            UNIQUE (ifb_point, customer_id, lead_date, follow_up)
+        )
+    """)
+    conn.commit()
+
+
+def append_to_sqlite(payload: dict | list, point_code: str) -> int:
+    """
+    Walk the raw API payload (bucket → list of customer dicts) and append each
+    record to the api_leads table. Returns the number of rows actually inserted.
+
+    Rules:
+      • lead_date = today in DD-MM-YYYY (per user spec)
+      • follow_up = the API bucket key (twoDays_details, oneMonth_details, ...)
+      • Same (ifb_point, customer_id, lead_date, follow_up) re-runs are no-ops
+        → so running sync twice on the same day doesn't duplicate rows
+      • Different days append historical lead snapshots
+      • Existing rows for OTHER ifb_points are NEVER deleted (append-only)
+    """
+    if not isinstance(payload, dict):
+        return 0
+
+    lead_date = datetime.now().strftime("%d-%m-%Y")
+    inserted  = 0
+
+    with sqlite3.connect(DB_FILE) as conn:
+        _ensure_api_leads_table(conn)
+        for bucket_key, _stage in BUCKET_STAGE.items():
+            for raw in payload.get(bucket_key, []):
+                if not isinstance(raw, dict):
+                    continue
+                values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
+                cur = conn.execute(
+                    """
+                    INSERT OR IGNORE INTO api_leads
+                      (ifb_point, key, lead_date, follow_up,
+                       customer_id, customer_name, purchase_date, installationdate,
+                       machine_type, phone_number, alt_number, email_id,
+                       "pinCode", "serialNo")
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (point_code, "", lead_date, bucket_key, *values),
+                )
+                inserted += cur.rowcount if cur.rowcount > 0 else 0
+        conn.commit()
+
+    return inserted
 
 
 def parse_payload(payload: dict | list) -> tuple[list[dict], str, str]:
@@ -126,7 +204,8 @@ def main() -> int:
         print(f"[sync_api] FETCH FAILED — HTTP {r2.status_code}: {r2.text[:300]}", file=sys.stderr)
         return 1
 
-    records, point_code, point_name = parse_payload(r2.json())
+    raw_payload = r2.json()
+    records, point_code, point_name = parse_payload(raw_payload)
     print(f"[sync_api] Parsed {len(records)} records — code={point_code}, name={point_name!r}")
 
     out = {
@@ -140,6 +219,15 @@ def main() -> int:
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[sync_api] Wrote {len(records)} records to {OUT_FILE.relative_to(REPO_ROOT)}")
+
+    # Append raw API records to SQLite (cumulative, never deletes anything)
+    try:
+        inserted = append_to_sqlite(raw_payload, point_code)
+        print(f"[sync_api] SQLite: appended {inserted} new row(s) to api_leads "
+              f"(table: {DB_FILE.name})")
+    except Exception as exc:
+        print(f"[sync_api] SQLite append failed (non-fatal): {exc}", file=sys.stderr)
+
     return 0
 
 
