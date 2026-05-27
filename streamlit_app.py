@@ -727,27 +727,29 @@ def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
     _write_followups(data)
 
     # Mirror user edits into the SQLite api_leads table so the DB stays in sync.
-    # Updates every row for this customer_id (a customer may have rows for
-    # multiple lead_dates / follow_up buckets — all reflect the same person).
+    # Updates every row for this customer_id within the current IFB Point.
+    saved["_sqlite"] = {"rows_updated": 0, "error": None, "db_path": str(DB_PATH)}
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            # Best-effort: ensure the 4 columns exist (sync_api.py also handles this)
             existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
-            if existing:  # only if api_leads table itself exists
+            if not existing:
+                saved["_sqlite"]["error"] = "api_leads table does not exist"
+            else:
                 for col in ("status", "next_appointment", "interested", "remarks"):
                     if col not in existing:
                         conn.execute(f"ALTER TABLE api_leads ADD COLUMN {col} TEXT")
-                conn.execute(
+                cur = conn.execute(
                     """
                     UPDATE api_leads
                        SET status = ?, next_appointment = ?, interested = ?, remarks = ?
-                     WHERE customer_id = ?
+                     WHERE customer_id = ? AND ifb_point = ?
                     """,
-                    (status, appt_str, interested, remarks, cid),
+                    (status, appt_str, interested, remarks, cid, _API_CODE),
                 )
                 conn.commit()
-    except Exception:
-        pass  # best-effort — followups.json is the source of truth
+                saved["_sqlite"]["rows_updated"] = cur.rowcount
+    except Exception as exc:
+        saved["_sqlite"]["error"] = f"{type(exc).__name__}: {exc}"
 
     return saved
 
@@ -1601,13 +1603,17 @@ def edit_lead_dialog(row: dict):
                     None if ni == "—" else ni,
                     nr.strip() or None,
                 )
-                st.toast(
-                    f"✅ Saved to DB — "
-                    f"Status: {saved.get('status') or '—'}  |  "
-                    f"Appt: {saved.get('next_appointment') or '—'}  |  "
-                    f"Interested: {saved.get('interested') or '—'}",
-                    icon="💾",
-                )
+                _sql = saved.get("_sqlite", {}) or {}
+                _rows = _sql.get("rows_updated", 0)
+                _err  = _sql.get("error")
+                if _err:
+                    st.warning(f"⚠️ SQLite write failed — {_err}")
+                else:
+                    st.toast(
+                        f"✅ Saved — followups.json + SQLite "
+                        f"({_rows} row{'s' if _rows != 1 else ''} updated)",
+                        icon="💾",
+                    )
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Save failed — {type(e).__name__}: {e}")
