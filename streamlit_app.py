@@ -836,10 +836,11 @@ components.html("""
       if(headerH < 40){ setTimeout(fix,120); return; } // not fully rendered yet
 
       var filterBarH = 62;
-      var totalPinned = headerH + filterBarH + 10; // 10px breathing room
+      var totalPinned = headerH + filterBarH + 16; // 16px breathing room
 
-      // Push the scrollable block-container below both pinned bands
-      var bc = doc.querySelector('[data-testid="stAppViewBlockContainer"]');
+      // Target .block-container directly — same element the CSS rule targets,
+      // so inline style beats !important without a specificity fight
+      var bc = doc.querySelector('.block-container');
       if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
 
       // Apply fixed positioning via inline style (highest CSS priority)
@@ -872,11 +873,14 @@ components.html("""
       }
     }catch(e){ setTimeout(fix,150); }
   }
-  // Run on load and re-run on every Streamlit DOM update (rerun)
+  // Run immediately, then again after fonts/images settle
   fix();
+  setTimeout(fix, 400);
+  setTimeout(fix, 1200);
   try{
+    // subtree:true catches Streamlit reruns that swap inner elements
     new MutationObserver(function(){ fix(); })
-      .observe(window.parent.document.body, {childList:true, subtree:false});
+      .observe(window.parent.document.body, {childList:true, subtree:true});
   }catch(e){}
 })();
 </script>
