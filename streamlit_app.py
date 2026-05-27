@@ -1551,3 +1551,17 @@ with st.expander("🔧 DEBUG — Followup Storage"):
         st.dataframe(pd.DataFrame(list(_fu_data.values())).tail(5), use_container_width=True)
     else:
         st.info("⚠️ No saves yet — followups.json is empty.")
+
+    st.markdown("---")
+    st.write("### 📦 Raw api_data.json (complete snapshot)")
+    if DATA_FILE.exists():
+        try:
+            _raw_blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            st.write(f"**synced_at_utc**: {_raw_blob.get('synced_at_utc', 'N/A')}")
+            st.write(f"**ifb_point_code**: {_raw_blob.get('ifb_point_code', 'N/A')}")
+            st.write(f"**record_count**: {_raw_blob.get('record_count', 'N/A')}")
+            st.json(_raw_blob)
+        except Exception as _e:
+            st.error(f"Could not read api_data.json: {_e}")
+    else:
+        st.warning("api_data.json does not exist.")
