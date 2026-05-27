@@ -1656,7 +1656,7 @@ else:
     page_df = filtered.iloc[start:end]
 
     # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      1.8,       1.7,  1.1,    1.5,    1.0,   1.7,   1.3,   1.1,  1.5,  2.2]
+    R   = [0.4,      1.7,       2.0,  1.1,    1.5,    1.0,   1.6,   1.3,   1.1,  1.4,  2.0]
     HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email",
            "Status", "Next Appt", "Interested?", "Remarks"]
