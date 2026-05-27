@@ -729,7 +729,14 @@ st.markdown(f"""
 
 
 # --------------------------------------------------------------------------- #
-# Section selector — read from session_state BEFORE filter logic runs
+# Lead view selector (Today / Missed) — read from session_state
+# --------------------------------------------------------------------------- #
+lead_view = st.session_state.get("_lead_view", "Today")
+if lead_view not in ["Today", "Missed"]:
+    lead_view = "Today"
+
+# --------------------------------------------------------------------------- #
+# Section selector — Open / Attempted — read from session_state BEFORE filter
 # --------------------------------------------------------------------------- #
 _SEC_OPTS = ["Open", "Attempted"]
 section   = st.session_state.get("_view_section", "Open")
@@ -738,12 +745,40 @@ if section not in _SEC_OPTS:
 
 
 # --------------------------------------------------------------------------- #
-# Filters (fixed bar — toggle | date range | search | refresh, one row)
+# Filters (two fixed rows)
 # --------------------------------------------------------------------------- #
-# Anchor marker — collapses to zero height; JS uses it to locate the next
-# sibling element-container (the filter columns) and force position:fixed.
+# Anchor marker — JS locates the two sibling element-containers and pins them.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
+# ── Row 1: Lead type toggles + date range ──────────────────────────────────
+_pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
+min_pd = min(_pds) if _pds else date(2019, 1, 1)
+max_pd = max(_pds) if _pds else today
+
+lr1, lr2, lr3 = st.columns([1, 1, 2], gap="small")
+with lr1:
+    if st.button("📅  Today Leads", key="btn_today",
+                 use_container_width=True,
+                 type="primary" if lead_view == "Today" else "secondary"):
+        st.session_state["_lead_view"] = "Today"
+        st.rerun()
+with lr2:
+    if st.button("⚠️  Missed Leads", key="btn_missed",
+                 use_container_width=True,
+                 type="primary" if lead_view == "Missed" else "secondary"):
+        st.session_state["_lead_view"] = "Missed"
+        st.rerun()
+with lr3:
+    date_range = st.date_input(
+        "📅  Lead Date Range",
+        value=(min_pd, max_pd),
+        min_value=min_pd,
+        max_value=max_pd,
+        format="DD/MM/YYYY",
+        label_visibility="collapsed",
+    )
+
+# ── Row 2: Open/Attempted toggles + stage filter + search ─────────────────
 _FU_OPTS = [
     "All Follow-Up Stages",
     "Post-Purchase",
@@ -752,13 +787,13 @@ _FU_OPTS = [
     "8 Year Upgrade",
 ]
 _FU_LABEL = {
-    "All Follow-Up Stages":                 "🌐  All Follow-Up Stages",
-    "Post-Purchase":           "🎉  Post-Purchase",
-    "1st 30 days call":  "🔄  1st 30 days call",
-    "Pre-AMC":           "⏰  Pre-AMC",
-    "8 Year Upgrade":    "🏆  8 Year Upgrade",
+    "All Follow-Up Stages": "🌐  All Follow-Up Stages",
+    "Post-Purchase":        "🎉  Post-Purchase",
+    "1st 30 days call":     "🔄  1st 30 days call",
+    "Pre-AMC":              "⏰  Pre-AMC",
+    "8 Year Upgrade":       "🏆  8 Year Upgrade",
 }
-fc1, fc2, fc3, fc4, fc5 = st.columns([2, 1, 1, 1, 0.7], gap="small")
+fc1, fc2, fc3 = st.columns([2, 1, 1], gap="small")
 with fc1:
     t1, t2 = st.columns(2, gap="small")
     with t1:
@@ -781,32 +816,11 @@ with fc2:
         label_visibility="collapsed",
     )
 with fc3:
-    _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
-    min_pd = min(_pds) if _pds else date(2019, 1, 1)
-    max_pd = max(_pds) if _pds else today
-    date_range = st.date_input(
-        "📅  Lead Date Range",
-        value=(min_pd, max_pd),
-        min_value=min_pd,
-        max_value=max_pd,
-        format="DD/MM/YYYY",
-        label_visibility="collapsed",
-    )
-with fc4:
     search_q = st.text_input(
         "Search",
         placeholder="🔍  Name · Phone · Email · ID",
         label_visibility="collapsed",
     )
-with fc5:
-    if st.button("↻  Refresh", key="refresh_btn",
-                 help="Re-sync from API and reload",
-                 use_container_width=True,
-                 type="secondary"):
-        st.cache_data.clear()
-        try: st.cache_resource.clear()
-        except Exception: pass
-        st.rerun()
 
 # JS injection — walk the DOM to find the filter columns element-container
 # (sibling after #filter-anchor) and force position:fixed on it directly.
@@ -814,10 +828,40 @@ with fc5:
 components.html("""
 <script>
 (function(){
-  // Debounce: only one run per 60ms burst, prevents infinite loop when
-  // our own style mutations re-trigger the MutationObserver
   var _pending = false;
   function schedule(){ if(!_pending){ _pending=true; setTimeout(run,60); } }
+
+  // Returns the next element-container sibling after el
+  function nextEC(el){
+    var n = el.nextElementSibling;
+    while(n && !(n.classList && n.classList.contains('element-container')))
+      n = n.nextElementSibling;
+    return n;
+  }
+
+  // Apply fixed-position styles + vertically centre columns inside a row
+  function pinRow(el, top){
+    el.style.setProperty('position','fixed','important');
+    el.style.setProperty('top', top + 'px','important');
+    el.style.setProperty('left','0','important');
+    el.style.setProperty('right','0','important');
+    el.style.setProperty('z-index','9998','important');
+    el.style.setProperty('background','#F1F5F9','important');
+    el.style.setProperty('padding','0 22px','important');
+    el.style.setProperty('overflow','visible','important');
+    var hb = el.querySelector('[data-testid="stHorizontalBlock"]');
+    if(hb){
+      hb.style.setProperty('align-items','center','important');
+      hb.style.setProperty('display','flex','important');
+    }
+    var colDivs = el.querySelectorAll('[data-testid="column"] > div');
+    for(var i=0;i<colDivs.length;i++){
+      colDivs[i].style.setProperty('display','flex','important');
+      colDivs[i].style.setProperty('flex-direction','column','important');
+      colDivs[i].style.setProperty('justify-content','center','important');
+      colDivs[i].style.setProperty('padding','0 6px','important');
+    }
+  }
 
   function run(){
     _pending = false;
@@ -825,66 +869,50 @@ components.html("""
       var doc = window.parent.document;
       var a = doc.getElementById('filter-anchor');
       if(!a){ setTimeout(schedule,120); return; }
-      // Walk up to the element-container that wraps the anchor
+      // Walk up to element-container wrapping the anchor
       var ec = a;
       while(ec && !(ec.classList && ec.classList.contains('element-container')))
         ec = ec.parentElement;
       if(!ec){ setTimeout(schedule,120); return; }
-      // Next sibling element-container = the filter columns
-      var n = ec.nextElementSibling;
-      while(n && !(n.classList && n.classList.contains('element-container')))
-        n = n.nextElementSibling;
-      if(!n){ setTimeout(schedule,120); return; }
-      // Measure actual rendered height of the fixed header
+
+      // Row 1 = Today / Missed / date range
+      var n1 = nextEC(ec);
+      if(!n1){ setTimeout(schedule,120); return; }
+      // Row 2 = Open Followup / Attempted / Stage / Search
+      var n2 = nextEC(n1);
+      if(!n2){ setTimeout(schedule,120); return; }
+
+      // Measure fixed header
       var fixedHdr = doc.querySelector('.fixed-header');
       if(!fixedHdr){ setTimeout(schedule,120); return; }
       var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
       if(headerH < 40){ setTimeout(schedule,120); return; }
 
-      // Pin filter bar right below fixed header (no height constraints yet)
-      n.style.setProperty('position','fixed','important');
-      n.style.setProperty('top', headerH + 'px','important');
-      n.style.setProperty('left','0','important');
-      n.style.setProperty('right','0','important');
-      n.style.setProperty('z-index','9998','important');
-      n.style.setProperty('background','#F1F5F9','important');
-      n.style.setProperty('padding','0 22px','important');
-      n.style.setProperty('overflow','visible','important');
-      n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
-      n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
+      // Pin Row 1 directly below the stats header
+      pinRow(n1, headerH);
+      n1.style.setProperty('border-bottom','1px solid rgba(226,232,240,0.6)','important');
+      var row1H = Math.ceil(n1.getBoundingClientRect().height);
+      if(row1H < 20) row1H = 3;
+      n1.style.setProperty('min-height', row1H + 'px','important');
 
-      // Vertically centre the columns row inside the fixed bar
-      var hb = n.querySelector('[data-testid="stHorizontalBlock"]');
-      if(hb){
-        hb.style.setProperty('align-items','center','important');
-        hb.style.setProperty('display','flex','important');
-      }
-      var colDivs = n.querySelectorAll('[data-testid="column"] > div');
-      for(var i=0;i<colDivs.length;i++){
-        colDivs[i].style.setProperty('display','flex','important');
-        colDivs[i].style.setProperty('flex-direction','column','important');
-        colDivs[i].style.setProperty('justify-content','center','important');
-        colDivs[i].style.setProperty('padding','0 6px','important');
-      }
+      // Pin Row 2 directly below Row 1
+      pinRow(n2, headerH + row1H);
+      n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
+      n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
+      var row2H = Math.ceil(n2.getBoundingClientRect().height);
+      if(row2H < 20) row2H = 3;
+      n2.style.setProperty('min-height', row2H + 'px','important');
 
-      // Measure actual rendered height of filter bar content
-      var filterBarH = Math.ceil(n.getBoundingClientRect().height);
-      if(filterBarH < 20) filterBarH = 3;  // fallback minimum
-      n.style.setProperty('min-height', filterBarH + 'px','important');
-
-      var totalPinned = headerH + filterBarH + 2;
-
-      // Target .block-container directly — inline style overrides CSS !important
+      // Push scrollable content below both pinned rows
+      var totalPinned = headerH + row1H + row2H + 2;
       var bc = doc.querySelector('.block-container');
       if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
     }catch(e){ setTimeout(schedule,200); }
   }
-  // Run on load + one retry after fonts settle
+
   schedule();
   setTimeout(schedule, 500);
   try{
-    // subtree:false — only watch direct children of body changing (Streamlit reruns)
-    // subtree:true caused infinite loops from our own style.setProperty calls
     new MutationObserver(schedule)
       .observe(window.parent.document.body, {childList:true, subtree:false});
   }catch(e){}
