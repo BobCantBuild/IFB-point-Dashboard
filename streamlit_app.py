@@ -841,14 +841,7 @@ components.html("""
       var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
       if(headerH < 40){ setTimeout(schedule,120); return; }
 
-      var filterBarH = 62;
-      var totalPinned = headerH + filterBarH + 4;
-
-      // Target .block-container directly — inline style overrides CSS !important
-      var bc = doc.querySelector('.block-container');
-      if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
-
-      // Pin filter bar right below fixed header
+      // Pin filter bar right below fixed header (no height constraints yet)
       n.style.setProperty('position','fixed','important');
       n.style.setProperty('top', headerH + 'px','important');
       n.style.setProperty('left','0','important');
@@ -856,7 +849,6 @@ components.html("""
       n.style.setProperty('z-index','9998','important');
       n.style.setProperty('background','#F1F5F9','important');
       n.style.setProperty('padding','0 22px','important');
-      n.style.setProperty('min-height','62px','important');
       n.style.setProperty('overflow','visible','important');
       n.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
@@ -865,16 +857,26 @@ components.html("""
       var hb = n.querySelector('[data-testid="stHorizontalBlock"]');
       if(hb){
         hb.style.setProperty('align-items','center','important');
-        hb.style.setProperty('height','62px','important');
+        hb.style.setProperty('display','flex','important');
       }
       var colDivs = n.querySelectorAll('[data-testid="column"] > div');
       for(var i=0;i<colDivs.length;i++){
         colDivs[i].style.setProperty('display','flex','important');
         colDivs[i].style.setProperty('flex-direction','column','important');
         colDivs[i].style.setProperty('justify-content','center','important');
-        colDivs[i].style.setProperty('height','62px','important');
         colDivs[i].style.setProperty('padding','0 6px','important');
       }
+
+      // Measure actual rendered height of filter bar content
+      var filterBarH = Math.ceil(n.getBoundingClientRect().height);
+      if(filterBarH < 20) filterBarH = 40;  // fallback minimum
+      n.style.setProperty('min-height', filterBarH + 'px','important');
+
+      var totalPinned = headerH + filterBarH + 4;
+
+      // Target .block-container directly — inline style overrides CSS !important
+      var bc = doc.querySelector('.block-container');
+      if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
     }catch(e){ setTimeout(schedule,200); }
   }
   // Run on load + one retry after fonts settle
