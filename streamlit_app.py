@@ -471,8 +471,8 @@ st.markdown("""
   .stButton > button[kind="secondary"] {
     background:#FFFFFF !important; color:#475569 !important;
     border:1px solid #CBD5E1 !important;
-    height:42px !important; min-height:42px !important;
-    padding:0 18px !important; font-size:13px !important; font-weight:600 !important;
+    height:34px !important; min-height:34px !important;
+    padding:0 14px !important; font-size:12px !important; font-weight:600 !important;
     border-radius:8px !important;
   }
   .stButton > button[kind="secondary"]:hover {
@@ -484,8 +484,8 @@ st.markdown("""
     background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%) !important;
     color:#FFFFFF !important; border:0 !important;
     box-shadow:0 2px 8px rgba(15,23,42,0.35) !important;
-    height:42px !important; min-height:42px !important;
-    padding:0 18px !important; font-size:13px !important; font-weight:700 !important;
+    height:34px !important; min-height:34px !important;
+    padding:0 14px !important; font-size:12px !important; font-weight:700 !important;
     border-radius:10px !important;
   }
   .stButton > button[kind="primary"]:hover {
@@ -895,8 +895,9 @@ components.html("""
       if(row1H < 20) row1H = 3;
       n1.style.setProperty('min-height', row1H + 'px','important');
 
-      // Pin Row 2 directly below Row 1
-      pinRow(n2, headerH + row1H);
+      // Pin Row 2 below Row 1 with a small gap
+      var ROW_GAP = 4;
+      pinRow(n2, headerH + row1H + ROW_GAP);
       n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
       var row2H = Math.ceil(n2.getBoundingClientRect().height);
@@ -904,7 +905,7 @@ components.html("""
       n2.style.setProperty('min-height', row2H + 'px','important');
 
       // Push scrollable content below both pinned rows
-      var totalPinned = headerH + row1H + row2H + 2;
+      var totalPinned = headerH + row1H + ROW_GAP + row2H + 2;
       var bc = doc.querySelector('.block-container');
       if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
     }catch(e){ setTimeout(schedule,200); }
@@ -949,16 +950,6 @@ if q:
     mask |= filtered["customer_id"].astype(str).str.contains(q, case=False, na=False)
     filtered = filtered[mask]
 
-_sec_help  = {
-    "Open":      "All leads matching your current filters.",
-    "Attempted": "Leads where a follow-up was Contacted or Not Contacted.",
-}.get(section, "")
-
-st.markdown(f"""
-<div class="sec">
-  <span class="cnt">{len(filtered)} record{'s' if len(filtered)!=1 else ''}</span>
-  <span class="sec-help">{_sec_help}</span>
-</div>""", unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------- #
