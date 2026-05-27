@@ -1099,7 +1099,7 @@ st.markdown(f"""
   <div class="stats-row">
     <div class="stat-solo">
       <div class="s-label">🏪 IFB Point Code</div>
-      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code}</div>
+      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_API_CODE}</div>
     </div>
     <div class="stat-solo">
       <div class="s-label">👥 Total Follow Up's</div>
