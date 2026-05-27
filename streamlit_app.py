@@ -608,11 +608,20 @@ st.markdown("""
     background:#FFFFFF !important;
     border:1px solid var(--line) !important;
     border-radius:8px !important;
+    height:34px !important;
     min-height:34px !important;
+    padding:0 !important;
+    display:flex !important;
+    align-items:center !important;
   }
   [data-testid="stContainer"] input,
-  [data-testid="stContainer"] .stDateInput input {
-    height:32px !important; font-size:12.5px !important;
+  [data-testid="stContainer"] .stDateInput input,
+  [data-testid="stContainer"] div[data-baseweb="select"] [role="combobox"] {
+    height:34px !important;
+    min-height:34px !important;
+    line-height:34px !important;
+    padding:0 10px !important;
+    font-size:12.5px !important;
   }
   /* Radio pill row — match the 34px height of the other inputs */
   [data-testid="stContainer"] div[role="radiogroup"] {
