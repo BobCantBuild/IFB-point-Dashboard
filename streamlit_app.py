@@ -633,6 +633,10 @@ st.markdown("""
     padding:0 14px !important; font-size:12px !important;
   }
 
+  /* ── Filter rows layout ── */
+  .filter-wrap { max-width:1700px; margin:0 auto; }
+  .filter-row-gap { height:14px; }
+
   /* ── API sync status badges ── */
   .api-ok {
     font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;
@@ -786,6 +790,8 @@ if section not in _SEC_OPTS:
 # Anchor marker — JS locates the two sibling element-containers and pins them.
 st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
 
+st.markdown('<div class="filter-wrap">', unsafe_allow_html=True)
+
 # ── Row 1: Lead type toggles + date range ──────────────────────────────────
 _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
 min_pd = min(_pds) if _pds else date(2019, 1, 1)
@@ -815,7 +821,7 @@ with lr3:
     )
 
 # gap between the two filter rows
-st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+st.markdown('<div class="filter-row-gap"></div>', unsafe_allow_html=True)
 
 # ── Row 2: Open/Attempted toggles + stage filter + search ─────────────────
 _FU_OPTS = [
@@ -832,7 +838,7 @@ _FU_LABEL = {
     "Pre-AMC":              "⏰  Pre-AMC",
     "8 Year Upgrade":       "🏆  8 Year Upgrade",
 }
-rc1, rc2, rc3, rc4 = st.columns([1, 1, 1.4, 1.4], gap="medium")
+rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 1], gap="medium")
 with rc1:
     if st.button("📋  Open Followup's", key="btn_open",
                  use_container_width=True,
@@ -858,6 +864,8 @@ with rc4:
         placeholder="🔍  Name · Phone · Email · ID",
         label_visibility="collapsed",
     )
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # small spacer so the data table has breathing room below the filter rows
 st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
