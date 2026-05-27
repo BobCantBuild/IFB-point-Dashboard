@@ -1554,6 +1554,8 @@ with st.expander("🔧 DEBUG — Followup Storage"):
 
     st.markdown("---")
     st.write("### 📦 Raw api_data.json (complete snapshot)")
+    st.write(f"**DATA_FILE path**: `{DATA_FILE}`")
+    st.write(f"**DATA_FILE exists**: {DATA_FILE.exists()}")
     if DATA_FILE.exists():
         try:
             _raw_blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -1564,4 +1566,4 @@ with st.expander("🔧 DEBUG — Followup Storage"):
         except Exception as _e:
             st.error(f"Could not read api_data.json: {_e}")
     else:
-        st.warning("api_data.json does not exist.")
+        st.error("❌ api_data.json NOT FOUND — this is why no data shows.")
