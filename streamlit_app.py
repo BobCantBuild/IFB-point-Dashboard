@@ -1552,8 +1552,7 @@ with st.expander("🔧 DEBUG — Followup Storage"):
     else:
         st.info("⚠️ No saves yet — followups.json is empty.")
 
-    st.markdown("---")
-    st.write("### 📦 Raw api_data.json (complete snapshot)")
+with st.expander("📦 DEBUG — Raw API Data (api_data.json)"):
     st.write(f"**DATA_FILE path**: `{DATA_FILE}`")
     st.write(f"**DATA_FILE exists**: {DATA_FILE.exists()}")
     if DATA_FILE.exists():
