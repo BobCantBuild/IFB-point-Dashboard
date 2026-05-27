@@ -16,7 +16,7 @@ import httpx
 API_BASE = "https://bseapi.ifbsupport.com/api"
 USERNAME = os.environ.get("IFB_API_USER",   "IFBFollowUPAPP")
 PASSWORD = os.environ.get("IFB_API_PASS",   "U29tZVJhbmRvbUJhc2U2NA==")
-IFB_CODE = os.environ.get("IFB_POINT_CODE", "ADSF")
+IFB_CODE = os.environ.get("IFB_POINT_CODE", "1034532")  # ← change this when switching IFB Point franchise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUT_FILE  = REPO_ROOT / "data" / "api_data.json"
