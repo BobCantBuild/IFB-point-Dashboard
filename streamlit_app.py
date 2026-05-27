@@ -287,7 +287,7 @@ st.markdown("""
 
   /* Collapse element-container wrappers around fixed/hidden elements */
   .element-container:has(.fixed-header),
-  .element-container:has(iframe[title="st.iframe"]) {
+  .element-container:has([data-testid="stCustomComponentV1"]) {
     height:0 !important; min-height:0 !important;
     margin:0 !important; padding:0 !important;
     overflow:hidden !important;
@@ -306,10 +306,15 @@ st.markdown("""
   .element-container:has(#filter-anchor) {
     display:none !important;
   }
-  /* Hide the 0-height JS-injection iframe */
-  iframe[title="st_components_html_v1"],
+  /* Collapse the JS-injection iframe wrapper without display:none
+     (display:none on the wrapper can prevent the iframe script from running) */
   [data-testid="stCustomComponentV1"] {
-    display:none !important; height:0 !important; min-height:0 !important;
+    height:0 !important; min-height:0 !important;
+    overflow:hidden !important; pointer-events:none !important;
+  }
+  iframe[title="st_components_html_v1"] {
+    height:0 !important; width:0 !important; min-height:0 !important;
+    border:none !important; display:block !important;
   }
 
   /* ── Hero ── */
@@ -935,6 +940,22 @@ components.html("""
       n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
 
+      // ── Collapse any non-data containers between n2 and the first data row ──
+      // This removes visual ghost boxes (JS iframe wrapper, stray wrappers, etc.)
+      // Stop as soon as we reach actual table content (.th, .td) or a meaningful
+      // markdown block (e.g. "no records" message).
+      var nx = nextEC(n2);
+      while(nx){
+        var hasData = nx.querySelector('.th') || nx.querySelector('.td') ||
+                      nx.querySelector('[data-testid="stDataFrame"]') ||
+                      nx.querySelector('#no-records-msg');
+        if(hasData) break;
+        nx.style.setProperty('height','0','important');
+        nx.style.setProperty('min-height','0','important');
+        nx.style.setProperty('overflow','hidden','important');
+        nx = nextEC(nx);
+      }
+
       // Compute padding-top so content starts right below the two pinned rows.
       // bcStaticTop = block-container distance from document top (scroll-independent).
       var scrollY  = window.parent.scrollY || window.parent.pageYOffset || 0;
@@ -1101,7 +1122,7 @@ def edit_lead_dialog(row: dict):
 # ── Table rendering ─────────────────────────────────────────────────────────
 if len(filtered) == 0:
     st.markdown(
-        "<div style='text-align:center;padding:64px 20px;color:#94A3B8;"
+        "<div id='no-records-msg' style='text-align:center;padding:64px 20px;color:#94A3B8;"
         "background:#fff;border:1px solid #E2E8F0;border-radius:14px;"
         "box-shadow:0 1px 4px rgba(0,0,0,.04);font-size:14px;'>"
         "No records match the current filters.</div>",
