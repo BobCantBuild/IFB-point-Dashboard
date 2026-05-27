@@ -553,6 +553,30 @@ def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
     data      = _read_followups()
     data[cid] = saved
     _write_followups(data)
+
+    # Mirror user edits into the SQLite api_leads table so the DB stays in sync.
+    # Updates every row for this customer_id (a customer may have rows for
+    # multiple lead_dates / follow_up buckets — all reflect the same person).
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            # Best-effort: ensure the 4 columns exist (sync_api.py also handles this)
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
+            if existing:  # only if api_leads table itself exists
+                for col in ("status", "next_appointment", "interested", "remarks"):
+                    if col not in existing:
+                        conn.execute(f"ALTER TABLE api_leads ADD COLUMN {col} TEXT")
+                conn.execute(
+                    """
+                    UPDATE api_leads
+                       SET status = ?, next_appointment = ?, interested = ?, remarks = ?
+                     WHERE customer_id = ?
+                    """,
+                    (status, appt_str, interested, remarks, cid),
+                )
+                conn.commit()
+    except Exception:
+        pass  # best-effort — followups.json is the source of truth
+
     return saved
 
 

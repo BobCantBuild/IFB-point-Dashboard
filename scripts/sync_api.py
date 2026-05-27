@@ -80,7 +80,7 @@ _API_COLS = (
 
 
 def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
-    """Create the api_leads table if missing. Hyphenated column quoted in SQL."""
+    """Create the api_leads table if missing, then run idempotent migrations."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS api_leads (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,9 +98,18 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
             email_id        TEXT,
             "pinCode"       TEXT,
             "serialNo"      TEXT,
+            status            TEXT,
+            next_appointment  TEXT,
+            interested        TEXT,
+            remarks           TEXT,
             UNIQUE (ifb_point, customer_id, lead_date, follow_up)
         )
     """)
+    # Migration for DBs created before the 4 user-input columns existed
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
+    for new_col in ("status", "next_appointment", "interested", "remarks"):
+        if new_col not in existing:
+            conn.execute(f"ALTER TABLE api_leads ADD COLUMN {new_col} TEXT")
     conn.commit()
 
 
