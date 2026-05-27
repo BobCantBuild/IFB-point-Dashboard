@@ -1,10 +1,10 @@
-"""IFB Point Dashboard — Streamlit UI backed by SQLite."""
+"""IFB Point Dashboard — Streamlit UI backed by followups.json + GitHub API."""
 from __future__ import annotations
 
+import base64
 import json
 import os
-import sqlite3
-from datetime import date
+from datetime import date, datetime as _dt
 from pathlib import Path
 
 import pandas as pd
@@ -12,14 +12,8 @@ import httpx as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
-import os as _os
-
-DATA_FILE = Path(__file__).parent / "data" / "api_data.json"
-
-# On Streamlit Cloud the app directory is read-only; use /tmp instead.
-# Locally the app directory is writable, so the DB lives next to the code.
-_APP_DIR = Path(__file__).parent
-DB_PATH  = (_APP_DIR if _os.access(_APP_DIR, _os.W_OK) else Path("/tmp")) / "ifb_point.db"
+DATA_FILE      = Path(__file__).parent / "data" / "api_data.json"
+FOLLOWUPS_FILE = Path(__file__).parent / "data" / "followups.json"
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -51,62 +45,93 @@ _API_USER = "IFBFollowUPAPP"
 _API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 _API_CODE = "ADSF"
 
-# ─── DB helpers ──────────────────────────────────────────────────────────────
-# Design rules (to avoid the transaction-state bugs of the previous version):
-#   1. No isolation_level=None — use Python sqlite3 default mode.
-#   2. No executescript() — each DDL runs as a plain execute().
-#   3. No manual BEGIN / COMMIT SQL — use `with conn:` context-manager which
-#      auto-commits on success and auto-rolls-back on exception.
-#   4. No shared / cached connections — every helper opens its own connection,
-#      uses it, and closes it (the `with sqlite3.connect()` block handles that).
-#   5. load_all() merges customers + followups with pandas (no SQL JOIN) so the
-#      two writes are independent and can never interfere with each other.
+# ─── Followup storage: data/followups.json + GitHub API ──────────────────────
+# WHY not SQLite: Streamlit Cloud rebuilds the container on every git push,
+# wiping any files written at runtime. SQLite data never survives a redeploy.
+#
+# HOW THIS WORKS:
+#   • followups.json lives in data/ alongside api_data.json (tracked by git).
+#   • Every save writes to the local file immediately (fast, works offline).
+#   • Then _gh_commit_followups() commits the file back to GitHub via the
+#     Contents API, so the next deployment starts with the latest saves.
+#   • Requires  github_token  (fine-grained PAT with Contents write) stored
+#     in Streamlit secrets.  Without a token, saves persist only for the
+#     current deployment lifetime (still useful for the same browser session).
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _ensure_tables() -> None:
-    """Create both tables if they don't already exist. Safe to call many times."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS customers (
-                customer_id        TEXT PRIMARY KEY,
-                customer_name      TEXT,
-                purchase_date      TEXT,
-                installation_type  TEXT,
-                machine_type       TEXT,
-                phone_number       TEXT,
-                email_id           TEXT,
-                ifb_point_id       TEXT,
-                ifb_point_code     TEXT,
-                customer_follow_up TEXT,
-                synced_at          TEXT
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS followups (
-                customer_id      TEXT PRIMARY KEY,
-                status           TEXT,
-                next_appointment TEXT,
-                interested       TEXT,
-                remarks          TEXT,
-                updated_at       TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        # Safe column migrations — only run ALTER if column is missing
-        fu_cols = {r[1] for r in conn.execute("PRAGMA table_info(followups)").fetchall()}
-        if "updated_at" not in fu_cols:
-            conn.execute("ALTER TABLE followups ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
-        cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
-        if "installation_type" not in cu_cols:
-            conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
-        if "ifb_point_code" not in cu_cols:
-            conn.execute("ALTER TABLE customers ADD COLUMN ifb_point_code TEXT")
-        conn.commit()
+def _read_followups() -> dict[str, dict]:
+    """Load followups.json → {customer_id: row_dict}. Returns {} if missing."""
+    if FOLLOWUPS_FILE.exists():
+        try:
+            raw = json.loads(FOLLOWUPS_FILE.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return raw
+        except Exception:
+            pass
+    return {}
 
 
-@st.cache_resource
-def init_db_if_missing():
-    """Run once per process (cache_resource) — create DB tables on first boot."""
-    _ensure_tables()
+def _gh_commit_followups() -> None:
+    """
+    Push data/followups.json to GitHub via the Contents API.
+    Silent no-op when github_token is absent — local write already succeeded.
+    """
+    try:
+        token = (st.secrets.get("github_token") or
+                 st.secrets.get("GITHUB_TOKEN") or "")
+    except Exception:
+        token = ""
+    if not token:
+        return
+
+    try:
+        repo = st.secrets.get("github_repo", "IFB-Analytics/ifbpoint-followup")
+    except Exception:
+        repo = "IFB-Analytics/ifbpoint-followup"
+
+    api_url = f"https://api.github.com/repos/{repo}/contents/data/followups.json"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept":        "application/vnd.github.v3+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        encoded = base64.b64encode(FOLLOWUPS_FILE.read_bytes()).decode()
+        r       = _req.get(api_url, headers=headers, timeout=10)
+        sha     = r.json().get("sha") if r.status_code == 200 else None
+        payload: dict = {
+            "message": "chore(data): save followup edits [skip ci]",
+            "content": encoded,
+            "branch":  "main",
+        }
+        if sha:
+            payload["sha"] = sha
+        _req.put(api_url, json=payload, headers=headers, timeout=15)
+    except Exception:
+        pass  # best-effort — local file write already succeeded
+
+
+def _write_followups(data: dict[str, dict]) -> None:
+    """Persist followups to the local JSON file, then push to GitHub."""
+    FOLLOWUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    FOLLOWUPS_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    _gh_commit_followups()
+
+
+def _load_followups() -> pd.DataFrame:
+    """Return followups as a DataFrame (empty if no saves yet)."""
+    data = _read_followups()
+    if not data:
+        return pd.DataFrame(
+            columns=["customer_id", "status", "next_appointment",
+                     "interested", "remarks", "updated_at"]
+        )
+    df = pd.DataFrame(list(data.values()))
+    df["customer_id"] = df["customer_id"].astype(str)
+    return df
 
 
 def _resolve_point_code_and_url() -> tuple[str, str | None]:
@@ -256,39 +281,10 @@ def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list
     return records, "live API"
 
 
-def _safe_val(v):
-    """Convert NaN / NaT / None to None so sqlite3 stores NULL."""
-    if v is None:
-        return None
-    try:
-        if pd.isna(v):
-            return None
-    except (TypeError, ValueError):
-        pass
-    return v
-
-
-def _load_followups() -> pd.DataFrame:
-    """
-    Read every row from the followups table and return as a DataFrame.
-    Opens its own connection and closes it immediately — no shared state.
-    """
-    with sqlite3.connect(DB_PATH) as conn:
-        return pd.read_sql_query(
-            "SELECT customer_id, status, next_appointment, interested, remarks, updated_at "
-            "FROM followups",
-            conn,
-        )
-
-
 def load_all() -> tuple[pd.DataFrame, str]:
     """
-    1. Fetch customer records from the JSON snapshot (or live API).
-    2. Upsert them into the `customers` SQLite table.
-    3. Load followups from the `followups` table separately.
-    4. Merge the two DataFrames with pandas (no SQL JOIN — simpler, no
-       transaction interference between the write and the read).
-
+    Fetch customer records (JSON snapshot / live API), compute follow-up buckets,
+    then merge in any saved follow-up edits from followups.json.
     Returns (merged_df, source_label).
     """
     point_code, api_url = _resolve_point_code_and_url()
@@ -305,7 +301,6 @@ def load_all() -> tuple[pd.DataFrame, str]:
     if not records:
         return pd.DataFrame(columns=_COLS), source
 
-    # ── Build customer DataFrame from API records ────────────────────────
     df = pd.DataFrame(records)
     df["customer_id"]   = df["customer_id"].astype(str)
     df["phone_number"]  = df.get("phone_number", pd.Series(dtype=str)).astype(str)
@@ -323,36 +318,6 @@ def load_all() -> tuple[pd.DataFrame, str]:
         lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
     )
 
-    # ── Upsert API records into `customers` table ────────────────────────
-    # `with sqlite3.connect() as conn:` auto-commits on success.
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO customers
-               (customer_id, customer_name, purchase_date,
-                installation_type, machine_type,
-                phone_number, email_id, ifb_point_id,
-                ifb_point_code, customer_follow_up, synced_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (
-                    str(row.customer_id),
-                    _safe_val(row.customer_name),
-                    row.purchase_date.isoformat() if isinstance(row.purchase_date, date) else None,
-                    _safe_val(row.installation_type),
-                    _safe_val(row.machine_type),
-                    str(row.phone_number),
-                    _safe_val(row.email_id),
-                    _safe_val(row.ifb_point_id),
-                    point_code,
-                    _safe_val(row.customer_follow_up),
-                    source,
-                )
-                for row in df.itertuples(index=False)
-            ],
-        )
-        conn.commit()
-
-    # ── Load followups and merge with pandas ─────────────────────────────
     fu_df = _load_followups()
 
     if fu_df.empty:
@@ -368,7 +333,6 @@ def load_all() -> tuple[pd.DataFrame, str]:
             how="left",
         )
 
-    # ── Coerce date columns ───────────────────────────────────────────────
     merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
     merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
 
@@ -377,45 +341,27 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
 def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
     """
-    Persist user edits for one customer into the `followups` table.
-
-    Uses a fresh sqlite3.connect() with the default Python transaction mode
-    (no isolation_level=None, no manual BEGIN/COMMIT SQL).
-    `with conn:` auto-commits on success and auto-rolls-back on exception.
-    Returns the stored row so the dialog can confirm what was saved.
+    Save user edits for one customer to data/followups.json.
+    Immediately writes locally, then pushes to GitHub so the data
+    survives the next Streamlit Cloud redeploy.
     """
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
-    cid = str(cid)
+    cid      = str(cid)
+    now      = _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
-    print(f"[update_row] Writing to DB_PATH={DB_PATH}")
-    print(f"[update_row] DB file exists: {DB_PATH.exists()}")
+    saved = {
+        "customer_id":      cid,
+        "status":           status,
+        "next_appointment": appt_str,
+        "interested":       interested,
+        "remarks":          remarks,
+        "updated_at":       now,
+    }
 
-    with sqlite3.connect(DB_PATH) as conn:
-        print(f"[update_row] Connected to {DB_PATH}")
-        conn.execute(
-            """INSERT OR REPLACE INTO followups
-               (customer_id, status, next_appointment, interested, remarks, updated_at)
-               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
-            (cid, status, appt_str, interested, remarks),
-        )
-        print(f"[update_row] INSERT executed for customer_id={cid}")
-        conn.commit()
-        print(f"[update_row] COMMIT executed")
-
-        row = conn.execute(
-            """SELECT customer_id, status, next_appointment,
-                      interested, remarks, updated_at
-               FROM followups WHERE customer_id = ?""",
-            (cid,),
-        ).fetchone()
-        print(f"[update_row] Read-back result: {row}")
-
-    if row is None:
-        raise RuntimeError(f"Save appeared to succeed but followup row {cid!r} is missing.")
-    return dict(zip(
-        ["customer_id", "status", "next_appointment", "interested", "remarks", "updated_at"],
-        row,
-    ))
+    data      = _read_followups()
+    data[cid] = saved
+    _write_followups(data)
+    return saved
 
 
 # --------------------------------------------------------------------------- #
@@ -896,8 +842,6 @@ st.markdown("""
 # --------------------------------------------------------------------------- #
 # Boot — fetch live API data on every page load (no caching, errors are visible)
 # --------------------------------------------------------------------------- #
-init_db_if_missing()
-
 try:
     df_all, _source = load_all()
     st.session_state["_api_sync_ok"]  = True
@@ -1397,24 +1341,21 @@ else:
 
 # ─── DEBUG PANEL ─────────────────────────────────────────────────────────────
 st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
-with st.expander("🔧 DEBUG — SQLite Health Check"):
-    st.write(f"**DB_PATH**: `{DB_PATH}`")
-    st.write(f"**File exists**: {DB_PATH.exists()}")
-    st.write(f"**File writable**: {_os.access(DB_PATH, _os.W_OK) if DB_PATH.exists() else 'N/A'}")
-    st.write(f"**Parent writable**: {_os.access(DB_PATH.parent, _os.W_OK)}")
+with st.expander("🔧 DEBUG — Followup Storage"):
+    st.write(f"**Storage file**: `{FOLLOWUPS_FILE}`")
+    st.write(f"**File exists**: {FOLLOWUPS_FILE.exists()}")
 
+    _has_token = False
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            cu_count = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
-            fu_count = conn.execute("SELECT COUNT(*) FROM followups").fetchone()[0]
-        st.write(f"**customers table**: {cu_count} rows")
-        st.write(f"**followups table**: {fu_count} rows")
+        _has_token = bool(st.secrets.get("github_token") or st.secrets.get("GITHUB_TOKEN"))
+    except Exception:
+        pass
+    st.write(f"**GitHub auto-commit**: {'✅ token set — saves push to GitHub' if _has_token else '⚠️ no github_token secret — saves local only (lost on redeploy)'}")
 
-        if fu_count > 0:
-            st.write("**Last 5 rows in followups table:**")
-            fu_df_debug = _load_followups().tail(5)
-            st.dataframe(fu_df_debug, use_container_width=True)
-        else:
-            st.info("⚠️ followups table is EMPTY — no saves are persisting!")
-    except Exception as e:
-        st.error(f"❌ DEBUG query failed: {type(e).__name__}: {e}")
+    _fu_data = _read_followups()
+    st.write(f"**Saved followups**: {len(_fu_data)} customer(s)")
+    if _fu_data:
+        st.write("**Last 5 saved rows:**")
+        st.dataframe(pd.DataFrame(list(_fu_data.values())).tail(5), use_container_width=True)
+    else:
+        st.info("⚠️ No saves yet — followups.json is empty.")
