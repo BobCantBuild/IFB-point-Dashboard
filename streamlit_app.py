@@ -479,18 +479,18 @@ st.markdown("""
     background:#F1F5F9 !important; border-color:#94A3B8 !important; color:#0F172A !important;
   }
 
-  /* Primary button — dark blue (active toggle + dialog Save) */
+  /* Primary button — hero gradient (active toggle + dialog Save) */
   .stButton > button[kind="primary"] {
-    background:linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 100%) !important;
+    background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%) !important;
     color:#FFFFFF !important; border:0 !important;
-    box-shadow:0 2px 8px rgba(29,78,216,0.35) !important;
+    box-shadow:0 2px 8px rgba(15,23,42,0.35) !important;
     height:42px !important; min-height:42px !important;
     padding:0 18px !important; font-size:13px !important; font-weight:700 !important;
     border-radius:10px !important;
   }
   .stButton > button[kind="primary"]:hover {
-    background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%) !important;
-    box-shadow:0 4px 12px rgba(29,78,216,0.45) !important;
+    background:linear-gradient(135deg,#1a1f35 0%,#242c45 100%) !important;
+    box-shadow:0 4px 12px rgba(15,23,42,0.45) !important;
   }
 
   /* Pencil edit button — circular icon, ONLY inside table rows */
