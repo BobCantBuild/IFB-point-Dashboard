@@ -393,11 +393,11 @@ st.markdown("""
   }
   .stDateInput > div > div { background:#F8FAFC !important; border-radius:6px !important; }
 
-  /* ── Filter-bar control polish: uniform 42px height, consistent look ── */
+  /* ── Filter-bar control polish: 34px height to match toggle buttons ── */
   .stDateInput > div > div,
   div[data-baseweb="input"] > div,
   div[data-baseweb="select"] > div {
-    min-height:42px !important; height:42px !important;
+    min-height:34px !important; height:34px !important;
     border-radius:10px !important;
     border:1px solid var(--line) !important;
     background:#FFFFFF !important;
@@ -407,10 +407,11 @@ st.markdown("""
   .stDateInput input,
   div[data-baseweb="input"] input,
   div[data-baseweb="select"] [role="combobox"] {
-    font-size:13px !important;
+    font-size:12px !important;
     color:var(--ink) !important;
     text-align:center !important;
     font-weight:500 !important;
+    line-height:34px !important;
   }
   /* Focus ring */
   .stDateInput > div > div:focus-within,
@@ -433,9 +434,9 @@ st.markdown("""
   /* ── Buttons ── */
   .stButton > button {
     background:#0F172A; color:#F8FAFC; border:0; border-radius:6px;
-    padding:0 10px; font-weight:600; font-size:13px;
-    height:42px !important; min-height:42px !important;
-    line-height:42px !important; display:inline-flex;
+    padding:0 10px; font-weight:600; font-size:12px;
+    height:34px !important; min-height:34px !important;
+    line-height:34px !important; display:inline-flex;
     align-items:center; justify-content:center;
   }
   .stButton > button:hover { background:#1E293B; }
