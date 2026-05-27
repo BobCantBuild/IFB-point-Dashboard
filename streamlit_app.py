@@ -83,7 +83,7 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
 _API_BASE = "https://bseapi.ifbsupport.com/api"
 _API_USER = "IFBFollowUPAPP"
 _API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
-_API_CODE = "1034532"   # ← change this when switching IFB Point franchise
+_API_CODE = "1018638"   # ← change this when switching IFB Point franchise
 
 # ─── Followup storage: data/followups.json + GitHub API ──────────────────────
 # WHY not SQLite: Streamlit Cloud rebuilds the container on every git push,
