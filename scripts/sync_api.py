@@ -13,13 +13,17 @@ from pathlib import Path
 
 import httpx
 
-API_BASE = "https://bseapi.ifbsupport.com/api"
-USERNAME = os.environ.get("IFB_API_USER",   "IFBFollowUPAPP")
-PASSWORD = os.environ.get("IFB_API_PASS",   "U29tZVJhbmRvbUJhc2U2NA==")
-IFB_CODE = os.environ.get("IFB_POINT_CODE", "1034532")  # ← change this when switching IFB Point franchise
-
+# Import shared config (single source of truth — change IFB_POINT_CODE in config.py)
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUT_FILE  = REPO_ROOT / "data" / "api_data.json"
+sys.path.insert(0, str(REPO_ROOT))
+from config import IFB_POINT_CODE, API_BASE as _API_BASE, API_USER, API_PASS  # noqa: E402
+
+API_BASE = _API_BASE
+USERNAME = os.environ.get("IFB_API_USER",   API_USER)
+PASSWORD = os.environ.get("IFB_API_PASS",   API_PASS)
+IFB_CODE = os.environ.get("IFB_POINT_CODE", IFB_POINT_CODE)  # env var still overrides for CI
+
+OUT_FILE = REPO_ROOT / "data" / "api_data.json"
 
 # Maps API bucket keys → customer_follow_up stage label shown in the dashboard
 BUCKET_STAGE = {
