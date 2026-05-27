@@ -869,10 +869,10 @@ components.html("""
 
       // Measure actual rendered height of filter bar content
       var filterBarH = Math.ceil(n.getBoundingClientRect().height);
-      if(filterBarH < 20) filterBarH = 40;  // fallback minimum
+      if(filterBarH < 20) filterBarH = 30;  // fallback minimum
       n.style.setProperty('min-height', filterBarH + 'px','important');
 
-      var totalPinned = headerH + filterBarH + 4;
+      var totalPinned = headerH + filterBarH + 2;
 
       // Target .block-container directly — inline style overrides CSS !important
       var bc = doc.querySelector('.block-container');
