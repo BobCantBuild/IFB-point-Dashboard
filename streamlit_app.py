@@ -74,23 +74,26 @@ CREATE TABLE IF NOT EXISTS followups (
 
 
 def _get_conn() -> sqlite3.Connection:
-    """Open (or create) the SQLite DB and ensure both tables exist."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
+    """
+    Open the SQLite DB in autocommit mode (isolation_level=None).
+    Creates both tables and runs any pending column migrations.
+    Using isolation_level=None avoids Python sqlite3's implicit-transaction
+    behaviour that can swallow commits after executescript().
+    """
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    # executescript() runs each statement immediately in autocommit mode
     conn.executescript(DB_SCHEMA)
-    # ── safe migrations: add columns that may be missing in older DBs ──────
-    # followups migrations
+    # ── safe column migrations ────────────────────────────────────────────
     fu_cols = {r[1] for r in conn.execute("PRAGMA table_info(followups)").fetchall()}
     if "updated_at" not in fu_cols:
         conn.execute(
             "ALTER TABLE followups ADD COLUMN updated_at TEXT "
             "DEFAULT (datetime('now'))"
         )
-    # customers migrations
     cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
     if "installation_type" not in cu_cols:
         conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
-    conn.commit()
     return conn
 
 
@@ -203,8 +206,21 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
     # ── upsert API records into `customers` table ────────────────────────
     synced_at = source  # human-readable sync label
+
+    def _safe_val(v):
+        """Convert NaN/NaT to None so sqlite3 stores NULL."""
+        if v is None:
+            return None
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return v
+
     conn = _get_conn()
     try:
+        conn.execute("BEGIN")
         conn.executemany(
             """INSERT OR REPLACE INTO customers
                (customer_id, customer_name, purchase_date,
@@ -215,20 +231,20 @@ def load_all() -> tuple[pd.DataFrame, str]:
             [
                 (
                     str(row.customer_id),
-                    row.customer_name,
+                    _safe_val(row.customer_name),
                     row.purchase_date.isoformat() if isinstance(row.purchase_date, date) else None,
-                    row.installation_type,
-                    row.machine_type,
+                    _safe_val(row.installation_type),
+                    _safe_val(row.machine_type),
                     str(row.phone_number),
-                    row.email_id,
-                    row.ifb_point_id,
-                    row.customer_follow_up,
+                    _safe_val(row.email_id),
+                    _safe_val(row.ifb_point_id),
+                    _safe_val(row.customer_follow_up),
                     synced_at,
                 )
                 for row in df.itertuples(index=False)
             ],
         )
-        conn.commit()
+        conn.execute("COMMIT")
 
         # ── load merged view: customers LEFT JOIN followups ──────────────
         merged = pd.read_sql_query(
@@ -253,14 +269,17 @@ def load_all() -> tuple[pd.DataFrame, str]:
     return merged, source
 
 
-def update_row(cid, status, next_appt, interested, remarks):
-    """Write user edits to the followups table (INSERT OR REPLACE).
-    Stamps updated_at with the current UTC time.
+def update_row(cid, status, next_appt, interested, remarks) -> dict:
+    """
+    Write user edits to the followups table with an explicit transaction.
+    Returns the row as stored in the DB so the caller can verify the save.
+    Raises on any DB error so the dialog can surface it.
     """
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
     cid = str(cid)
     conn = _get_conn()
     try:
+        conn.execute("BEGIN")
         conn.execute(
             """INSERT OR REPLACE INTO followups
                (customer_id, status, next_appointment, interested, remarks,
@@ -268,7 +287,28 @@ def update_row(cid, status, next_appt, interested, remarks):
                VALUES (?, ?, ?, ?, ?, datetime('now'))""",
             (cid, status, appt_str, interested, remarks),
         )
-        conn.commit()
+        conn.execute("COMMIT")
+
+        # ── verify: read back what was just written ───────────────────────
+        row = conn.execute(
+            """SELECT customer_id, status, next_appointment,
+                      interested, remarks, updated_at
+               FROM followups WHERE customer_id = ?""",
+            (cid,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(f"Save appeared to succeed but row {cid} is missing from DB")
+        return dict(zip(
+            ["customer_id", "status", "next_appointment",
+             "interested", "remarks", "updated_at"],
+            row,
+        ))
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
     finally:
         conn.close()
 
@@ -1115,17 +1155,23 @@ def edit_lead_dialog(row: dict):
         if st.button("💾  Save", type="primary", use_container_width=True,
                      key=f"dlg_save_{cid}"):
             try:
-                update_row(
+                saved = update_row(
                     cid,
                     None if ns == "—" else ns,
                     na if isinstance(na, date) else None,
                     None if ni == "—" else ni,
                     nr.strip() or None,
                 )
-                st.toast(f"Saved changes for {name}", icon="✅")
+                st.toast(
+                    f"✅ Saved to DB — "
+                    f"Status: {saved.get('status') or '—'}  |  "
+                    f"Appt: {saved.get('next_appointment') or '—'}  |  "
+                    f"Interested: {saved.get('interested') or '—'}",
+                    icon="💾",
+                )
                 st.rerun()
             except Exception as e:
-                st.error(f"Save failed — {type(e).__name__}: {e}")
+                st.error(f"❌ Save failed — {type(e).__name__}: {e}")
     with c2:
         if st.button("Cancel", use_container_width=True, key=f"dlg_cancel_{cid}"):
             st.rerun()
