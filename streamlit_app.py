@@ -848,9 +848,9 @@ with fc3:
         label_visibility="collapsed",
     )
 
-# JS injection — measure the fixed-header height and set block-container
-# padding-top to match it exactly. Filter rows scroll naturally with the
-# page content (no pin), eliminating the empty-gap artifact.
+# JS injection — measure the fixed-header height and set `.block-container`
+# padding-top to match it. Filter rows scroll naturally with the page
+# content (no pin), eliminating the empty-gap artifact.
 components.html("""
 <script>
 (function(){
@@ -859,18 +859,17 @@ components.html("""
       var doc = window.parent.document;
       var fh  = doc.querySelector('.fixed-header');
       if(!fh) return false;
-      var hdrBottom = Math.ceil(fh.getBoundingClientRect().bottom);
-      if(hdrBottom < 40) return false;
+      var hdrRect = fh.getBoundingClientRect();
+      var hdrH = Math.ceil(hdrRect.height);
+      if(hdrH < 40) return false;
 
       var bc = doc.querySelector('.block-container');
       if(!bc) return false;
 
-      // bcStaticTop = how far .block-container sits from the document top
-      // (scroll-independent). We want the content to start exactly at
-      // hdrBottom, so padding-top = hdrBottom - bcStaticTop.
-      var scrollY     = window.parent.scrollY || window.parent.pageYOffset || 0;
-      var bcStaticTop = Math.max(0, bc.getBoundingClientRect().top + scrollY);
-      var paddingTop  = Math.max(8, hdrBottom - bcStaticTop + 8);
+      // Keep it simple: content should start just below the fixed header.
+      // Using header height avoids occasional overestimates that create
+      // a large blank gap between the stats row and the filter rows.
+      var paddingTop = Math.max(0, hdrH + 12);
       bc.style.setProperty('padding-top', paddingTop+'px','important');
 
       return true;
