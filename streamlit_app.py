@@ -44,18 +44,57 @@ _API_USER = "IFBFollowUPAPP"
 _API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 _API_CODE = "ADSF"
 
-DB_SCHEMA = """CREATE TABLE IF NOT EXISTS followups (
-    customer_id TEXT PRIMARY KEY,
-    status TEXT, next_appointment TEXT, interested TEXT, remarks TEXT
-);"""
+DB_SCHEMA = """
+-- Customer records synced from the API snapshot on every app load.
+-- Gives us a complete local copy of all customer fields.
+CREATE TABLE IF NOT EXISTS customers (
+    customer_id        TEXT PRIMARY KEY,
+    customer_name      TEXT,
+    purchase_date      TEXT,
+    machine_type       TEXT,
+    phone_number       TEXT,
+    email_id           TEXT,
+    ifb_point_id       TEXT,
+    customer_follow_up TEXT,
+    synced_at          TEXT
+);
+
+-- User-edited follow-up fields — persisted across page loads.
+-- Keyed by customer_id so they survive API re-syncs.
+CREATE TABLE IF NOT EXISTS followups (
+    customer_id      TEXT PRIMARY KEY,
+    status           TEXT,
+    next_appointment TEXT,
+    interested       TEXT,
+    remarks          TEXT,
+    updated_at       TEXT DEFAULT (datetime('now'))
+);
+"""
+
+
+def _get_conn() -> sqlite3.Connection:
+    """Open (or create) the SQLite DB and ensure both tables exist."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.executescript(DB_SCHEMA)
+    # ── safe migrations: add columns that may be missing in older DBs ──────
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(followups)").fetchall()
+    }
+    if "updated_at" not in existing:
+        conn.execute(
+            "ALTER TABLE followups ADD COLUMN updated_at TEXT "
+            "DEFAULT (datetime('now'))"
+        )
+    conn.commit()
+    return conn
 
 
 @st.cache_resource
 def init_db_if_missing():
-    """Create the followups SQLite table on first call (idempotent)."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript(DB_SCHEMA)
-    conn.commit()
+    """Create / migrate DB tables on first call (idempotent)."""
+    conn = _get_conn()
     conn.close()
 
 
@@ -122,68 +161,103 @@ def fetch_api_records() -> tuple[list[dict], str]:
 
 def load_all() -> tuple[pd.DataFrame, str]:
     """
-    Fetch customers, merge in local follow-up edits, compute follow-up bucket.
-    Returns (df, source_label) so the UI can show where the data came from.
-    Raises if no data is available at all.
+    Fetch customers from JSON snapshot / live API, upsert into the local
+    `customers` SQLite table, then LEFT JOIN with `followups` to return a
+    fully-merged DataFrame.
+
+    Returns (df, source_label).
     """
     records, source = fetch_api_records()
+
+    _COLS = [
+        "customer_id", "customer_name", "purchase_date", "machine_type",
+        "phone_number", "email_id", "ifb_point_id",
+        "status", "next_appointment", "interested", "remarks",
+        "customer_follow_up",
+    ]
+
     if not records:
-        empty = pd.DataFrame(columns=[
-            "customer_id", "customer_name", "purchase_date", "machine_type",
-            "phone_number", "email_id", "ifb_point_id",
-            "status", "next_appointment", "interested", "remarks",
-            "customer_follow_up",
-        ])
-        return empty, source
+        return pd.DataFrame(columns=_COLS), source
 
+    # ── build raw DataFrame ──────────────────────────────────────────────
     df = pd.DataFrame(records)
-
-    # Coerce types
-    df["customer_id"]  = df["customer_id"].astype(str)
-    df["phone_number"] = df.get("phone_number", "").astype(str)
+    df["customer_id"]   = df["customer_id"].astype(str)
+    df["phone_number"]  = df.get("phone_number", pd.Series(dtype=str)).astype(str)
     df["purchase_date"] = pd.to_datetime(
         df.get("purchase_date"), errors="coerce"
     ).dt.date
 
-    # Ensure all expected columns exist (some API responses may omit fields)
     for col in ("customer_name", "machine_type", "email_id", "ifb_point_id"):
         if col not in df.columns:
             df[col] = None
-
-    # Merge in local follow-up edits (status, next_appointment, interested, remarks)
-    conn = sqlite3.connect(DB_PATH)
-    fu = pd.read_sql_query("SELECT * FROM followups", conn)
-    conn.close()
-    if not fu.empty:
-        fu["customer_id"] = fu["customer_id"].astype(str)
-        df = df.merge(fu, on="customer_id", how="left")
-    else:
-        for col in ("status", "next_appointment", "interested", "remarks"):
-            df[col] = None
-
-    df["next_appointment"] = pd.to_datetime(
-        df["next_appointment"], errors="coerce"
-    ).dt.date
 
     today = date.today()
     df["customer_follow_up"] = df["purchase_date"].apply(
         lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
     )
-    return df, source
+
+    # ── upsert API records into `customers` table ────────────────────────
+    synced_at = source  # human-readable sync label
+    conn = _get_conn()
+    try:
+        conn.executemany(
+            """INSERT OR REPLACE INTO customers
+               (customer_id, customer_name, purchase_date, machine_type,
+                phone_number, email_id, ifb_point_id, customer_follow_up,
+                synced_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    str(row.customer_id),
+                    row.customer_name,
+                    row.purchase_date.isoformat() if isinstance(row.purchase_date, date) else None,
+                    row.machine_type,
+                    str(row.phone_number),
+                    row.email_id,
+                    row.ifb_point_id,
+                    row.customer_follow_up,
+                    synced_at,
+                )
+                for row in df.itertuples(index=False)
+            ],
+        )
+        conn.commit()
+
+        # ── load merged view: customers LEFT JOIN followups ──────────────
+        merged = pd.read_sql_query(
+            """SELECT
+                 c.customer_id, c.customer_name, c.purchase_date,
+                 c.machine_type, c.phone_number, c.email_id,
+                 c.ifb_point_id, c.customer_follow_up,
+                 f.status, f.next_appointment, f.interested,
+                 f.remarks, f.updated_at
+               FROM customers c
+               LEFT JOIN followups f USING (customer_id)""",
+            conn,
+        )
+    finally:
+        conn.close()
+
+    # ── coerce date columns back from TEXT ───────────────────────────────
+    merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
+    merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
+
+    return merged, source
 
 
 def update_row(cid, status, next_appt, interested, remarks):
-    """Write user edits to the followups table (INSERT OR REPLACE)."""
+    """Write user edits to the followups table (INSERT OR REPLACE).
+    Stamps updated_at with the current UTC time.
+    """
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
     cid = str(cid)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = _get_conn()
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.executescript(DB_SCHEMA)
         conn.execute(
-            "INSERT OR REPLACE INTO followups "
-            "(customer_id, status, next_appointment, interested, remarks) "
-            "VALUES (?, ?, ?, ?, ?)",
+            """INSERT OR REPLACE INTO followups
+               (customer_id, status, next_appointment, interested, remarks,
+                updated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
             (cid, status, appt_str, interested, remarks),
         )
         conn.commit()
