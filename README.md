@@ -119,7 +119,9 @@ IFB point Dashboard/
 │
 ├── streamlit_app.py          ← Main app (UI, data loading, edit dialog)
 ├── refresh_data.py           ← Run this from IFB network to refresh data
-├── requirements.txt          ← Python dependencies
+├── pyproject.toml            ← Dependency source of truth (uv)
+├── uv.lock                   ← Pinned versions (committed — reproducible installs)
+├── requirements.txt          ← Auto-generated from pyproject.toml for Streamlit Cloud
 ├── README.md                 ← This file
 │
 ├── data/
@@ -175,19 +177,39 @@ The response is a JSON object with four ageing-bucket keys, flattened into one a
 
 ## Local development
 
+This project uses **[uv](https://docs.astral.sh/uv/)** for dependency management.
+
 ```bash
+# 0. Install uv (once, system-wide)
+pip install uv          # or: winget install astral-sh.uv
+
 # 1. Clone the repo
 git clone https://github.com/IFB-Analytics/ifbpoint-followup.git
 cd ifbpoint-followup
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Create venv and install all dependencies from uv.lock
+uv sync
 
-# 3. Run the dashboard (reads the existing api_data.json)
-streamlit run streamlit_app.py
+# 3. Run the dashboard
+uv run streamlit run streamlit_app.py
+
+# 4. (Optional) Refresh data from IFB network
+uv run python refresh_data.py
 ```
 
-The dashboard will open at `http://localhost:8501` and use the JSON snapshot already in the repo. You don't need API access to develop locally.
+The dashboard opens at `http://localhost:8501` and uses the JSON snapshot already in the repo. API access is not needed for local development.
+
+### Dependency management
+
+| File | Purpose |
+|---|---|
+| `pyproject.toml` | Source of truth — add/remove packages here |
+| `uv.lock` | Exact pinned versions — committed, ensures reproducible installs |
+| `requirements.txt` | Auto-generated from `pyproject.toml` — used by Streamlit Cloud |
+
+To add a package: `uv add <package>`
+To remove a package: `uv remove <package>`
+To regenerate `requirements.txt` after changing deps: `uv export --no-hashes -o requirements.txt`
 
 ---
 
@@ -213,7 +235,14 @@ ifb_point_code = "ADSF"
 
 The cron schedule is **disabled** because GitHub Actions runs on Azure IPs which the IFB firewall blocks. The workflow stays in the repo for future use — if IFB IT ever whitelists GitHub's IP ranges (see https://api.github.com/meta), re-enabling the cron will make syncing fully automatic.
 
-For now, **use `python refresh_data.py` from the IFB office network**.
+For now, **use `uv run python refresh_data.py` from the IFB office network**.
+
+**Workflow uses uv:**
+```yaml
+- uses: astral-sh/setup-uv@v5
+- run: uv sync --frozen          # installs from uv.lock — fast & reproducible
+- run: uv run python scripts/sync_api.py
+```
 
 ---
 

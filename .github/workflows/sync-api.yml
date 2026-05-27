@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          version: "latest"
 
       - name: Install dependencies
-        run: pip install httpx
+        run: uv sync --frozen
 
       - name: Fetch IFB BSE API → data/api_data.json
         continue-on-error: true          # API unreachable = skip, not fail; existing JSON is preserved
@@ -27,7 +27,7 @@ jobs:
           IFB_API_USER:    ${{ secrets.IFB_API_USER    || 'IFBFollowUPAPP' }}
           IFB_API_PASS:    ${{ secrets.IFB_API_PASS    || 'U29tZVJhbmRvbUJhc2U2NA==' }}
           IFB_POINT_CODE:  ${{ secrets.IFB_POINT_CODE  || 'ADSF' }}
-        run: python scripts/sync_api.py
+        run: uv run python scripts/sync_api.py
 
       - name: Commit updated snapshot (if changed)
         run: |

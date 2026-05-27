@@ -1,0 +1,17 @@
+[project]
+name = "ifb-point-dashboard"
+version = "0.1.0"
+description = "IFB Point Customer Follow-Up Dashboard"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.32",
+    "pandas>=2.0",
+    "openpyxl>=3.1",
+    "httpx>=0.24",
+]
+
+[tool.uv]
+# uv.lock is committed for reproducible installs.
+# requirements.txt is generated from this file via:
+#   uv export --no-hashes -o requirements.txt
+# and committed for Streamlit Cloud (which uses pip + requirements.txt).

@@ -13,11 +13,14 @@ __pycache__/
 build/
 dist/
 
-# Virtual environments
+# Virtual environments (uv creates .venv — do NOT commit it)
 .venv/
 venv/
 env/
 ENV/
+
+# uv — lock file IS committed (reproducible installs), venv is not
+# uv.lock  ← committed intentionally, do not add here
 
 # IDE / editor
 .vscode/
