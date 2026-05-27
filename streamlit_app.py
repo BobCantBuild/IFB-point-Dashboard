@@ -791,7 +791,7 @@ _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
 min_pd = min(_pds) if _pds else date(2019, 1, 1)
 max_pd = max(_pds) if _pds else today
 
-lr1, lr2, lr3 = st.columns([1, 1, 2], gap="small")
+lr1, lr2, lr3 = st.columns([1, 1, 2], gap="medium")
 with lr1:
     if st.button("📅  Today Leads", key="btn_today",
                  use_container_width=True,
@@ -814,6 +814,9 @@ with lr3:
         label_visibility="collapsed",
     )
 
+# gap between the two filter rows
+st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+
 # ── Row 2: Open/Attempted toggles + stage filter + search ─────────────────
 _FU_OPTS = [
     "All Follow-Up Stages",
@@ -829,34 +832,35 @@ _FU_LABEL = {
     "Pre-AMC":              "⏰  Pre-AMC",
     "8 Year Upgrade":       "🏆  8 Year Upgrade",
 }
-fc1, fc2, fc3 = st.columns([2, 1, 1], gap="small")
-with fc1:
-    t1, t2 = st.columns(2, gap="small")
-    with t1:
-        if st.button("📋  Open Followup's", key="btn_open",
-                     use_container_width=True,
-                     type="primary" if section == "Open" else "secondary"):
-            st.session_state["_view_section"] = "Open"
-            st.rerun()
-    with t2:
-        if st.button("📞  Attempted's", key="btn_att",
-                     use_container_width=True,
-                     type="primary" if section == "Attempted" else "secondary"):
-            st.session_state["_view_section"] = "Attempted"
-            st.rerun()
-with fc2:
+rc1, rc2, rc3, rc4 = st.columns([1, 1, 1.4, 1.4], gap="medium")
+with rc1:
+    if st.button("📋  Open Followup's", key="btn_open",
+                 use_container_width=True,
+                 type="primary" if section == "Open" else "secondary"):
+        st.session_state["_view_section"] = "Open"
+        st.rerun()
+with rc2:
+    if st.button("📞  Attempted's", key="btn_att",
+                 use_container_width=True,
+                 type="primary" if section == "Attempted" else "secondary"):
+        st.session_state["_view_section"] = "Attempted"
+        st.rerun()
+with rc3:
     fu_filter = st.selectbox(
         "Follow-Up Stage",
         options=_FU_OPTS,
         format_func=lambda x: _FU_LABEL.get(x, x),
         label_visibility="collapsed",
     )
-with fc3:
+with rc4:
     search_q = st.text_input(
         "Search",
         placeholder="🔍  Name · Phone · Email · ID",
         label_visibility="collapsed",
     )
+
+# small spacer so the data table has breathing room below the filter rows
+st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
 # JS injection — measure the fixed-header height and set `.block-container`
 # padding-top to match it. Filter rows scroll naturally with the page
