@@ -244,8 +244,9 @@ st.markdown("""
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
   .block-container {
-    /* JS overrides this once heights are measured; fallback covers two filter rows */
-    padding-top:320px !important; padding-bottom:2rem;
+    /* Fallback = approx stats-header height only (filter rows are in-flow until JS runs).
+       JS overrides this to the exact totalPinned value once heights are measured. */
+    padding-top:230px !important; padding-bottom:2rem;
     max-width:1700px;
   }
   /* Collapse Streamlit's top header so .block-container starts at viewport top */
@@ -838,10 +839,6 @@ with fc3:
 components.html("""
 <script>
 (function(){
-  var _pending = false;
-  function schedule(){ if(!_pending){ _pending=true; setTimeout(run,60); } }
-
-  // Returns the next element-container sibling after el
   function nextEC(el){
     var n = el.nextElementSibling;
     while(n && !(n.classList && n.classList.contains('element-container')))
@@ -849,10 +846,9 @@ components.html("""
     return n;
   }
 
-  // Apply fixed-position styles + vertically centre columns inside a row
   function pinRow(el, top){
     el.style.setProperty('position','fixed','important');
-    el.style.setProperty('top', top + 'px','important');
+    el.style.setProperty('top', top+'px','important');
     el.style.setProperty('left','0','important');
     el.style.setProperty('right','0','important');
     el.style.setProperty('z-index','9998','important');
@@ -860,80 +856,80 @@ components.html("""
     el.style.setProperty('padding','0 22px','important');
     el.style.setProperty('overflow','visible','important');
     var hb = el.querySelector('[data-testid="stHorizontalBlock"]');
-    if(hb){
-      hb.style.setProperty('align-items','center','important');
-      hb.style.setProperty('display','flex','important');
-    }
-    var colDivs = el.querySelectorAll('[data-testid="column"] > div');
-    for(var i=0;i<colDivs.length;i++){
-      colDivs[i].style.setProperty('display','flex','important');
-      colDivs[i].style.setProperty('flex-direction','column','important');
-      colDivs[i].style.setProperty('justify-content','center','important');
-      colDivs[i].style.setProperty('padding','0 6px','important');
+    if(hb) hb.style.setProperty('align-items','center','important');
+    var cols = el.querySelectorAll('[data-testid="column"] > div');
+    for(var i=0;i<cols.length;i++){
+      cols[i].style.setProperty('display','flex','important');
+      cols[i].style.setProperty('flex-direction','column','important');
+      cols[i].style.setProperty('justify-content','center','important');
+      cols[i].style.setProperty('padding','0 6px','important');
     }
   }
 
   function run(){
-    _pending = false;
     try{
       var doc = window.parent.document;
+
+      // ── locate fixed header ──────────────────────────────────────────────
+      var fh = doc.querySelector('.fixed-header');
+      if(!fh) return false;
+      var hdrBottom = Math.ceil(fh.getBoundingClientRect().bottom);
+      if(hdrBottom < 40) return false;
+
+      // ── locate two filter rows via anchor ────────────────────────────────
       var a = doc.getElementById('filter-anchor');
-      if(!a){ setTimeout(schedule,120); return; }
-      // Walk up to element-container wrapping the anchor
+      if(!a) return false;
       var ec = a;
       while(ec && !(ec.classList && ec.classList.contains('element-container')))
         ec = ec.parentElement;
-      if(!ec){ setTimeout(schedule,120); return; }
+      if(!ec) return false;
+      var n1 = nextEC(ec);   // Row 1: Today / Missed / date
+      if(!n1) return false;
+      var n2 = nextEC(n1);   // Row 2: Open / Attempted / Stage / Search
+      if(!n2) return false;
 
-      // Row 1 = Today / Missed / date range
-      var n1 = nextEC(ec);
-      if(!n1){ setTimeout(schedule,120); return; }
-      // Row 2 = Open Followup / Attempted / Stage / Search
-      var n2 = nextEC(n1);
-      if(!n2){ setTimeout(schedule,120); return; }
+      // ── block-container ──────────────────────────────────────────────────
+      var bc = doc.querySelector('.block-container');
+      if(!bc) return false;
 
-      // Measure fixed header
-      var fixedHdr = doc.querySelector('.fixed-header');
-      if(!fixedHdr){ setTimeout(schedule,120); return; }
-      var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
-      if(headerH < 40){ setTimeout(schedule,120); return; }
+      // Measure row heights before pinning (still in normal flow → real dims)
+      var r1h = Math.max(50, Math.ceil(n1.getBoundingClientRect().height));
+      var r2h = Math.max(50, Math.ceil(n2.getBoundingClientRect().height));
 
-      // Measure row heights BEFORE pinning so we get real dimensions.
-      // Math.max(50,…) guarantees a usable floor even if the row hasn't
-      // rendered fully yet (avoids the near-zero → 3px fallback bug).
-      var row1H = Math.max(50, Math.ceil(n1.getBoundingClientRect().height));
-      var row2H = Math.max(50, Math.ceil(n2.getBoundingClientRect().height));
-
-      // Pin Row 1 directly below the stats header
-      pinRow(n1, headerH);
-      n1.style.setProperty('min-height', row1H + 'px','important');
+      // Pin rows
+      pinRow(n1, hdrBottom);
+      n1.style.setProperty('min-height', r1h+'px','important');
       n1.style.setProperty('border-bottom','1px solid rgba(226,232,240,0.6)','important');
 
-      // Pin Row 2 below Row 1 with a small gap
-      var ROW_GAP = 4;
-      pinRow(n2, headerH + row1H + ROW_GAP);
-      n2.style.setProperty('min-height', row2H + 'px','important');
+      var GAP = 4;
+      pinRow(n2, hdrBottom + r1h + GAP);
+      n2.style.setProperty('min-height', r2h+'px','important');
       n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
 
-      // Push scrollable content cleanly below both pinned rows.
-      // bcTop accounts for any offset between viewport-top and .block-container top
-      // (e.g. Streamlit header residual height). With header height:0 this is 0.
-      var bc = doc.querySelector('.block-container');
-      if(!bc){ setTimeout(schedule,120); return; }
-      var scrollTop = window.parent.scrollY || window.parent.pageYOffset || 0;
-      var bcTop = Math.max(0, Math.round(bc.getBoundingClientRect().top + scrollTop));
-      var totalBarH = headerH + row1H + ROW_GAP + row2H + 2;
-      var paddingTop = Math.max(20, totalBarH - bcTop);
-      bc.style.setProperty('padding-top', paddingTop + 'px', 'important');
-    }catch(e){ setTimeout(schedule,200); }
+      // Compute padding-top so content starts right below the two pinned rows.
+      // bcStaticTop = block-container's position from document top (scroll-independent).
+      var scrollY = window.parent.scrollY || window.parent.pageYOffset || 0;
+      var bcStaticTop = Math.max(0, bc.getBoundingClientRect().top + scrollY);
+      var totalH = hdrBottom + r1h + GAP + r2h + 2;
+      bc.style.setProperty('padding-top', Math.max(20, totalH - bcStaticTop)+'px','important');
+
+      return true;
+    }catch(e){ return false; }
   }
 
-  schedule();
-  setTimeout(schedule, 500);
+  // Retry every 80 ms until the rows are successfully pinned, then stop polling.
+  // MutationObserver re-runs on Streamlit rerenders.
+  var _timer = setInterval(function(){
+    if(run()) clearInterval(_timer);
+  }, 80);
+
+  var _dbt = null;
   try{
-    new MutationObserver(schedule)
-      .observe(window.parent.document.body, {childList:true, subtree:false});
+    new MutationObserver(function(){
+      clearTimeout(_dbt);
+      _dbt = setTimeout(run, 80);
+    }).observe(window.parent.document.body, {childList:true, subtree:false});
   }catch(e){}
 })();
 </script>
