@@ -246,7 +246,7 @@ st.markdown("""
   .block-container {
     /* push scrollable content below the fixed header band + filter bar
        JS overrides this value dynamically once header height is known */
-    padding-top:310px !important; padding-bottom:2rem;
+    padding-top:280px !important; padding-bottom:2rem;
     max-width:1700px;
   }
   header[data-testid="stHeader"] { background:transparent; }
@@ -836,7 +836,7 @@ components.html("""
       if(headerH < 40){ setTimeout(fix,120); return; } // not fully rendered yet
 
       var filterBarH = 62;
-      var totalPinned = headerH + filterBarH + 16; // 16px breathing room
+      var totalPinned = headerH + filterBarH + 4; // 4px breathing room
 
       // Target .block-container directly — same element the CSS rule targets,
       // so inline style beats !important without a specificity fight
