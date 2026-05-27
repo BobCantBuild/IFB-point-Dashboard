@@ -244,15 +244,25 @@ st.markdown("""
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
   .block-container {
-    /* push scrollable content below fixed header + two filter rows
-       JS overrides this value dynamically once all heights are known */
-    padding-top:360px !important; padding-bottom:2rem;
+    /* JS overrides this once heights are measured; fallback covers two filter rows */
+    padding-top:320px !important; padding-bottom:2rem;
     max-width:1700px;
   }
-  header[data-testid="stHeader"] { background:transparent; }
+  /* Collapse Streamlit's top header so .block-container starts at viewport top */
+  header[data-testid="stHeader"] {
+    height:0 !important; min-height:0 !important;
+    overflow:hidden !important; padding:0 !important;
+  }
   #MainMenu, footer { visibility:hidden; }
   /* Hide Share, Star, Edit, GitHub icons in top right */
   [data-testid="stToolbar"] { display:none !important; }
+  /* Collapse element-container wrappers around fixed/hidden elements */
+  .element-container:has(.fixed-header),
+  .element-container:has(iframe[title="st.iframe"]) {
+    height:0 !important; min-height:0 !important;
+    margin:0 !important; padding:0 !important;
+    overflow:hidden !important;
+  }
 
   /* ── FIXED header band (hero + stats) — truly pinned, never scrolls ── */
   .fixed-header {
@@ -906,10 +916,16 @@ components.html("""
       n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
 
-      // Push scrollable content cleanly below both pinned rows
-      var totalPinned = headerH + row1H + ROW_GAP + row2H + 2;
+      // Push scrollable content cleanly below both pinned rows.
+      // bcTop accounts for any offset between viewport-top and .block-container top
+      // (e.g. Streamlit header residual height). With header height:0 this is 0.
       var bc = doc.querySelector('.block-container');
-      if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
+      if(!bc){ setTimeout(schedule,120); return; }
+      var scrollTop = window.parent.scrollY || window.parent.pageYOffset || 0;
+      var bcTop = Math.max(0, Math.round(bc.getBoundingClientRect().top + scrollTop));
+      var totalBarH = headerH + row1H + ROW_GAP + row2H + 2;
+      var paddingTop = Math.max(20, totalBarH - bcTop);
+      bc.style.setProperty('padding-top', paddingTop + 'px', 'important');
     }catch(e){ setTimeout(schedule,200); }
   }
 
