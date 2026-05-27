@@ -244,9 +244,9 @@ st.markdown("""
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
   .block-container {
-    /* push scrollable content below the fixed header band + filter bar
-       JS overrides this value dynamically once header height is known */
-    padding-top:280px !important; padding-bottom:2rem;
+    /* push scrollable content below fixed header + two filter rows
+       JS overrides this value dynamically once all heights are known */
+    padding-top:360px !important; padding-bottom:2rem;
     max-width:1700px;
   }
   header[data-testid="stHeader"] { background:transparent; }
@@ -888,23 +888,25 @@ components.html("""
       var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
       if(headerH < 40){ setTimeout(schedule,120); return; }
 
+      // Measure row heights BEFORE pinning so we get real dimensions.
+      // Math.max(50,…) guarantees a usable floor even if the row hasn't
+      // rendered fully yet (avoids the near-zero → 3px fallback bug).
+      var row1H = Math.max(50, Math.ceil(n1.getBoundingClientRect().height));
+      var row2H = Math.max(50, Math.ceil(n2.getBoundingClientRect().height));
+
       // Pin Row 1 directly below the stats header
       pinRow(n1, headerH);
-      n1.style.setProperty('border-bottom','1px solid rgba(226,232,240,0.6)','important');
-      var row1H = Math.ceil(n1.getBoundingClientRect().height);
-      if(row1H < 20) row1H = 3;
       n1.style.setProperty('min-height', row1H + 'px','important');
+      n1.style.setProperty('border-bottom','1px solid rgba(226,232,240,0.6)','important');
 
       // Pin Row 2 below Row 1 with a small gap
       var ROW_GAP = 4;
       pinRow(n2, headerH + row1H + ROW_GAP);
+      n2.style.setProperty('min-height', row2H + 'px','important');
       n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
-      var row2H = Math.ceil(n2.getBoundingClientRect().height);
-      if(row2H < 20) row2H = 3;
-      n2.style.setProperty('min-height', row2H + 'px','important');
 
-      // Push scrollable content below both pinned rows
+      // Push scrollable content cleanly below both pinned rows
       var totalPinned = headerH + row1H + ROW_GAP + row2H + 2;
       var bc = doc.querySelector('.block-container');
       if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
