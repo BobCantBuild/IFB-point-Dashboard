@@ -263,27 +263,9 @@ st.markdown("""
     max-width:1700px;
   }
 
-  /* CSS-level pin of the two filter rows — reliable fallback even if JS fails.
-     Adjacent-sibling from the (display:none) filter-anchor container. */
-  .element-container:has(#filter-anchor) + .element-container {
-    position:fixed !important;
-    top:230px !important;
-    left:0 !important; right:0 !important;
-    z-index:9998 !important;
-    background:#F1F5F9 !important;
-    padding:0 22px !important;
-    border-bottom:1px solid rgba(226,232,240,0.6) !important;
-  }
-  .element-container:has(#filter-anchor) + .element-container + .element-container {
-    position:fixed !important;
-    top:284px !important;
-    left:0 !important; right:0 !important;
-    z-index:9998 !important;
-    background:#F1F5F9 !important;
-    padding:0 22px !important;
-    border-bottom:1px solid #E2E8F0 !important;
-    box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
-  }
+  /* Filter rows scroll naturally with the content — only the hero+stats
+     band stays pinned. This avoids the empty-gap artifact caused by
+     unreliable position:fixed pinning of dynamic Streamlit elements. */
 
   /* Collapse element-container wrappers around fixed/hidden elements */
   .element-container:has(.fixed-header),
@@ -866,103 +848,29 @@ with fc3:
         label_visibility="collapsed",
     )
 
-# JS injection — walk the DOM to find the filter columns element-container
-# (sibling after #filter-anchor) and force position:fixed on it directly.
-# This bypasses all CSS selector reliability issues with Streamlit's DOM.
+# JS injection — measure the fixed-header height and set block-container
+# padding-top to match it exactly. Filter rows scroll naturally with the
+# page content (no pin), eliminating the empty-gap artifact.
 components.html("""
 <script>
 (function(){
-  function nextEC(el){
-    var n = el.nextElementSibling;
-    while(n && !(n.classList && n.classList.contains('element-container')))
-      n = n.nextElementSibling;
-    return n;
-  }
-
-  function pinRow(el, top){
-    el.style.setProperty('position','fixed','important');
-    el.style.setProperty('top', top+'px','important');
-    el.style.setProperty('left','0','important');
-    el.style.setProperty('right','0','important');
-    el.style.setProperty('z-index','9998','important');
-    el.style.setProperty('background','#F1F5F9','important');
-    el.style.setProperty('padding','0 22px','important');
-    el.style.setProperty('overflow','visible','important');
-    var hb = el.querySelector('[data-testid="stHorizontalBlock"]');
-    if(hb) hb.style.setProperty('align-items','center','important');
-    var cols = el.querySelectorAll('[data-testid="column"] > div');
-    for(var i=0;i<cols.length;i++){
-      cols[i].style.setProperty('display','flex','important');
-      cols[i].style.setProperty('flex-direction','column','important');
-      cols[i].style.setProperty('justify-content','center','important');
-      cols[i].style.setProperty('padding','0 6px','important');
-    }
-  }
-
   function run(){
     try{
       var doc = window.parent.document;
-
-      // ── locate fixed header ──────────────────────────────────────────────
-      var fh = doc.querySelector('.fixed-header');
+      var fh  = doc.querySelector('.fixed-header');
       if(!fh) return false;
       var hdrBottom = Math.ceil(fh.getBoundingClientRect().bottom);
       if(hdrBottom < 40) return false;
 
-      // ── locate two filter rows via anchor ────────────────────────────────
-      var a = doc.getElementById('filter-anchor');
-      if(!a) return false;
-      var ec = a;
-      while(ec && !(ec.classList && ec.classList.contains('element-container')))
-        ec = ec.parentElement;
-      if(!ec) return false;
-      var n1 = nextEC(ec);   // Row 1: Today / Missed / date
-      if(!n1) return false;
-      var n2 = nextEC(n1);   // Row 2: Open / Attempted / Stage / Search
-      if(!n2) return false;
-
-      // ── block-container ──────────────────────────────────────────────────
       var bc = doc.querySelector('.block-container');
       if(!bc) return false;
 
-      // Measure row heights before pinning (still in normal flow → real dims)
-      var r1h = Math.max(50, Math.ceil(n1.getBoundingClientRect().height));
-      var r2h = Math.max(50, Math.ceil(n2.getBoundingClientRect().height));
-
-      // Pin rows
-      pinRow(n1, hdrBottom);
-      n1.style.setProperty('min-height', r1h+'px','important');
-      n1.style.setProperty('border-bottom','1px solid rgba(226,232,240,0.6)','important');
-
-      var GAP = 4;
-      pinRow(n2, hdrBottom + r1h + GAP);
-      n2.style.setProperty('min-height', r2h+'px','important');
-      n2.style.setProperty('border-bottom','1px solid #E2E8F0','important');
-      n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
-
-      // ── Collapse any non-data containers between n2 and the first data row ──
-      // This removes visual ghost boxes (JS iframe wrapper, stray wrappers, etc.)
-      // Stop as soon as we reach actual table content (.th, .td) or a meaningful
-      // markdown block (e.g. "no records" message).
-      var nx = nextEC(n2);
-      while(nx){
-        var hasData = nx.querySelector('.th') || nx.querySelector('.td') ||
-                      nx.querySelector('[data-testid="stDataFrame"]') ||
-                      nx.querySelector('#no-records-msg');
-        if(hasData) break;
-        nx.style.setProperty('height','0','important');
-        nx.style.setProperty('min-height','0','important');
-        nx.style.setProperty('overflow','hidden','important');
-        nx = nextEC(nx);
-      }
-
-      // Compute padding-top so content starts right below the two pinned rows.
-      // bcStaticTop = block-container distance from document top (scroll-independent).
-      var scrollY  = window.parent.scrollY || window.parent.pageYOffset || 0;
+      // bcStaticTop = how far .block-container sits from the document top
+      // (scroll-independent). We want the content to start exactly at
+      // hdrBottom, so padding-top = hdrBottom - bcStaticTop.
+      var scrollY     = window.parent.scrollY || window.parent.pageYOffset || 0;
       var bcStaticTop = Math.max(0, bc.getBoundingClientRect().top + scrollY);
-      var totalH   = hdrBottom + r1h + GAP + r2h + 2;
-      // paddingTop is how far from bc's own top the data should start
-      var paddingTop = Math.max(10, totalH - bcStaticTop);
+      var paddingTop  = Math.max(8, hdrBottom - bcStaticTop + 8);
       bc.style.setProperty('padding-top', paddingTop+'px','important');
 
       return true;
