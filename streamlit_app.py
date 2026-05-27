@@ -244,8 +244,9 @@ st.markdown("""
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
   .block-container {
-    /* push scrollable content below the fixed header band */
-    padding-top:260px !important; padding-bottom:2rem;
+    /* push scrollable content below the fixed header band + filter bar
+       JS overrides this value dynamically once header height is known */
+    padding-top:310px !important; padding-bottom:2rem;
     max-width:1700px;
   }
   header[data-testid="stHeader"] { background:transparent; }
@@ -315,7 +316,13 @@ st.markdown("""
     box-shadow:var(--shadow-md);
     border-color:#CBD5E1;
   }
-  .stat-solo { min-width:120px; flex-shrink:0; }
+  .stat-solo {
+    min-width:120px; flex-shrink:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    text-align:center;
+  }
+  .stat-solo .s-label { justify-content:center; }
   .stat-group { flex:1 1 280px; min-width:280px; padding:10px 14px; }
 
   .s-label, .g-label {
@@ -822,9 +829,22 @@ components.html("""
       while(n && !(n.classList && n.classList.contains('element-container')))
         n = n.nextElementSibling;
       if(!n){ setTimeout(fix,120); return; }
+      // Measure actual rendered height of the fixed header — never hardcode
+      var fixedHdr = doc.querySelector('.fixed-header');
+      if(!fixedHdr){ setTimeout(fix,120); return; }
+      var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
+      if(headerH < 40){ setTimeout(fix,120); return; } // not fully rendered yet
+
+      var filterBarH = 62;
+      var totalPinned = headerH + filterBarH + 10; // 10px breathing room
+
+      // Push the scrollable block-container below both pinned bands
+      var bc = doc.querySelector('[data-testid="stAppViewBlockContainer"]');
+      if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
+
       // Apply fixed positioning via inline style (highest CSS priority)
       n.style.setProperty('position','fixed','important');
-      n.style.setProperty('top','172px','important');
+      n.style.setProperty('top', headerH + 'px','important');
       n.style.setProperty('left','0','important');
       n.style.setProperty('right','0','important');
       n.style.setProperty('z-index','9998','important');
