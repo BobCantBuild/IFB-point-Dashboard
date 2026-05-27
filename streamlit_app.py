@@ -761,10 +761,11 @@ except Exception as _exc:
     st.session_state["_api_sync_ok"]  = False
     st.session_state["_api_sync_msg"] = f"{type(_exc).__name__}: {_exc}"
     df_all = pd.DataFrame(columns=[
-        "customer_id", "customer_name", "purchase_date", "machine_type",
+        "customer_id", "customer_name", "purchase_date",
+        "installation_type", "machine_type",
         "phone_number", "email_id", "ifb_point_id",
-        "status", "next_appointment", "interested", "remarks",
         "customer_follow_up",
+        "status", "next_appointment", "interested", "remarks", "updated_at",
     ])
     st.error(f"⚠️ Unable to load data — {type(_exc).__name__}: {_exc}")
 
