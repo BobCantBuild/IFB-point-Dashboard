@@ -1,52 +1,83 @@
 {
-  "synced_at_utc": "2026-05-26T16:57:44+00:00",
+  "synced_at_utc": "2026-05-27T10:19:15+00:00",
   "ifb_point_code": "ADSF",
+  "ifb_point_name": "IFB Point - Sample Franchise",
   "record_count": 5,
   "records": [
     {
       "customer_id": "CUST1001",
       "customer_name": "Ramesh Kumar",
       "purchase_date": "2026-05-24",
-      "installation_type": "Demo",
+      "installation_date": "2026-05-25",
       "machine_type": "Washing Machine",
       "phone_number": "9876543210",
-      "email_id": "ramesh@gmail.com"
+      "alt_number": "",
+      "email_id": "ramesh@gmail.com",
+      "pin_code": "560001",
+      "serial_no": "WM202605001",
+      "ifb_point_code": "ADSF",
+      "ifb_point_name": "IFB Point - Sample Franchise",
+      "customer_follow_up": "1st 30 days call"
     },
     {
       "customer_id": "CUST1002",
       "customer_name": "Suresh Babu",
       "purchase_date": "2026-05-25",
-      "installation_type": "Standard",
+      "installation_date": "2026-05-26",
       "machine_type": "Dish Washer",
       "phone_number": "9123456780",
-      "email_id": "suresh@gmail.com"
+      "alt_number": "",
+      "email_id": "suresh@gmail.com",
+      "pin_code": "560002",
+      "serial_no": "DW202605002",
+      "ifb_point_code": "ADSF",
+      "ifb_point_name": "IFB Point - Sample Franchise",
+      "customer_follow_up": "Post-Purchase"
     },
     {
       "customer_id": "CUST2001",
       "customer_name": "Priya Sharma",
       "purchase_date": "2026-04-20",
-      "installation_type": "Premium",
+      "installation_date": "2026-04-21",
       "machine_type": "Microwave Oven",
       "phone_number": "9988776655",
-      "email_id": "priya@gmail.com"
+      "alt_number": "9988776600",
+      "email_id": "priya@gmail.com",
+      "pin_code": "560003",
+      "serial_no": "MO202604001",
+      "ifb_point_code": "ADSF",
+      "ifb_point_name": "IFB Point - Sample Franchise",
+      "customer_follow_up": "1st 30 days call"
     },
     {
       "customer_id": "CUST3001",
       "customer_name": "Arun Raj",
       "purchase_date": "2022-06-15",
-      "installation_type": "Standard",
+      "installation_date": "2022-06-16",
       "machine_type": "Refrigerator",
       "phone_number": "9871234567",
-      "email_id": "suresh@gmail.com"
+      "alt_number": "",
+      "email_id": "arun@gmail.com",
+      "pin_code": "560004",
+      "serial_no": "RF202206001",
+      "ifb_point_code": "ADSF",
+      "ifb_point_name": "IFB Point - Sample Franchise",
+      "customer_follow_up": "Pre-AMC"
     },
     {
       "customer_id": "CUST4001",
       "customer_name": "Meena Devi",
       "purchase_date": "2019-05-10",
-      "installation_type": "Premium",
+      "installation_date": "2019-05-11",
       "machine_type": "Air Conditioner",
       "phone_number": "9001122334",
-      "email_id": "meena@gmail.com"
+      "alt_number": "",
+      "email_id": "meena@gmail.com",
+      "pin_code": "560005",
+      "serial_no": "AC201905001",
+      "ifb_point_code": "ADSF",
+      "ifb_point_name": "IFB Point - Sample Franchise",
+      "customer_follow_up": "8 Year Upgrade"
     }
   ]
 }

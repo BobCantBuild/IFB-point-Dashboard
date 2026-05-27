@@ -403,8 +403,7 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
     _COLS = [
         "customer_id", "customer_name", "purchase_date",
-        "installation_type", "machine_type",
-        "phone_number", "email_id", "ifb_point_id",
+        "machine_type", "phone_number", "email_id",
         "customer_follow_up",
         "status", "next_appointment", "interested", "remarks", "updated_at",
     ]
@@ -436,16 +435,10 @@ def load_all() -> tuple[pd.DataFrame, str]:
         df["installation_date"] = df["installation_date"].apply(_parse_api_date)
 
     for col in (
-        "customer_name",
-        "installation_type",
-        "machine_type",
-        "email_id",
-        "ifb_point_id",
-        "customer_follow_up",
-        "alt_number",
-        "pin_code",
-        "serial_no",
-        "installation_date",
+        "customer_name", "machine_type", "email_id",
+        "customer_follow_up", "alt_number", "pin_code",
+        "serial_no", "installation_date",
+        "ifb_point_code", "ifb_point_name",
     ):
         if col not in df.columns:
             df[col] = None
@@ -496,26 +489,24 @@ def load_all() -> tuple[pd.DataFrame, str]:
             conn.executemany(
                 """INSERT OR REPLACE INTO customers
                    (customer_id, customer_name, purchase_date,
-                    installation_date, installation_type, machine_type,
+                    installation_date, machine_type,
                     phone_number, alt_number, email_id,
-                    pin_code, serial_no, ifb_point_id,
+                    pin_code, serial_no,
                     ifb_point_code, ifb_point_name,
                     customer_follow_up, synced_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         str(r.get("customer_id")),
                         r.get("customer_name"),
-                        r.get("purchase_date").isoformat() if isinstance(r.get("purchase_date"), date) else None,
-                        r.get("installation_date").isoformat() if isinstance(r.get("installation_date"), date) else None,
-                        r.get("installation_type"),
+                        r.get("purchase_date").isoformat() if isinstance(r.get("purchase_date"), date) else str(r.get("purchase_date") or ""),
+                        r.get("installation_date").isoformat() if isinstance(r.get("installation_date"), date) else str(r.get("installation_date") or ""),
                         r.get("machine_type"),
                         str(r.get("phone_number") or ""),
-                        r.get("alt_number"),
+                        str(r.get("alt_number") or ""),
                         r.get("email_id"),
-                        r.get("pin_code"),
-                        r.get("serial_no"),
-                        r.get("ifb_point_id"),
+                        str(r.get("pin_code") or ""),
+                        str(r.get("serial_no") or ""),
                         point_code,
                         point_name,
                         r.get("customer_follow_up"),
@@ -1044,8 +1035,7 @@ except Exception as _exc:
     st.session_state["_api_sync_msg"] = f"{type(_exc).__name__}: {_exc}"
     df_all = pd.DataFrame(columns=[
         "customer_id", "customer_name", "purchase_date",
-        "installation_type", "machine_type",
-        "phone_number", "email_id", "ifb_point_id",
+        "machine_type", "phone_number", "email_id",
         "customer_follow_up",
         "status", "next_appointment", "interested", "remarks", "updated_at",
     ])
@@ -1078,11 +1068,21 @@ _badge_html = (
 
 _ifb_code, _active_api_url = _resolve_point_code_and_url()
 
+# Read IFB Point Name from the snapshot if available
+_ifb_name = ""
+if DATA_FILE.exists():
+    try:
+        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        _ifb_name = str(_blob.get("ifb_point_name", "") or "").strip()
+    except Exception:
+        pass
+
 st.markdown(f"""
 <div class="fixed-header">
   <div class="hero">
     <div>
       <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
+      {f'<p style="margin:3px 0 0;font-size:13px;color:#94A3B8;font-weight:500;">{_ifb_name}</p>' if _ifb_name else ''}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       <p style="margin:0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
@@ -1442,10 +1442,10 @@ else:
     end   = min(start + PAGE_SIZE, total_rows)
     page_df = filtered.iloc[start:end]
 
-    # column ratios:  edit  follow-up  name  date  inst-type  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      2.7,       1.25, 0.95,      1.0,  1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
+    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
+    R   = [0.4,      2.7,       1.5,  1.0,    1.5,    1.0,   1.8,   1.0,   1.0,  1.1,  2.5]
     HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
-           "Install Type", "Machine Type", "Phone", "Email",
+           "Machine Type", "Phone", "Email",
            "Status", "Next Appt", "Interested?", "Remarks"]
 
     # Header row
@@ -1480,20 +1480,19 @@ else:
             if st.button("✏️", key=f"edit_{cid}", help=f"Edit lead {cid}"):
                 edit_lead_dialog(row.to_dict())
 
-        # 1–11 data cells
+        # 1–10 data cells
         cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
         cols[2].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>", unsafe_allow_html=True)
         cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",    unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='td'>{_safe(row.get('installation_type'))}</div>",    unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
-        cols[9].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
-        cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
+        cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",  unsafe_allow_html=True)
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[11].markdown(
+        cols[10].markdown(
             f"<div class='td td-last' style='padding-right:48px;margin-right:8px;' title='{_rem_tip}'>"
             f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
