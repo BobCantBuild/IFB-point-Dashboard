@@ -139,6 +139,10 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                 if not isinstance(raw, dict):
                     continue
                 values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
+                cust_id = str(raw.get("customer_id", "") or "").strip()
+                serial  = str(raw.get("serialNo",    "") or "").strip()
+                # Key format: ifb_point-customer_id-serialNo (Option C)
+                key_val = f"{point_code}-{cust_id}-{serial}"
                 cur = conn.execute(
                     """
                     INSERT OR IGNORE INTO api_leads
@@ -148,9 +152,16 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                        "pinCode", "serialNo")
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (point_code, "", lead_date, bucket_key, *values),
+                    (point_code, key_val, lead_date, bucket_key, *values),
                 )
                 inserted += cur.rowcount if cur.rowcount > 0 else 0
+
+        # Backfill existing rows that have an empty key (one-time migration)
+        conn.execute("""
+            UPDATE api_leads
+               SET key = ifb_point || '-' || customer_id || '-' || "serialNo"
+             WHERE key IS NULL OR key = ''
+        """)
         conn.commit()
 
     return inserted
