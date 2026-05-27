@@ -243,20 +243,48 @@ st.markdown("""
 
   /* ── Page base ── */
   .stApp { background:var(--bg); overflow-x:auto; }
+
+  /* Zero out every Streamlit container above .block-container so it starts
+     at viewport top — eliminates the ~140px offset Streamlit Cloud adds */
+  header[data-testid="stHeader"],
+  [data-testid="stToolbar"],
+  #MainMenu, footer {
+    display:none !important;
+  }
+  [data-testid="stAppViewContainer"],
+  [data-testid="stMainBlockContainer"] {
+    padding-top:0 !important; margin-top:0 !important;
+  }
+
   .block-container {
-    /* Fallback = approx stats-header height only (filter rows are in-flow until JS runs).
-       JS overrides this to the exact totalPinned value once heights are measured. */
-    padding-top:230px !important; padding-bottom:2rem;
+    /* JS sets the exact value; fallback = 0 so there is never a white gap
+       before JS fires. A brief overlap (< 80ms) is acceptable. */
+    padding-top:0px !important; padding-bottom:2rem;
     max-width:1700px;
   }
-  /* Collapse Streamlit's top header so .block-container starts at viewport top */
-  header[data-testid="stHeader"] {
-    height:0 !important; min-height:0 !important;
-    overflow:hidden !important; padding:0 !important;
+
+  /* CSS-level pin of the two filter rows — reliable fallback even if JS fails.
+     Adjacent-sibling from the (display:none) filter-anchor container. */
+  .element-container:has(#filter-anchor) + .element-container {
+    position:fixed !important;
+    top:230px !important;
+    left:0 !important; right:0 !important;
+    z-index:9998 !important;
+    background:#F1F5F9 !important;
+    padding:0 22px !important;
+    border-bottom:1px solid rgba(226,232,240,0.6) !important;
   }
-  #MainMenu, footer { visibility:hidden; }
-  /* Hide Share, Star, Edit, GitHub icons in top right */
-  [data-testid="stToolbar"] { display:none !important; }
+  .element-container:has(#filter-anchor) + .element-container + .element-container {
+    position:fixed !important;
+    top:284px !important;
+    left:0 !important; right:0 !important;
+    z-index:9998 !important;
+    background:#F1F5F9 !important;
+    padding:0 22px !important;
+    border-bottom:1px solid #E2E8F0 !important;
+    box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
+  }
+
   /* Collapse element-container wrappers around fixed/hidden elements */
   .element-container:has(.fixed-header),
   .element-container:has(iframe[title="st.iframe"]) {
@@ -908,11 +936,13 @@ components.html("""
       n2.style.setProperty('box-shadow','0 3px 10px rgba(15,23,42,.06)','important');
 
       // Compute padding-top so content starts right below the two pinned rows.
-      // bcStaticTop = block-container's position from document top (scroll-independent).
-      var scrollY = window.parent.scrollY || window.parent.pageYOffset || 0;
+      // bcStaticTop = block-container distance from document top (scroll-independent).
+      var scrollY  = window.parent.scrollY || window.parent.pageYOffset || 0;
       var bcStaticTop = Math.max(0, bc.getBoundingClientRect().top + scrollY);
-      var totalH = hdrBottom + r1h + GAP + r2h + 2;
-      bc.style.setProperty('padding-top', Math.max(20, totalH - bcStaticTop)+'px','important');
+      var totalH   = hdrBottom + r1h + GAP + r2h + 2;
+      // paddingTop is how far from bc's own top the data should start
+      var paddingTop = Math.max(10, totalH - bcStaticTop);
+      bc.style.setProperty('padding-top', paddingTop+'px','important');
 
       return true;
     }catch(e){ return false; }
