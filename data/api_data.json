@@ -1,7 +1,83 @@
 {
-  "synced_at_utc": "2026-05-27T11:00:00+00:00",
+  "synced_at_utc": "2026-05-27T11:30:00+00:00",
   "ifb_point_code": "1034532",
-  "ifb_point_name": "IFB Industries Limited - IFB Point",
-  "record_count": 0,
-  "records": []
+  "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+  "record_count": 5,
+  "records": [
+    {
+      "customer_id": "0027280892",
+      "customer_name": "Ramesh Kumar",
+      "purchase_date": "2026-05-22",
+      "installation_date": "2026-05-25",
+      "machine_type": "Air Conditioner",
+      "phone_number": "82xxxx05",
+      "alt_number": "",
+      "email_id": "",
+      "pin_code": "176047",
+      "serial_no": "2102972504140530F6",
+      "ifb_point_code": "1034532",
+      "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+      "customer_follow_up": "Post-Purchase"
+    },
+    {
+      "customer_id": "0012985609",
+      "customer_name": "RAKESH SHARMA",
+      "purchase_date": "2026-04-26",
+      "installation_date": "2026-04-27",
+      "machine_type": "",
+      "phone_number": "94xxxx24",
+      "alt_number": "94xxxx48",
+      "email_id": "",
+      "pin_code": "176215",
+      "serial_no": "2119352601156990E4",
+      "ifb_point_code": "1034532",
+      "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+      "customer_follow_up": "1st 30 days call"
+    },
+    {
+      "customer_id": "0012077772",
+      "customer_name": "SHARIKA ..D/O SHIMAR",
+      "purchase_date": "2022-06-26",
+      "installation_date": "2022-06-27",
+      "machine_type": "",
+      "phone_number": "98xxxx71",
+      "alt_number": "70xxxx42",
+      "email_id": "",
+      "pin_code": "176215",
+      "serial_no": "000676201222020523",
+      "ifb_point_code": "1034532",
+      "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+      "customer_follow_up": "Pre-AMC"
+    },
+    {
+      "customer_id": "0012066734",
+      "customer_name": "PARDEEP SINGH",
+      "purchase_date": "2022-06-22",
+      "installation_date": "2022-06-27",
+      "machine_type": "",
+      "phone_number": "98xxxx44",
+      "alt_number": "",
+      "email_id": "",
+      "pin_code": "176215",
+      "serial_no": "025730220506006430",
+      "ifb_point_code": "1034532",
+      "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+      "customer_follow_up": "Pre-AMC"
+    },
+    {
+      "customer_id": "0018643054",
+      "customer_name": "ANIL PADIYAL",
+      "purchase_date": "2019-05-26",
+      "installation_date": "2019-05-27",
+      "machine_type": "",
+      "phone_number": "70xxxx25",
+      "alt_number": "",
+      "email_id": "AXXX@XXXX.com",
+      "pin_code": "176215",
+      "serial_no": "001826180417086267",
+      "ifb_point_code": "1034532",
+      "ifb_point_name": "IFB Industries Limited - IFB Point RV electronics",
+      "customer_follow_up": "8 Year Upgrade"
+    }
+  ]
 }

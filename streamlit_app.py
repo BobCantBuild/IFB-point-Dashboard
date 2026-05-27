@@ -373,23 +373,31 @@ def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list
     Live API is attempted only if the snapshot is missing.
     """
     if DATA_FILE.exists():
-        blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        synced  = blob.get("synced_at_utc", "?") if isinstance(blob, dict) else "?"
+        try:
+            blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            blob = None
 
-        # Legacy snapshot format: {"ifb_point_code": "...", "records": [...]}
-        if isinstance(blob, dict) and "records" in blob:
-            records = blob.get("records", [])
-            snap_code = blob.get("ifb_point_code")
-            if snap_code and str(snap_code).strip() == str(ifb_point_code).strip():
-                return [r for r in records if isinstance(r, dict)], f"snapshot · synced {synced} UTC"
+        if isinstance(blob, dict):
+            synced = blob.get("synced_at_utc", "?")
 
-        # New snapshot format: raw API payload with bucket lists
-        records, snap_code, _snap_name = _normalize_api_payload(blob)
-        if snap_code and str(snap_code).strip() == str(ifb_point_code).strip():
-            return records, f"snapshot · synced {synced} UTC"
+            # Normalized snapshot format: {"ifb_point_code": "...", "records": [...]}
+            if "records" in blob and isinstance(blob.get("records"), list):
+                records = [r for r in blob["records"] if isinstance(r, dict)]
+                if records:
+                    return records, f"snapshot · synced {synced} UTC"
 
-    records = _fetch_live_api(ifb_point_code=str(ifb_point_code), api_url=api_url)
-    return records, "live API"
+            # Raw API payload (bucket-list shape) — normalize on the fly
+            records, _snap_code, _snap_name = _normalize_api_payload(blob)
+            if records:
+                return records, f"snapshot · synced {synced} UTC"
+
+    # Snapshot empty or missing — try live API as last resort
+    try:
+        records = _fetch_live_api(ifb_point_code=str(ifb_point_code), api_url=api_url)
+        return records, "live API"
+    except Exception:
+        return [], "no data — snapshot empty and live API unreachable"
 
 
 def load_all() -> tuple[pd.DataFrame, str]:
