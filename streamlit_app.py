@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS customers (
     customer_id        TEXT PRIMARY KEY,
     customer_name      TEXT,
     purchase_date      TEXT,
+    installation_type  TEXT,
     machine_type       TEXT,
     phone_number       TEXT,
     email_id           TEXT,
@@ -78,15 +79,17 @@ def _get_conn() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.executescript(DB_SCHEMA)
     # ── safe migrations: add columns that may be missing in older DBs ──────
-    existing = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(followups)").fetchall()
-    }
-    if "updated_at" not in existing:
+    # followups migrations
+    fu_cols = {r[1] for r in conn.execute("PRAGMA table_info(followups)").fetchall()}
+    if "updated_at" not in fu_cols:
         conn.execute(
             "ALTER TABLE followups ADD COLUMN updated_at TEXT "
             "DEFAULT (datetime('now'))"
         )
+    # customers migrations
+    cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
+    if "installation_type" not in cu_cols:
+        conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
     conn.commit()
     return conn
 
@@ -170,10 +173,11 @@ def load_all() -> tuple[pd.DataFrame, str]:
     records, source = fetch_api_records()
 
     _COLS = [
-        "customer_id", "customer_name", "purchase_date", "machine_type",
+        "customer_id", "customer_name", "purchase_date",
+        "installation_type", "machine_type",
         "phone_number", "email_id", "ifb_point_id",
-        "status", "next_appointment", "interested", "remarks",
         "customer_follow_up",
+        "status", "next_appointment", "interested", "remarks", "updated_at",
     ]
 
     if not records:
@@ -187,7 +191,8 @@ def load_all() -> tuple[pd.DataFrame, str]:
         df.get("purchase_date"), errors="coerce"
     ).dt.date
 
-    for col in ("customer_name", "machine_type", "email_id", "ifb_point_id"):
+    for col in ("customer_name", "installation_type", "machine_type",
+                "email_id", "ifb_point_id"):
         if col not in df.columns:
             df[col] = None
 
@@ -202,15 +207,17 @@ def load_all() -> tuple[pd.DataFrame, str]:
     try:
         conn.executemany(
             """INSERT OR REPLACE INTO customers
-               (customer_id, customer_name, purchase_date, machine_type,
-                phone_number, email_id, ifb_point_id, customer_follow_up,
-                synced_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (customer_id, customer_name, purchase_date,
+                installation_type, machine_type,
+                phone_number, email_id, ifb_point_id,
+                customer_follow_up, synced_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
                     str(row.customer_id),
                     row.customer_name,
                     row.purchase_date.isoformat() if isinstance(row.purchase_date, date) else None,
+                    row.installation_type,
                     row.machine_type,
                     str(row.phone_number),
                     row.email_id,
@@ -227,7 +234,8 @@ def load_all() -> tuple[pd.DataFrame, str]:
         merged = pd.read_sql_query(
             """SELECT
                  c.customer_id, c.customer_name, c.purchase_date,
-                 c.machine_type, c.phone_number, c.email_id,
+                 c.installation_type, c.machine_type,
+                 c.phone_number, c.email_id,
                  c.ifb_point_id, c.customer_follow_up,
                  f.status, f.next_appointment, f.interested,
                  f.remarks, f.updated_at
@@ -1152,11 +1160,11 @@ else:
     end   = min(start + PAGE_SIZE, total_rows)
     page_df = filtered.iloc[start:end]
 
-    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      2.7,       1.25, 0.95, 1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
+    # column ratios:  edit  follow-up  name  date  inst-type  machine  phone  email  status  appt  int   remarks
+    R   = [0.4,      2.7,       1.25, 0.95,      1.0,  1.45,    0.95,  1.65,  1.0,    0.95, 1.05, 2.4]
     HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
-           "Machine Type", "Phone", "Email", "Status", "Next Appt",
-           "Interested?", "Remarks"]
+           "Install Type", "Machine Type", "Phone", "Email",
+           "Status", "Next Appt", "Interested?", "Remarks"]
 
     # Header row
     hdr = st.columns(R)
@@ -1190,19 +1198,20 @@ else:
             if st.button("✏️", key=f"edit_{cid}", help=f"Edit lead {cid}"):
                 edit_lead_dialog(row.to_dict())
 
-        # 1–10 data cells
+        # 1–11 data cells
         cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
         cols[2].markdown(f"<div class='td'><b>{_safe(row.get('customer_name'))}</b></div>", unsafe_allow_html=True)
         cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",    unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
-        cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",  unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='td'>{_safe(row.get('installation_type'))}</div>",    unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
+        cols[9].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
+        cols[10].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[10].markdown(
+        cols[11].markdown(
             f"<div class='td td-last' style='padding-right:48px;margin-right:8px;' title='{_rem_tip}'>"
             f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
