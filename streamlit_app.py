@@ -683,13 +683,9 @@ if DATA_FILE.exists():
 st.markdown(f"""
 <div class="fixed-header">
   <div class="hero">
-    <div>
-      <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
-      <p style="margin:4px 0 0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
-    </div>
+    <div></div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-      <span class="pill">LIVE</span>
-      {_badge_html}
+      <p style="margin:0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
     </div>
   </div>
   <div class="stats-row">
