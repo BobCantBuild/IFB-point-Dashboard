@@ -11,8 +11,14 @@ import httpx as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
-DB_PATH   = Path(__file__).parent / "ifb_point.db"
+import os as _os
+
 DATA_FILE = Path(__file__).parent / "data" / "api_data.json"
+
+# On Streamlit Cloud the app directory is read-only; use /tmp instead.
+# Locally the app directory is writable, so the DB lives next to the code.
+_APP_DIR = Path(__file__).parent
+DB_PATH  = (_APP_DIR if _os.access(_APP_DIR, _os.W_OK) else Path("/tmp")) / "ifb_point.db"
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -44,64 +50,59 @@ _API_USER = "IFBFollowUPAPP"
 _API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 _API_CODE = "ADSF"
 
-DB_SCHEMA = """
--- Customer records synced from the API snapshot on every app load.
--- Gives us a complete local copy of all customer fields.
-CREATE TABLE IF NOT EXISTS customers (
-    customer_id        TEXT PRIMARY KEY,
-    customer_name      TEXT,
-    purchase_date      TEXT,
-    installation_type  TEXT,
-    machine_type       TEXT,
-    phone_number       TEXT,
-    email_id           TEXT,
-    ifb_point_id       TEXT,
-    customer_follow_up TEXT,
-    synced_at          TEXT
-);
+# ─── DB helpers ──────────────────────────────────────────────────────────────
+# Design rules (to avoid the transaction-state bugs of the previous version):
+#   1. No isolation_level=None — use Python sqlite3 default mode.
+#   2. No executescript() — each DDL runs as a plain execute().
+#   3. No manual BEGIN / COMMIT SQL — use `with conn:` context-manager which
+#      auto-commits on success and auto-rolls-back on exception.
+#   4. No shared / cached connections — every helper opens its own connection,
+#      uses it, and closes it (the `with sqlite3.connect()` block handles that).
+#   5. load_all() merges customers + followups with pandas (no SQL JOIN) so the
+#      two writes are independent and can never interfere with each other.
+# ─────────────────────────────────────────────────────────────────────────────
 
--- User-edited follow-up fields — persisted across page loads.
--- Keyed by customer_id so they survive API re-syncs.
-CREATE TABLE IF NOT EXISTS followups (
-    customer_id      TEXT PRIMARY KEY,
-    status           TEXT,
-    next_appointment TEXT,
-    interested       TEXT,
-    remarks          TEXT,
-    updated_at       TEXT DEFAULT (datetime('now'))
-);
-"""
-
-
-def _get_conn() -> sqlite3.Connection:
-    """
-    Open the SQLite DB in autocommit mode (isolation_level=None).
-    Creates both tables and runs any pending column migrations.
-    Using isolation_level=None avoids Python sqlite3's implicit-transaction
-    behaviour that can swallow commits after executescript().
-    """
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
-    conn.execute("PRAGMA journal_mode=WAL")
-    # executescript() runs each statement immediately in autocommit mode
-    conn.executescript(DB_SCHEMA)
-    # ── safe column migrations ────────────────────────────────────────────
-    fu_cols = {r[1] for r in conn.execute("PRAGMA table_info(followups)").fetchall()}
-    if "updated_at" not in fu_cols:
-        conn.execute(
-            "ALTER TABLE followups ADD COLUMN updated_at TEXT "
-            "DEFAULT (datetime('now'))"
-        )
-    cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
-    if "installation_type" not in cu_cols:
-        conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
-    return conn
+def _ensure_tables() -> None:
+    """Create both tables if they don't already exist. Safe to call many times."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                customer_id        TEXT PRIMARY KEY,
+                customer_name      TEXT,
+                purchase_date      TEXT,
+                installation_type  TEXT,
+                machine_type       TEXT,
+                phone_number       TEXT,
+                email_id           TEXT,
+                ifb_point_id       TEXT,
+                customer_follow_up TEXT,
+                synced_at          TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS followups (
+                customer_id      TEXT PRIMARY KEY,
+                status           TEXT,
+                next_appointment TEXT,
+                interested       TEXT,
+                remarks          TEXT,
+                updated_at       TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Safe column migrations — only run ALTER if column is missing
+        fu_cols = {r[1] for r in conn.execute("PRAGMA table_info(followups)").fetchall()}
+        if "updated_at" not in fu_cols:
+            conn.execute("ALTER TABLE followups ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+        cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
+        if "installation_type" not in cu_cols:
+            conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
+        conn.commit()
 
 
 @st.cache_resource
 def init_db_if_missing():
-    """Create / migrate DB tables on first call (idempotent)."""
-    conn = _get_conn()
-    conn.close()
+    """Run once per process (cache_resource) — create DB tables on first boot."""
+    _ensure_tables()
 
 
 def _fetch_live_api() -> list[dict]:
@@ -165,13 +166,40 @@ def fetch_api_records() -> tuple[list[dict], str]:
     return records, "live API"
 
 
+def _safe_val(v):
+    """Convert NaN / NaT / None to None so sqlite3 stores NULL."""
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return v
+
+
+def _load_followups() -> pd.DataFrame:
+    """
+    Read every row from the followups table and return as a DataFrame.
+    Opens its own connection and closes it immediately — no shared state.
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        return pd.read_sql_query(
+            "SELECT customer_id, status, next_appointment, interested, remarks, updated_at "
+            "FROM followups",
+            conn,
+        )
+
+
 def load_all() -> tuple[pd.DataFrame, str]:
     """
-    Fetch customers from JSON snapshot / live API, upsert into the local
-    `customers` SQLite table, then LEFT JOIN with `followups` to return a
-    fully-merged DataFrame.
+    1. Fetch customer records from the JSON snapshot (or live API).
+    2. Upsert them into the `customers` SQLite table.
+    3. Load followups from the `followups` table separately.
+    4. Merge the two DataFrames with pandas (no SQL JOIN — simpler, no
+       transaction interference between the write and the read).
 
-    Returns (df, source_label).
+    Returns (merged_df, source_label).
     """
     records, source = fetch_api_records()
 
@@ -186,7 +214,7 @@ def load_all() -> tuple[pd.DataFrame, str]:
     if not records:
         return pd.DataFrame(columns=_COLS), source
 
-    # ── build raw DataFrame ──────────────────────────────────────────────
+    # ── Build customer DataFrame from API records ────────────────────────
     df = pd.DataFrame(records)
     df["customer_id"]   = df["customer_id"].astype(str)
     df["phone_number"]  = df.get("phone_number", pd.Series(dtype=str)).astype(str)
@@ -204,23 +232,9 @@ def load_all() -> tuple[pd.DataFrame, str]:
         lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
     )
 
-    # ── upsert API records into `customers` table ────────────────────────
-    synced_at = source  # human-readable sync label
-
-    def _safe_val(v):
-        """Convert NaN/NaT to None so sqlite3 stores NULL."""
-        if v is None:
-            return None
-        try:
-            if pd.isna(v):
-                return None
-        except (TypeError, ValueError):
-            pass
-        return v
-
-    conn = _get_conn()
-    try:
-        conn.execute("BEGIN")
+    # ── Upsert API records into `customers` table ────────────────────────
+    # `with sqlite3.connect() as conn:` auto-commits on success.
+    with sqlite3.connect(DB_PATH) as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO customers
                (customer_id, customer_name, purchase_date,
@@ -239,78 +253,69 @@ def load_all() -> tuple[pd.DataFrame, str]:
                     _safe_val(row.email_id),
                     _safe_val(row.ifb_point_id),
                     _safe_val(row.customer_follow_up),
-                    synced_at,
+                    source,
                 )
                 for row in df.itertuples(index=False)
             ],
         )
-        conn.execute("COMMIT")
+        conn.commit()
 
-        # ── load merged view: customers LEFT JOIN followups ──────────────
-        merged = pd.read_sql_query(
-            """SELECT
-                 c.customer_id, c.customer_name, c.purchase_date,
-                 c.installation_type, c.machine_type,
-                 c.phone_number, c.email_id,
-                 c.ifb_point_id, c.customer_follow_up,
-                 f.status, f.next_appointment, f.interested,
-                 f.remarks, f.updated_at
-               FROM customers c
-               LEFT JOIN followups f USING (customer_id)""",
-            conn,
+    # ── Load followups and merge with pandas ─────────────────────────────
+    fu_df = _load_followups()
+
+    if fu_df.empty:
+        for col in ("status", "next_appointment", "interested", "remarks", "updated_at"):
+            df[col] = None
+        merged = df
+    else:
+        fu_df["customer_id"] = fu_df["customer_id"].astype(str)
+        merged = df.merge(
+            fu_df[["customer_id", "status", "next_appointment",
+                   "interested", "remarks", "updated_at"]],
+            on="customer_id",
+            how="left",
         )
-    finally:
-        conn.close()
 
-    # ── coerce date columns back from TEXT ───────────────────────────────
+    # ── Coerce date columns ───────────────────────────────────────────────
     merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
     merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
 
     return merged, source
 
 
-def update_row(cid, status, next_appt, interested, remarks) -> dict:
+def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
     """
-    Write user edits to the followups table with an explicit transaction.
-    Returns the row as stored in the DB so the caller can verify the save.
-    Raises on any DB error so the dialog can surface it.
+    Persist user edits for one customer into the `followups` table.
+
+    Uses a fresh sqlite3.connect() with the default Python transaction mode
+    (no isolation_level=None, no manual BEGIN/COMMIT SQL).
+    `with conn:` auto-commits on success and auto-rolls-back on exception.
+    Returns the stored row so the dialog can confirm what was saved.
     """
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
     cid = str(cid)
-    conn = _get_conn()
-    try:
-        conn.execute("BEGIN")
+
+    with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """INSERT OR REPLACE INTO followups
-               (customer_id, status, next_appointment, interested, remarks,
-                updated_at)
+               (customer_id, status, next_appointment, interested, remarks, updated_at)
                VALUES (?, ?, ?, ?, ?, datetime('now'))""",
             (cid, status, appt_str, interested, remarks),
         )
-        conn.execute("COMMIT")
-
-        # ── verify: read back what was just written ───────────────────────
+        conn.commit()
         row = conn.execute(
             """SELECT customer_id, status, next_appointment,
                       interested, remarks, updated_at
                FROM followups WHERE customer_id = ?""",
             (cid,),
         ).fetchone()
-        if row is None:
-            raise RuntimeError(f"Save appeared to succeed but row {cid} is missing from DB")
-        return dict(zip(
-            ["customer_id", "status", "next_appointment",
-             "interested", "remarks", "updated_at"],
-            row,
-        ))
-    except Exception:
-        try:
-            conn.execute("ROLLBACK")
-        except Exception:
-            pass
-        raise
-    finally:
-        conn.close()
+
+    if row is None:
+        raise RuntimeError(f"Save appeared to succeed but followup row {cid!r} is missing.")
+    return dict(zip(
+        ["customer_id", "status", "next_appointment", "interested", "remarks", "updated_at"],
+        row,
+    ))
 
 
 # --------------------------------------------------------------------------- #
