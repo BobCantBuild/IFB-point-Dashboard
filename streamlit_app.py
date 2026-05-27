@@ -814,36 +814,41 @@ with fc5:
 components.html("""
 <script>
 (function(){
-  function fix(){
+  // Debounce: only one run per 60ms burst, prevents infinite loop when
+  // our own style mutations re-trigger the MutationObserver
+  var _pending = false;
+  function schedule(){ if(!_pending){ _pending=true; setTimeout(run,60); } }
+
+  function run(){
+    _pending = false;
     try{
       var doc = window.parent.document;
       var a = doc.getElementById('filter-anchor');
-      if(!a){ setTimeout(fix,120); return; }
+      if(!a){ setTimeout(schedule,120); return; }
       // Walk up to the element-container that wraps the anchor
       var ec = a;
       while(ec && !(ec.classList && ec.classList.contains('element-container')))
         ec = ec.parentElement;
-      if(!ec){ setTimeout(fix,120); return; }
+      if(!ec){ setTimeout(schedule,120); return; }
       // Next sibling element-container = the filter columns
       var n = ec.nextElementSibling;
       while(n && !(n.classList && n.classList.contains('element-container')))
         n = n.nextElementSibling;
-      if(!n){ setTimeout(fix,120); return; }
-      // Measure actual rendered height of the fixed header — never hardcode
+      if(!n){ setTimeout(schedule,120); return; }
+      // Measure actual rendered height of the fixed header
       var fixedHdr = doc.querySelector('.fixed-header');
-      if(!fixedHdr){ setTimeout(fix,120); return; }
+      if(!fixedHdr){ setTimeout(schedule,120); return; }
       var headerH = Math.ceil(fixedHdr.getBoundingClientRect().height);
-      if(headerH < 40){ setTimeout(fix,120); return; } // not fully rendered yet
+      if(headerH < 40){ setTimeout(schedule,120); return; }
 
       var filterBarH = 62;
-      var totalPinned = headerH + filterBarH + 4; // 4px breathing room
+      var totalPinned = headerH + filterBarH + 4;
 
-      // Target .block-container directly — same element the CSS rule targets,
-      // so inline style beats !important without a specificity fight
+      // Target .block-container directly — inline style overrides CSS !important
       var bc = doc.querySelector('.block-container');
       if(bc) bc.style.setProperty('padding-top', totalPinned + 'px', 'important');
 
-      // Apply fixed positioning via inline style (highest CSS priority)
+      // Pin filter bar right below fixed header
       n.style.setProperty('position','fixed','important');
       n.style.setProperty('top', headerH + 'px','important');
       n.style.setProperty('left','0','important');
@@ -862,7 +867,6 @@ components.html("""
         hb.style.setProperty('align-items','center','important');
         hb.style.setProperty('height','62px','important');
       }
-      // Centre each column's inner wrapper and add side padding for spacing
       var colDivs = n.querySelectorAll('[data-testid="column"] > div');
       for(var i=0;i<colDivs.length;i++){
         colDivs[i].style.setProperty('display','flex','important');
@@ -871,16 +875,16 @@ components.html("""
         colDivs[i].style.setProperty('height','62px','important');
         colDivs[i].style.setProperty('padding','0 6px','important');
       }
-    }catch(e){ setTimeout(fix,150); }
+    }catch(e){ setTimeout(schedule,200); }
   }
-  // Run immediately, then again after fonts/images settle
-  fix();
-  setTimeout(fix, 400);
-  setTimeout(fix, 1200);
+  // Run on load + one retry after fonts settle
+  schedule();
+  setTimeout(schedule, 500);
   try{
-    // subtree:true catches Streamlit reruns that swap inner elements
-    new MutationObserver(function(){ fix(); })
-      .observe(window.parent.document.body, {childList:true, subtree:true});
+    // subtree:false — only watch direct children of body changing (Streamlit reruns)
+    // subtree:true caused infinite loops from our own style.setProperty calls
+    new MutationObserver(schedule)
+      .observe(window.parent.document.body, {childList:true, subtree:false});
   }catch(e){}
 })();
 </script>
