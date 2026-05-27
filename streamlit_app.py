@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -75,6 +76,7 @@ def _ensure_tables() -> None:
                 phone_number       TEXT,
                 email_id           TEXT,
                 ifb_point_id       TEXT,
+                ifb_point_code     TEXT,
                 customer_follow_up TEXT,
                 synced_at          TEXT
             )
@@ -96,6 +98,8 @@ def _ensure_tables() -> None:
         cu_cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
         if "installation_type" not in cu_cols:
             conn.execute("ALTER TABLE customers ADD COLUMN installation_type TEXT")
+        if "ifb_point_code" not in cu_cols:
+            conn.execute("ALTER TABLE customers ADD COLUMN ifb_point_code TEXT")
         conn.commit()
 
 
@@ -105,18 +109,101 @@ def init_db_if_missing():
     _ensure_tables()
 
 
-def _fetch_live_api() -> list[dict]:
+def _resolve_point_code_and_url() -> tuple[str, str | None]:
+    """
+    Resolve the active IFB point code from URL query params (preferred),
+    then secrets, then the hardcoded fallback.
+
+    Optional query params:
+      - ifb_point_code=1034532
+      - api_url=https://.../GetInstallationAgeingDetails?IFBPointCode=1034532
+    """
+    code = _API_CODE
+    api_url: str | None = None
+
+    try:
+        qp = st.query_params  # Streamlit >= 1.30
+        q_code = qp.get("ifb_point_code")
+        if isinstance(q_code, str) and q_code.strip():
+            code = q_code.strip()
+        q_url = qp.get("api_url")
+        if isinstance(q_url, str) and q_url.strip():
+            api_url = q_url.strip()
+    except Exception:
+        pass
+
+    try:
+        s = st.secrets.get("api", {})
+        code = (s.get("ifb_point_code") or code)
+        if not api_url:
+            api_url = s.get("api_url") or None
+    except Exception:
+        pass
+
+    return str(code), api_url
+
+
+def _extract_point_code_from_url(url: str) -> str | None:
+    try:
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(url).query)
+        v = qs.get("IFBPointCode", [None])[0]
+        return str(v).strip() if v else None
+    except Exception:
+        return None
+
+
+def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[dict]:
     """Direct API call via httpx — only works from networks IFB whitelisted.
     Used as a fallback when data/api_data.json is missing (local development).
     """
-    u, p, code = _API_USER, _API_PASS, _API_CODE
+    u, p = _API_USER, _API_PASS
+    code = str(ifb_point_code or _API_CODE)
+    base_url = f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails"
+    url = api_url.strip() if isinstance(api_url, str) and api_url.strip() else base_url
+
     try:
         s = st.secrets["api"]
-        u    = s.get("username",       u)
-        p    = s.get("password",       p)
-        code = s.get("ifb_point_code", code)
+        u = s.get("username", u)
+        p = s.get("password", p)
+        code = s.get("ifb_point_code", code) or code
+        url = s.get("api_url", url) or url
     except Exception:
         pass
+
+    # If the provided api_url already includes IFBPointCode, treat that as the
+    # source of truth unless an explicit ifb_point_code query param was provided.
+    code_from_url = _extract_point_code_from_url(url)
+    if code_from_url:
+        code = code_from_url
+
+    # If a bearer token is explicitly provided (secrets/env), use it directly.
+    bearer = None
+    try:
+        bearer = st.secrets.get("api", {}).get("bearer_token")
+    except Exception:
+        bearer = None
+    if not bearer:
+        bearer = str(os.environ.get("IFB_BEARER_TOKEN", "")).strip() or None
+
+    if bearer:
+        with _req.Client(timeout=25) as client:
+            r2 = client.get(
+                url,
+                params={"IFBPointCode": code} if "IFBPointCode=" not in url else None,
+                headers={"Authorization": f"Bearer {bearer}"},
+            )
+        if r2.status_code != 200:
+            raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
+        j = r2.json()
+        records: list[dict] = []
+        if isinstance(j, list):
+            records = j
+        elif isinstance(j, dict):
+            for v in j.values():
+                if isinstance(v, list):
+                    records.extend(v)
+        return records
 
     with _req.Client(timeout=20) as client:
         r1 = client.post(
@@ -132,8 +219,8 @@ def _fetch_live_api() -> list[dict]:
 
     with _req.Client(timeout=25) as client:
         r2 = client.get(
-            f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
-            params={"IFBPointCode": code},
+            url,
+            params={"IFBPointCode": code} if "IFBPointCode=" not in url else None,
             headers={"Authorization": f"Bearer {tok}"},
         )
     if r2.status_code != 200:
@@ -150,7 +237,7 @@ def _fetch_live_api() -> list[dict]:
     return records
 
 
-def fetch_api_records() -> tuple[list[dict], str]:
+def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list[dict], str]:
     """Return (records, source_label).
     Streamlit Cloud is firewalled out of bseapi.ifbsupport.com, so the
     primary data source is the JSON snapshot kept fresh by GitHub Actions.
@@ -160,9 +247,12 @@ def fetch_api_records() -> tuple[list[dict], str]:
         blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
         records = blob.get("records", []) if isinstance(blob, dict) else (blob or [])
         synced  = blob.get("synced_at_utc", "?") if isinstance(blob, dict) else "?"
-        return records, f"snapshot · synced {synced} UTC"
+        snap_code = blob.get("ifb_point_code") if isinstance(blob, dict) else None
+        # Only use the snapshot when it matches the currently requested point code.
+        if snap_code and str(snap_code).strip() == str(ifb_point_code).strip():
+            return records, f"snapshot · synced {synced} UTC"
 
-    records = _fetch_live_api()
+    records = _fetch_live_api(ifb_point_code=str(ifb_point_code), api_url=api_url)
     return records, "live API"
 
 
@@ -201,7 +291,8 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
     Returns (merged_df, source_label).
     """
-    records, source = fetch_api_records()
+    point_code, api_url = _resolve_point_code_and_url()
+    records, source = fetch_api_records(ifb_point_code=point_code, api_url=api_url)
 
     _COLS = [
         "customer_id", "customer_name", "purchase_date",
@@ -240,8 +331,8 @@ def load_all() -> tuple[pd.DataFrame, str]:
                (customer_id, customer_name, purchase_date,
                 installation_type, machine_type,
                 phone_number, email_id, ifb_point_id,
-                customer_follow_up, synced_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ifb_point_code, customer_follow_up, synced_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
                     str(row.customer_id),
@@ -252,6 +343,7 @@ def load_all() -> tuple[pd.DataFrame, str]:
                     str(row.phone_number),
                     _safe_val(row.email_id),
                     _safe_val(row.ifb_point_id),
+                    point_code,
                     _safe_val(row.customer_follow_up),
                     source,
                 )
@@ -847,14 +939,7 @@ _badge_html = (
     '<span class="api-err">🔴&nbsp;Sync failed</span>'
 )
 
-# Read Franchise / IFB Point Code from the JSON snapshot (falls back to _API_CODE)
-_ifb_code = _API_CODE
-if DATA_FILE.exists():
-    try:
-        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        _ifb_code = _blob.get("ifb_point_code", _API_CODE) or _API_CODE
-    except Exception:
-        pass
+_ifb_code, _active_api_url = _resolve_point_code_and_url()
 
 st.markdown(f"""
 <div class="fixed-header">
