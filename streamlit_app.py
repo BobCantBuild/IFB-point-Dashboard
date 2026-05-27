@@ -4,8 +4,10 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sqlite3
 from datetime import date, datetime as _dt
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import httpx as _req
@@ -14,9 +16,47 @@ import streamlit.components.v1 as components
 
 DATA_FILE      = Path(__file__).parent / "data" / "api_data.json"
 FOLLOWUPS_FILE = Path(__file__).parent / "data" / "followups.json"
+DB_PATH        = Path(__file__).parent / "ifb_point.db"
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
+
+
+def _ensure_tables() -> None:
+    """Create/upgrade the local SQLite cache (best-effort; may be ephemeral on Streamlit Cloud)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                customer_id        TEXT PRIMARY KEY,
+                customer_name      TEXT,
+                purchase_date      TEXT,
+                installation_date  TEXT,
+                installation_type  TEXT,
+                machine_type       TEXT,
+                phone_number       TEXT,
+                alt_number         TEXT,
+                email_id           TEXT,
+                pin_code           TEXT,
+                serial_no          TEXT,
+                ifb_point_id       TEXT,
+                ifb_point_code     TEXT,
+                ifb_point_name     TEXT,
+                customer_follow_up TEXT,
+                synced_at          TEXT
+            )
+        """)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
+        for name, ddl in [
+            ("installation_date", "ALTER TABLE customers ADD COLUMN installation_date TEXT"),
+            ("alt_number", "ALTER TABLE customers ADD COLUMN alt_number TEXT"),
+            ("pin_code", "ALTER TABLE customers ADD COLUMN pin_code TEXT"),
+            ("serial_no", "ALTER TABLE customers ADD COLUMN serial_no TEXT"),
+            ("ifb_point_code", "ALTER TABLE customers ADD COLUMN ifb_point_code TEXT"),
+            ("ifb_point_name", "ALTER TABLE customers ADD COLUMN ifb_point_name TEXT"),
+        ]:
+            if name not in cols:
+                conn.execute(ddl)
+        conn.commit()
 
 
 def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
@@ -178,6 +218,82 @@ def _extract_point_code_from_url(url: str) -> str | None:
         return None
 
 
+def _parse_api_date(v: Any) -> date | None:
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        dt = pd.to_datetime(s, errors="coerce")
+    except Exception:
+        return None
+    if pd.isna(dt):
+        return None
+    try:
+        return dt.date()
+    except Exception:
+        return None
+
+
+_STAGE_KEY_TO_FOLLOWUP = {
+    "twoDays_details": "Post-Purchase",
+    "twoDaysDetails": "Post-Purchase",
+    "oneMonth_details": "1st 30 days call",
+    "oneMonthDetails": "1st 30 days call",
+    "fortySevenMonthDetails": "Pre-AMC",
+    "fortySevenMonth_details": "Pre-AMC",
+    "eightyFourMonthDetails": "8 Year Upgrade",
+    "eightyFourMonth_details": "8 Year Upgrade",
+}
+
+
+def _normalize_api_payload(payload: Any) -> tuple[list[dict], str | None, str | None]:
+    """
+    Normalize API payloads into a flat list of customer dicts.
+
+    Supports the newer shape:
+      { ifbPointCode, ifbPointName, twoDays_details: [...], oneMonth_details: [...], ... }
+    plus older list/dict formats.
+    """
+    if payload is None:
+        return [], None, None
+
+    if isinstance(payload, list):
+        return [r for r in payload if isinstance(r, dict)], None, None
+
+    if not isinstance(payload, dict):
+        return [], None, None
+
+    point_code = payload.get("ifbPointCode") or payload.get("ifb_point_code")
+    point_name = payload.get("ifbPointName") or payload.get("ifb_point_name")
+
+    records: list[dict] = []
+    for k, v in payload.items():
+        if not isinstance(v, list):
+            continue
+        follow_up = _STAGE_KEY_TO_FOLLOWUP.get(k)
+        for item in v:
+            if not isinstance(item, dict):
+                continue
+            rec = dict(item)
+            if follow_up and not rec.get("customer_follow_up"):
+                rec["customer_follow_up"] = follow_up
+            records.append(rec)
+
+    # Fallback: dict-of-lists under arbitrary keys
+    if not records:
+        for v in payload.values():
+            if isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        records.append(dict(item))
+
+    pc = str(point_code).strip() if point_code else None
+    pn = str(point_name).strip() if point_name else None
+    return records, pc, pn
+
+
 def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[dict]:
     """Direct API call via httpx — only works from networks IFB whitelisted.
     Used as a fallback when data/api_data.json is missing (local development).
@@ -221,13 +337,7 @@ def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[
         if r2.status_code != 200:
             raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
         j = r2.json()
-        records: list[dict] = []
-        if isinstance(j, list):
-            records = j
-        elif isinstance(j, dict):
-            for v in j.values():
-                if isinstance(v, list):
-                    records.extend(v)
+        records, _pc, _pn = _normalize_api_payload(j)
         return records
 
     with _req.Client(timeout=20) as client:
@@ -252,13 +362,7 @@ def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[
         raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
 
     j = r2.json()
-    records: list[dict] = []
-    if isinstance(j, list):
-        records = j
-    elif isinstance(j, dict):
-        for v in j.values():
-            if isinstance(v, list):
-                records.extend(v)
+    records, _pc, _pn = _normalize_api_payload(j)
     return records
 
 
@@ -270,10 +374,17 @@ def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list
     """
     if DATA_FILE.exists():
         blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        records = blob.get("records", []) if isinstance(blob, dict) else (blob or [])
         synced  = blob.get("synced_at_utc", "?") if isinstance(blob, dict) else "?"
-        snap_code = blob.get("ifb_point_code") if isinstance(blob, dict) else None
-        # Only use the snapshot when it matches the currently requested point code.
+
+        # Legacy snapshot format: {"ifb_point_code": "...", "records": [...]}
+        if isinstance(blob, dict) and "records" in blob:
+            records = blob.get("records", [])
+            snap_code = blob.get("ifb_point_code")
+            if snap_code and str(snap_code).strip() == str(ifb_point_code).strip():
+                return [r for r in records if isinstance(r, dict)], f"snapshot · synced {synced} UTC"
+
+        # New snapshot format: raw API payload with bucket lists
+        records, snap_code, _snap_name = _normalize_api_payload(blob)
         if snap_code and str(snap_code).strip() == str(ifb_point_code).strip():
             return records, f"snapshot · synced {synced} UTC"
 
@@ -302,20 +413,50 @@ def load_all() -> tuple[pd.DataFrame, str]:
         return pd.DataFrame(columns=_COLS), source
 
     df = pd.DataFrame(records)
-    df["customer_id"]   = df["customer_id"].astype(str)
-    df["phone_number"]  = df.get("phone_number", pd.Series(dtype=str)).astype(str)
-    df["purchase_date"] = pd.to_datetime(
-        df.get("purchase_date"), errors="coerce"
-    ).dt.date
+    if "customer_id" not in df.columns:
+        df["customer_id"] = None
+    df["customer_id"] = df["customer_id"].astype(str)
 
-    for col in ("customer_name", "installation_type", "machine_type",
-                "email_id", "ifb_point_id"):
+    # Map/standardize known API keys
+    if "installationdate" in df.columns and "installation_date" not in df.columns:
+        df["installation_date"] = df["installationdate"]
+    if "pinCode" in df.columns and "pin_code" not in df.columns:
+        df["pin_code"] = df["pinCode"]
+    if "serialNo" in df.columns and "serial_no" not in df.columns:
+        df["serial_no"] = df["serialNo"]
+
+    df["phone_number"] = df.get("phone_number", pd.Series(dtype=str)).astype(str)
+
+    # Parse dates like "5/22/2026 12:00:00 AM"
+    if "purchase_date" in df.columns:
+        df["purchase_date"] = df["purchase_date"].apply(_parse_api_date)
+    else:
+        df["purchase_date"] = None
+    if "installation_date" in df.columns:
+        df["installation_date"] = df["installation_date"].apply(_parse_api_date)
+
+    for col in (
+        "customer_name",
+        "installation_type",
+        "machine_type",
+        "email_id",
+        "ifb_point_id",
+        "customer_follow_up",
+        "alt_number",
+        "pin_code",
+        "serial_no",
+        "installation_date",
+    ):
         if col not in df.columns:
             df[col] = None
 
+    # If API didn't provide a stage, compute it from purchase_date
     today = date.today()
-    df["customer_follow_up"] = df["purchase_date"].apply(
-        lambda d: compute_follow_up(d, today) if isinstance(d, date) else None
+    df["customer_follow_up"] = df.apply(
+        lambda r: r.get("customer_follow_up") or (
+            compute_follow_up(r.get("purchase_date"), today) if isinstance(r.get("purchase_date"), date) else None
+        ),
+        axis=1,
     )
 
     fu_df = _load_followups()
@@ -335,6 +476,58 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
     merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
     merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
+
+    # Best-effort: cache the freshest customer data into local SQLite
+    try:
+        _ensure_tables()
+        point_code, _api_url = _resolve_point_code_and_url()
+        # Try to get point name from the snapshot if present
+        point_name = None
+        if DATA_FILE.exists():
+            try:
+                _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+                _recs, _pc, _pn = _normalize_api_payload(_blob)
+                if _pc and str(_pc).strip() == str(point_code).strip():
+                    point_name = _pn
+            except Exception:
+                pass
+
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.executemany(
+                """INSERT OR REPLACE INTO customers
+                   (customer_id, customer_name, purchase_date,
+                    installation_date, installation_type, machine_type,
+                    phone_number, alt_number, email_id,
+                    pin_code, serial_no, ifb_point_id,
+                    ifb_point_code, ifb_point_name,
+                    customer_follow_up, synced_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        str(r.get("customer_id")),
+                        r.get("customer_name"),
+                        r.get("purchase_date").isoformat() if isinstance(r.get("purchase_date"), date) else None,
+                        r.get("installation_date").isoformat() if isinstance(r.get("installation_date"), date) else None,
+                        r.get("installation_type"),
+                        r.get("machine_type"),
+                        str(r.get("phone_number") or ""),
+                        r.get("alt_number"),
+                        r.get("email_id"),
+                        r.get("pin_code"),
+                        r.get("serial_no"),
+                        r.get("ifb_point_id"),
+                        point_code,
+                        point_name,
+                        r.get("customer_follow_up"),
+                        source,
+                    )
+                    for r in merged.to_dict(orient="records")
+                ],
+            )
+            conn.commit()
+    except Exception:
+        # Cache failures must never break the UI
+        pass
 
     return merged, source
 
