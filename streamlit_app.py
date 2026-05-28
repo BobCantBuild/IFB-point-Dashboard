@@ -176,37 +176,45 @@ def _load_followups() -> pd.DataFrame:
 
 def _resolve_point_code_and_url() -> tuple[str, str | None]:
     """
-    Resolve the active IFB point code from URL query params (preferred),
-    then secrets, then the hardcoded fallback.
+    Resolve the active IFB point code.
 
-    Optional query params:
-      - ifb_point_code=1034532
-      - api_url=https://.../GetInstallationAgeingDetails?IFBPointCode=1034532
+    Priority (highest wins):
+      1. URL query param  ?id=1017061          ← highest — drives the app per link
+      2. URL query param  ?ifb_point_code=...  ← alternate long form
+      3. Streamlit secrets  [api] ifb_point_code
+      4. config.py IFB_POINT_CODE              ← lowest fallback
+
+    Rationale: the URL must win so that sharing a link like
+    https://ifb-point-dashboard.streamlit.app/?id=1017061 always loads
+    that specific franchise regardless of what the secrets file contains.
     """
-    code = _API_CODE
+    code    = _API_CODE          # lowest-priority default
     api_url: str | None = None
 
+    # ── Secrets — override config default, but yield to URL params ────────────
     try:
-        qp = st.query_params  # Streamlit >= 1.30
-        # Support both ?id= (short form) and ?ifb_point_code= (long form).
-        # ?id= is checked first so ?ifb_point_code= can override it if both are present.
-        q_id = qp.get("id")
-        if isinstance(q_id, str) and q_id.strip():
-            code = q_id.strip()
-        q_code = qp.get("ifb_point_code")
-        if isinstance(q_code, str) and q_code.strip():
-            code = q_code.strip()
-        q_url = qp.get("api_url")
-        if isinstance(q_url, str) and q_url.strip():
-            api_url = q_url.strip()
+        s = st.secrets.get("api", {})
+        if s.get("ifb_point_code"):
+            code = str(s["ifb_point_code"]).strip()
+        api_url = s.get("api_url") or None
     except Exception:
         pass
 
+    # ── URL query params — highest priority, override everything above ─────────
     try:
-        s = st.secrets.get("api", {})
-        code = (s.get("ifb_point_code") or code)
-        if not api_url:
-            api_url = s.get("api_url") or None
+        qp = st.query_params          # Streamlit >= 1.30
+        # ?id= short form (canonical link format)
+        q_id = qp.get("id")
+        if isinstance(q_id, str) and q_id.strip():
+            code = q_id.strip()
+        # ?ifb_point_code= long form (can override ?id= if both are present)
+        q_code = qp.get("ifb_point_code")
+        if isinstance(q_code, str) and q_code.strip():
+            code = q_code.strip()
+        # Optional API URL override
+        q_url = qp.get("api_url")
+        if isinstance(q_url, str) and q_url.strip():
+            api_url = q_url.strip()
     except Exception:
         pass
 
@@ -397,6 +405,12 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
             UNIQUE (ifb_point, customer_id, lead_date, follow_up)
         )
     """)
+    # Unique index on key — prevents duplicate customer+machine rows from
+    # multiple bootstrap runs or syncs. INSERT OR IGNORE respects this index.
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_api_leads_key
+        ON api_leads (key)
+    """)
     existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
     for c in ("status", "next_appointment", "interested", "remarks"):
         if c not in existing:
@@ -489,14 +503,30 @@ def _bootstrap_sqlite_from_json(ifb_point_code: str) -> None:
 
 def _load_records_from_sqlite(ifb_point_code: str) -> list[dict]:
     """Read all rows for this IFB Point from SQLite and shape them like
-    api_data.json records (so downstream load_all() processing stays the same)."""
+    api_data.json records (so downstream load_all() processing stays the same).
+
+    Uses MAX(id) GROUP BY key so that even if the same customer was inserted
+    on multiple lead_dates (e.g. multiple bootstrap runs), each unique
+    customer+machine (key = ifb_point-customer_id-serialNo) appears exactly once
+    and we always get the freshest row's data.
+    """
     if not DB_PATH.exists():
         return []
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                """SELECT * FROM api_leads WHERE ifb_point = ?""",
+                """
+                SELECT a.*
+                  FROM api_leads a
+                 INNER JOIN (
+                       SELECT MAX(id) AS max_id
+                         FROM api_leads
+                        WHERE ifb_point = ?
+                        GROUP BY key
+                   ) latest ON a.id = latest.max_id
+                 ORDER BY a.customer_name COLLATE NOCASE
+                """,
                 (ifb_point_code,),
             ).fetchall()
     except Exception:
