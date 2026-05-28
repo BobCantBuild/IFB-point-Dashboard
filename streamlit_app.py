@@ -417,10 +417,71 @@ st.markdown("""
   .ss-slate .ss-val { color:#334155; }
 
   /* ── Filter panel ── */
-  .panel {
+  .st-key-filter_panel {
+    --filter-fixed-col: clamp(260px, 23vw, 430px);
     background:#fff; border:1px solid var(--line); border-radius:16px;
-    padding:14px 20px 6px; margin-bottom:18px;
+    padding:10px 12px 4px; margin-bottom:18px;
     box-shadow:var(--shadow-sm);
+  }
+
+  .st-key-filter_panel > div {
+    gap:0.45rem !important;
+  }
+
+  /* Filter-bar row layout: keep each row as clean, even columns */
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"],
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"]{
+    align-items:stretch;
+    gap:6px !important;
+    margin:0 !important;
+  }
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"],
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]{
+    display:flex;
+  }
+
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1),
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1) {
+    flex:0 0 var(--filter-fixed-col) !important;
+    width:var(--filter-fixed-col) !important;
+  }
+
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2),
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) {
+    flex:0 0 var(--filter-fixed-col) !important;
+    width:var(--filter-fixed-col) !important;
+  }
+
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) {
+    flex:1 1 auto !important;
+  }
+
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) {
+    flex:1.15 1 0 !important;
+    width:auto !important;
+  }
+
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) {
+    flex:1 1 0 !important;
+  }
+
+  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"] > div,
+  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"] > div{
+    flex:1 1 auto;
+    min-width:0;
+  }
+
+  .st-key-filter_row_top .stButton,
+  .st-key-filter_row_bottom .stButton,
+  .st-key-filter_row_top .stDateInput,
+  .st-key-filter_row_bottom .stSelectbox,
+  .st-key-filter_row_bottom .stTextInput {
+    margin:0 !important;
+  }
+
+  .st-key-filter_row_top .stButton > button,
+  .st-key-filter_row_bottom .stButton > button {
+    border-radius:12px !important;
   }
 
 
@@ -450,6 +511,12 @@ st.markdown("""
     font-weight:500 !important;
     line-height:34px !important;
   }
+  .st-key-filter_row_bottom div[data-baseweb="select"] [data-testid="stMarkdownContainer"],
+  .st-key-filter_row_bottom div[data-baseweb="input"] input {
+    justify-content:flex-start !important;
+    text-align:left !important;
+    padding-left:12px !important;
+  }
   /* Focus ring */
   .stDateInput > div > div:focus-within,
   div[data-baseweb="input"] > div:focus-within,
@@ -475,6 +542,7 @@ st.markdown("""
     height:36px !important; min-height:36px !important; max-height:36px !important;
     line-height:36px !important; display:inline-flex;
     align-items:center; justify-content:center; white-space:nowrap;
+    width:100%;
   }
   .stButton > button:hover { background:#1E293B; }
 
@@ -832,78 +900,79 @@ if section not in _SEC_OPTS:
 # Filter bar — two rows in a white card panel
 # --------------------------------------------------------------------------- #
 _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
-min_pd = min(_pds) if _pds else date(2019, 1, 1)
-max_pd = max(_pds) if _pds else today
+min_pd = date(2019, 1, 1)
+max_pd = today
 
 with st.container():
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    with st.container(key="filter_panel"):
+        with st.container(key="filter_row_top"):
+            r1c1, r1c2, r1c3 = st.columns([1.35, 1.35, 2.7], gap="small")
+            with r1c1:
+                if st.button("📅  Today Leads", key="btn_today",
+                             use_container_width=True,
+                             type="primary" if lead_view == "Today" else "secondary"):
+                    st.session_state["_lead_view"] = "Today"
+                    st.rerun()
+            with r1c2:
+                if st.button("⚠️  Missed Leads", key="btn_missed",
+                             use_container_width=True,
+                             type="primary" if lead_view == "Missed" else "secondary"):
+                    st.session_state["_lead_view"] = "Missed"
+                    st.rerun()
+            with r1c3:
+                if st.session_state.get("_lead_date_range_sig") != _resolve_point_code():
+                    st.session_state["lead_date_range"] = (min_pd, max_pd)
+                    st.session_state["_lead_date_range_sig"] = _resolve_point_code()
+                date_range = st.date_input(
+                    "Lead Date Range",
+                    value=st.session_state["lead_date_range"],
+                    min_value=min_pd,
+                    max_value=max_pd,
+                    key="lead_date_range",
+                    format="DD/MM/YYYY",
+                    label_visibility="collapsed",
+                )
 
-    # ── Row 1 : lead-type toggles  ·  date range ─────────────────────────
-    r1c1, r1c2, r1c3 = st.columns([1, 1, 2], gap="medium")
-    with r1c1:
-        if st.button("📅  Today Leads", key="btn_today",
-                     use_container_width=True,
-                     type="primary" if lead_view == "Today" else "secondary"):
-            st.session_state["_lead_view"] = "Today"
-            st.rerun()
-    with r1c2:
-        if st.button("⚠️  Missed Leads", key="btn_missed",
-                     use_container_width=True,
-                     type="primary" if lead_view == "Missed" else "secondary"):
-            st.session_state["_lead_view"] = "Missed"
-            st.rerun()
-    with r1c3:
-        date_range = st.date_input(
-            "Lead Date Range",
-            value=(min_pd, max_pd),
-            min_value=min_pd,
-            max_value=max_pd,
-            format="DD/MM/YYYY",
-            label_visibility="collapsed",
-        )
-
-    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
-
-    # ── Row 2 : section toggles  ·  stage dropdown  ·  search ────────────
-    _FU_OPTS = [
-        "All Follow-Up Stages", "Post-Purchase",
-        "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
-    ]
-    _FU_LABEL = {
-        "All Follow-Up Stages": "🌐  All Follow-Up Stages",
-        "Post-Purchase":        "🎉  Post-Purchase",
-        "1st 30 days call":     "🔄  1st 30 days call",
-        "Pre-AMC":              "⏰  Pre-AMC",
-        "8 Year Upgrade":       "🏆  8 Year Upgrade",
-    }
-    r2c1, r2c2, r2c3, r2c4 = st.columns([1, 1, 1.4, 1.6], gap="medium")
-    with r2c1:
-        if st.button("📋  Open Followups", key="btn_open",
-                     use_container_width=True,
-                     type="primary" if section == "Open" else "secondary"):
-            st.session_state["_view_section"] = "Open"
-            st.rerun()
-    with r2c2:
-        if st.button("📞  Attempted", key="btn_att",
-                     use_container_width=True,
-                     type="primary" if section == "Attempted" else "secondary"):
-            st.session_state["_view_section"] = "Attempted"
-            st.rerun()
-    with r2c3:
-        fu_filter = st.selectbox(
-            "Stage",
-            options=_FU_OPTS,
-            format_func=lambda x: _FU_LABEL.get(x, x),
-            label_visibility="collapsed",
-        )
-    with r2c4:
-        search_q = st.text_input(
-            "Search",
-            placeholder="🔍  Name · Phone · Email · ID",
-            label_visibility="collapsed",
-        )
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        # Real Streamlit containers give us stable hooks so the two rows
+        # can be spaced independently without relying on markdown wrappers.
+        with st.container(key="filter_row_bottom"):
+            _FU_OPTS = [
+                "All Follow-Up Stages", "Post-Purchase",
+                "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
+            ]
+            _FU_LABEL = {
+                "All Follow-Up Stages": "🌐  All Follow-Up Stages",
+                "Post-Purchase":        "🎉  Post-Purchase",
+                "1st 30 days call":     "🔄  1st 30 days call",
+                "Pre-AMC":              "⏰  Pre-AMC",
+                "8 Year Upgrade":       "🏆  8 Year Upgrade",
+            }
+            r2c1, r2c2, r2c3, r2c4 = st.columns([1.35, 1.35, 1.9, 1.45], gap="small")
+            with r2c1:
+                if st.button("📋  Open Followup's", key="btn_open",
+                             use_container_width=True,
+                             type="primary" if section == "Open" else "secondary"):
+                    st.session_state["_view_section"] = "Open"
+                    st.rerun()
+            with r2c2:
+                if st.button("📞  Attempted's", key="btn_att",
+                             use_container_width=True,
+                             type="primary" if section == "Attempted" else "secondary"):
+                    st.session_state["_view_section"] = "Attempted"
+                    st.rerun()
+            with r2c3:
+                fu_filter = st.selectbox(
+                    "Stage",
+                    options=_FU_OPTS,
+                    format_func=lambda x: _FU_LABEL.get(x, x),
+                    label_visibility="collapsed",
+                )
+            with r2c4:
+                search_q = st.text_input(
+                    "Search",
+                    placeholder="🔍  Name · Phone · Email · ID",
+                    label_visibility="collapsed",
+                )
 
 st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
