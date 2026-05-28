@@ -14,9 +14,10 @@ import httpx as _req
 import streamlit as st
 import streamlit.components.v1 as components
 
-DATA_FILE      = Path(__file__).parent / "data" / "api_data.json"
-FOLLOWUPS_FILE = Path(__file__).parent / "data" / "followups.json"
-DB_PATH        = Path(__file__).parent / "ifb_point.db"
+_APP_DIR       = Path(__file__).resolve().parent
+DATA_FILE      = _APP_DIR / "data" / "api_data.json"
+FOLLOWUPS_FILE = _APP_DIR / "data" / "followups.json"
+DB_PATH        = _APP_DIR / "ifb_point.db"
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -383,7 +384,9 @@ def _read_db(ifb_point_code: str) -> list[dict]:
     missing or franchise not found.
     """
     if not DB_PATH.exists():
+        st.session_state["_db_missing"] = str(DB_PATH)
         return []
+    st.session_state.pop("_db_missing", None)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -391,8 +394,11 @@ def _read_db(ifb_point_code: str) -> list[dict]:
                 "SELECT * FROM api_leads WHERE ifb_point = ? ORDER BY id DESC",
                 (ifb_point_code,),
             ).fetchall()
-    except Exception:
+    except Exception as _exc:
+        st.session_state["_read_db_error"] = f"{type(_exc).__name__}: {_exc}"
         return []
+    else:
+        st.session_state.pop("_read_db_error", None)
 
     seen: set[str] = set()
     out:  list[dict] = []
@@ -434,89 +440,131 @@ def _cloud_bootstrap(ifb_point_code: str) -> None:
       • api_data.json doesn't exist
       • JSON is for a different franchise than requested
       • DB already has rows for this franchise
-    Any error is silently swallowed (the DB read below will just return []).
+
+    Errors are stored in st.session_state["_bootstrap_error"] so the DEBUG
+    panel can surface them rather than silently swallowing failures.
     """
+    st.session_state.pop("_bootstrap_error", None)
+
     if not DATA_FILE.exists():
+        st.session_state["_bootstrap_error"] = f"api_data.json not found at {DATA_FILE}"
         return
     try:
         blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
         if not isinstance(blob, dict):
+            st.session_state["_bootstrap_error"] = "api_data.json is not a JSON object"
             return
         json_code = str(blob.get("ifb_point_code", "") or "").strip()
         if json_code != ifb_point_code:
-            return          # JSON snapshot is for a different franchise
+            st.session_state["_bootstrap_error"] = (
+                f"api_data.json is for franchise {json_code!r}, "
+                f"but URL requested {ifb_point_code!r} — no bootstrap"
+            )
+            return
         records = [r for r in blob.get("records", []) if isinstance(r, dict)]
         if not records:
+            st.session_state["_bootstrap_error"] = "api_data.json has no records"
             return
 
         lead_date = _dt.now().strftime("%d-%m-%Y")
-        fu = _read_followups()          # merge any saved user edits
+        fu = _read_followups()
 
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS api_leads (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ifb_point TEXT, key TEXT, lead_date TEXT, follow_up TEXT,
-                    customer_id TEXT, customer_name TEXT,
-                    purchase_date TEXT, installationdate TEXT,
-                    machine_type TEXT, phone_number TEXT, alt_number TEXT,
-                    email_id TEXT, "pinCode" TEXT, "serialNo" TEXT,
-                    status TEXT, next_appointment TEXT,
-                    interested TEXT, remarks TEXT
-                )
-            """)
-            # Skip if already populated (e.g. second visit in same Cloud session)
-            cnt = conn.execute(
-                "SELECT COUNT(*) FROM api_leads WHERE ifb_point = ?",
-                (ifb_point_code,),
-            ).fetchone()[0]
-            if cnt > 0:
-                return
+        # Try app directory first; fall back to /tmp on Cloud (read-only app dirs)
+        db_candidates = [DB_PATH]
+        tmp_db = Path("/tmp/ifb_point.db")
+        if tmp_db.parent != DB_PATH.parent:
+            db_candidates.append(tmp_db)
 
-            _stage_to_bucket = {
-                "Post-Purchase":    "twoDays_details",
-                "1st 30 days call": "oneMonth_details",
-                "Pre-AMC":          "fortySevenMonthDetails",
-                "8 Year Upgrade":   "eightyFourMonthDetails",
-            }
-            seen_keys: set[str] = set()
-            for r in records:
-                cust_id = str(r.get("customer_id", "") or "").strip()
-                serial  = str(r.get("serial_no") or r.get("serialNo", "") or "").strip()
-                key_val = f"{json_code}-{cust_id}-{serial}"
-                if key_val in seen_keys:
-                    continue            # skip JSON-level duplicates
-                seen_keys.add(key_val)
-                bucket  = _stage_to_bucket.get(r.get("customer_follow_up", ""), "")
-                fu_row  = fu.get(cust_id, {})
-                conn.execute("""
-                    INSERT OR IGNORE INTO api_leads
-                      (ifb_point, key, lead_date, follow_up,
-                       customer_id, customer_name, purchase_date, installationdate,
-                       machine_type, phone_number, alt_number, email_id,
-                       "pinCode", "serialNo",
-                       status, next_appointment, interested, remarks)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    json_code, key_val, lead_date, bucket,
-                    cust_id,
-                    r.get("customer_name", ""),
-                    str(r.get("purchase_date") or ""),
-                    str(r.get("installation_date") or r.get("installationdate") or ""),
-                    r.get("machine_type", ""),
-                    r.get("phone_number", ""),
-                    r.get("alt_number", ""),
-                    r.get("email_id", ""),
-                    r.get("pin_code") or r.get("pinCode") or "",
-                    serial,
-                    fu_row.get("status"),
-                    fu_row.get("next_appointment"),
-                    fu_row.get("interested"),
-                    fu_row.get("remarks"),
-                ))
-            conn.commit()
-    except Exception:
-        pass
+        last_exc: Exception | None = None
+        for db_path in db_candidates:
+            try:
+                with sqlite3.connect(str(db_path)) as conn:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS api_leads (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ifb_point TEXT, key TEXT, lead_date TEXT, follow_up TEXT,
+                            customer_id TEXT, customer_name TEXT,
+                            purchase_date TEXT, installationdate TEXT,
+                            machine_type TEXT, phone_number TEXT, alt_number TEXT,
+                            email_id TEXT, "pinCode" TEXT, "serialNo" TEXT,
+                            status TEXT, next_appointment TEXT,
+                            interested TEXT, remarks TEXT
+                        )
+                    """)
+                    cnt = conn.execute(
+                        "SELECT COUNT(*) FROM api_leads WHERE ifb_point = ?",
+                        (ifb_point_code,),
+                    ).fetchone()[0]
+                    if cnt > 0:
+                        # Already populated (second visit in same Cloud session)
+                        if db_path != DB_PATH:
+                            # We used /tmp — update DB_PATH global so _read_db finds it
+                            globals()["DB_PATH"] = db_path
+                        st.session_state["_bootstrap_db"] = str(db_path)
+                        return
+
+                    _stage_to_bucket = {
+                        "Post-Purchase":    "twoDays_details",
+                        "1st 30 days call": "oneMonth_details",
+                        "Pre-AMC":          "fortySevenMonthDetails",
+                        "8 Year Upgrade":   "eightyFourMonthDetails",
+                    }
+                    seen_keys: set[str] = set()
+                    inserted = 0
+                    for r in records:
+                        cust_id = str(r.get("customer_id", "") or "").strip()
+                        serial  = str(r.get("serial_no") or r.get("serialNo", "") or "").strip()
+                        key_val = f"{json_code}-{cust_id}-{serial}"
+                        if key_val in seen_keys:
+                            continue
+                        seen_keys.add(key_val)
+                        bucket  = _stage_to_bucket.get(r.get("customer_follow_up", ""), "")
+                        fu_row  = fu.get(cust_id, {})
+                        conn.execute("""
+                            INSERT OR IGNORE INTO api_leads
+                              (ifb_point, key, lead_date, follow_up,
+                               customer_id, customer_name, purchase_date, installationdate,
+                               machine_type, phone_number, alt_number, email_id,
+                               "pinCode", "serialNo",
+                               status, next_appointment, interested, remarks)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """, (
+                            json_code, key_val, lead_date, bucket,
+                            cust_id,
+                            r.get("customer_name", ""),
+                            str(r.get("purchase_date") or ""),
+                            str(r.get("installation_date") or r.get("installationdate") or ""),
+                            r.get("machine_type", ""),
+                            r.get("phone_number", ""),
+                            r.get("alt_number", ""),
+                            r.get("email_id", ""),
+                            r.get("pin_code") or r.get("pinCode") or "",
+                            serial,
+                            fu_row.get("status"),
+                            fu_row.get("next_appointment"),
+                            fu_row.get("interested"),
+                            fu_row.get("remarks"),
+                        ))
+                        inserted += 1
+                    conn.commit()
+
+                # Success — update globals if we used /tmp
+                if db_path != DB_PATH:
+                    globals()["DB_PATH"] = db_path
+                st.session_state["_bootstrap_db"] = str(db_path)
+                st.session_state["_bootstrap_inserted"] = inserted
+                return  # done — don't try next candidate
+
+            except Exception as exc:
+                last_exc = exc
+                continue  # try next candidate (e.g. /tmp)
+
+        # All candidates failed
+        st.session_state["_bootstrap_error"] = (
+            f"All DB paths failed. Last error: {type(last_exc).__name__}: {last_exc}"
+        )
+    except Exception as exc:
+        st.session_state["_bootstrap_error"] = f"{type(exc).__name__}: {exc}"
 
 
 def get_records(ifb_point_code: str) -> tuple[list[dict], str]:
@@ -1699,6 +1747,46 @@ else:
 
 # ─── DEBUG PANEL ─────────────────────────────────────────────────────────────
 st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
+
+with st.expander("🗃️ DEBUG — SQLite Database"):
+    _active_db = DB_PATH  # may have been updated to /tmp by bootstrap
+    st.write(f"**DB_PATH**: `{_active_db}`")
+    st.write(f"**DB exists**: {_active_db.exists()}")
+
+    _bootstrap_err = st.session_state.get("_bootstrap_error")
+    _read_db_err   = st.session_state.get("_read_db_error")
+    _db_missing    = st.session_state.get("_db_missing")
+    _bootstrap_db  = st.session_state.get("_bootstrap_db")
+    _bootstrap_ins = st.session_state.get("_bootstrap_inserted")
+
+    if _bootstrap_err:
+        st.error(f"❌ Bootstrap error: {_bootstrap_err}")
+    elif _bootstrap_db:
+        st.success(f"✅ Bootstrap succeeded → `{_bootstrap_db}` ({_bootstrap_ins} rows inserted)")
+    else:
+        st.info("ℹ️ Bootstrap not triggered (DB had rows, or first _read_db succeeded)")
+
+    if _read_db_err:
+        st.error(f"❌ _read_db error: {_read_db_err}")
+    if _db_missing:
+        st.warning(f"⚠️ DB file not found at: {_db_missing}")
+
+    if _active_db.exists():
+        try:
+            with sqlite3.connect(str(_active_db)) as _dbg_conn:
+                _all_codes = _dbg_conn.execute(
+                    "SELECT ifb_point, COUNT(*) FROM api_leads GROUP BY ifb_point ORDER BY COUNT(*) DESC"
+                ).fetchall()
+                if _all_codes:
+                    st.write("**Rows per ifb_point in api_leads:**")
+                    st.table(pd.DataFrame(_all_codes, columns=["ifb_point", "row_count"]))
+                else:
+                    st.warning("⚠️ api_leads table is empty")
+        except Exception as _dbg_e:
+            st.error(f"Could not query DB: {_dbg_e}")
+    else:
+        st.warning("⚠️ DB file does not exist — bootstrap should have created it above")
+
 with st.expander("🔧 DEBUG — Followup Storage"):
     st.write(f"**Storage file**: `{FOLLOWUPS_FILE}`")
     st.write(f"**File exists**: {FOLLOWUPS_FILE.exists()}")
@@ -1727,7 +1815,9 @@ with st.expander("📦 DEBUG — Raw API Data (api_data.json)"):
             st.write(f"**synced_at_utc**: {_raw_blob.get('synced_at_utc', 'N/A')}")
             st.write(f"**ifb_point_code**: {_raw_blob.get('ifb_point_code', 'N/A')}")
             st.write(f"**record_count**: {_raw_blob.get('record_count', 'N/A')}")
-            st.json(_raw_blob)
+            _rec_preview = _raw_blob.get("records", [])[:3]
+            st.write(f"**First 3 records (preview):**")
+            st.json(_rec_preview)
         except Exception as _e:
             st.error(f"Could not read api_data.json: {_e}")
     else:
