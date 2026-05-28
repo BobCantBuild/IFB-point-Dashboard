@@ -18,6 +18,29 @@ _APP_DIR       = Path(__file__).resolve().parent
 DATA_FILE      = _APP_DIR / "data" / "api_data.json"
 FOLLOWUPS_FILE = _APP_DIR / "data" / "followups.json"
 DB_PATH        = _APP_DIR / "ifb_point.db"
+MASTER_FILE    = _APP_DIR / "IFB_Point_Master.txt"
+
+
+def _load_master_codes() -> set[str]:
+    """
+    Return the full set of valid IFB Point codes from IFB_Point_Master.txt.
+    Codes may be separated by commas, whitespace, or newlines.
+    Empty set if the master file is missing (treat all IDs as valid then).
+    """
+    if not MASTER_FILE.exists():
+        return set()
+    raw = MASTER_FILE.read_text(encoding="utf-8")
+    tokens = (
+        raw.replace("\r", " ")
+           .replace("\n", " ")
+           .replace("\t", " ")
+           .replace(",", " ")
+           .split()
+    )
+    return {t.strip() for t in tokens if t.strip()}
+
+
+_MASTER_CODES = _load_master_codes()
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -605,6 +628,12 @@ def load_all() -> tuple[pd.DataFrame, str]:
 
     if not point_code:
         return pd.DataFrame(columns=_COLS), "no-url-param"
+
+    # Validate against the master list — anything not in IFB_Point_Master.txt
+    # is treated as an invalid ID. If the master file is missing (_MASTER_CODES
+    # is empty), skip this check so the app still works.
+    if _MASTER_CODES and point_code not in _MASTER_CODES:
+        return pd.DataFrame(columns=_COLS), f"invalid-id · {point_code}"
 
     records, source = get_records(point_code)
 
@@ -1613,11 +1642,17 @@ if len(filtered) == 0:
             "<span style='font-size:13px;'>Add <code>?id=&lt;code&gt;</code> to the URL — e.g.&nbsp;"
             "<code>https://ifb-point-dashboard.streamlit.app/?id=1017061</code></span>"
         )
+    elif "invalid-id" in _src:
+        _no_rec_html = (
+            f"<b style='color:#DC2626;font-size:18px;'>❌ Invalid ID — {_ifb_code}</b><br>"
+            "<span style='font-size:13px;color:#475569;'>This IFB Point Code is not in the master list "
+            "(<code>IFB_Point_Master.txt</code>). Please check the URL.</span>"
+        )
     elif "no-data" in _src:
         _no_rec_html = (
             f"<b style='color:#475569;font-size:16px;'>No records for IFB Point {_ifb_code}</b><br>"
-            "<span style='font-size:13px;'>Run <code>sync_api.py</code> from the IFB office network "
-            "to sync data for this franchise into the database.</span>"
+            "<span style='font-size:13px;'>Code is valid but the local database has no data for it yet. "
+            "Run <code>sync_api.py</code> from the IFB office network to fetch this franchise's records.</span>"
         )
     else:
         _no_rec_html = "No records match the current filters."

@@ -24,8 +24,9 @@ USERNAME = os.environ.get("IFB_API_USER",   API_USER)
 PASSWORD = os.environ.get("IFB_API_PASS",   API_PASS)
 IFB_CODE = os.environ.get("IFB_POINT_CODE", IFB_POINT_CODE)  # env var still overrides for CI
 
-OUT_FILE = REPO_ROOT / "data" / "api_data.json"
-DB_FILE  = REPO_ROOT / "ifb_point.db"
+OUT_FILE    = REPO_ROOT / "data" / "api_data.json"
+DB_FILE     = REPO_ROOT / "ifb_point.db"
+MASTER_FILE = REPO_ROOT / "IFB_Point_Master.txt"
 
 # Maps API bucket keys → customer_follow_up stage label shown in the dashboard
 BUCKET_STAGE = {
@@ -210,59 +211,165 @@ def parse_payload(payload: dict | list) -> tuple[list[dict], str, str]:
     return records, point_code, point_name
 
 
-def main() -> int:
-    print(f"[sync_api] Logging in as {USERNAME} for point code {IFB_CODE}...")
-    with httpx.Client(timeout=30) as client:
-        r1 = client.post(
-            f"{API_BASE}/Auth/login",
-            json={"userName": USERNAME, "password": PASSWORD},
-            headers={"Content-Type": "application/json"},
-        )
-    if r1.status_code != 200:
-        print(f"[sync_api] LOGIN FAILED — HTTP {r1.status_code}: {r1.text[:300]}", file=sys.stderr)
-        return 1
-    token = r1.json().get("token")
-    if not token:
-        print(f"[sync_api] LOGIN OK but no token: {r1.json()}", file=sys.stderr)
-        return 1
-    print("[sync_api] Login OK, token received.")
+def load_master_codes() -> list[str]:
+    """
+    Read IFB_Point_Master.txt and return every IFB Point Code in it.
 
-    print(f"[sync_api] Fetching GetInstallationAgeingDetails for {IFB_CODE}...")
-    with httpx.Client(timeout=30) as client:
-        r2 = client.get(
+    Format is permissive: codes may be separated by commas, whitespace, or
+    newlines — anything non-empty after splitting on those delimiters is
+    treated as a code. Duplicates are removed but original order is preserved
+    (so the configured IFB_POINT_CODE keeps its position if it's in the file).
+    """
+    if not MASTER_FILE.exists():
+        print(f"[sync_api] Master file not found at {MASTER_FILE} — "
+              f"falling back to single code {IFB_CODE}", file=sys.stderr)
+        return [IFB_CODE]
+
+    raw = MASTER_FILE.read_text(encoding="utf-8")
+    # Treat commas, whitespace and newlines as separators
+    tokens = (
+        raw.replace("\r", " ")
+           .replace("\n", " ")
+           .replace("\t", " ")
+           .replace(",", " ")
+           .split()
+    )
+    seen: set[str] = set()
+    codes: list[str] = []
+    for t in tokens:
+        c = t.strip()
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        codes.append(c)
+    return codes
+
+
+def _login(client: httpx.Client) -> str | None:
+    """POST /Auth/login → JWT token (None on failure)."""
+    r = client.post(
+        f"{API_BASE}/Auth/login",
+        json={"userName": USERNAME, "password": PASSWORD},
+        headers={"Content-Type": "application/json"},
+    )
+    if r.status_code != 200:
+        print(f"[sync_api] LOGIN FAILED — HTTP {r.status_code}: {r.text[:300]}", file=sys.stderr)
+        return None
+    tok = r.json().get("token")
+    if not tok:
+        print(f"[sync_api] LOGIN OK but no token: {r.json()}", file=sys.stderr)
+        return None
+    return tok
+
+
+def _fetch_one(client: httpx.Client, token: str, code: str) -> dict | None:
+    """
+    GET /GetInstallationAgeingDetails?IFBPointCode=<code>.
+    Returns the raw JSON payload, or None if the call failed.
+    """
+    try:
+        r = client.get(
             f"{API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails",
-            params={"IFBPointCode": IFB_CODE},
+            params={"IFBPointCode": code},
             headers={"Authorization": f"Bearer {token}"},
         )
-    if r2.status_code != 200:
-        print(f"[sync_api] FETCH FAILED — HTTP {r2.status_code}: {r2.text[:300]}", file=sys.stderr)
-        return 1
-
-    raw_payload = r2.json()
-    records, point_code, point_name = parse_payload(raw_payload)
-    print(f"[sync_api] Parsed {len(records)} records — code={point_code}, name={point_name!r}")
-
-    out = {
-        "synced_at_utc":  datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "ifb_point_code": point_code,
-        "ifb_point_name": point_name,
-        "record_count":   len(records),
-        "records":        records,
-    }
-
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"[sync_api] Wrote {len(records)} records to {OUT_FILE.relative_to(REPO_ROOT)}")
-
-    # Append raw API records to SQLite (cumulative, never deletes anything)
-    try:
-        inserted = append_to_sqlite(raw_payload, point_code)
-        print(f"[sync_api] SQLite: appended {inserted} new row(s) to api_leads "
-              f"(table: {DB_FILE.name})")
     except Exception as exc:
-        print(f"[sync_api] SQLite append failed (non-fatal): {exc}", file=sys.stderr)
+        print(f"[sync_api]   {code}: HTTP exception — {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+    if r.status_code != 200:
+        print(f"[sync_api]   {code}: HTTP {r.status_code} — {r.text[:200]}", file=sys.stderr)
+        return None
+    try:
+        return r.json()
+    except Exception as exc:
+        print(f"[sync_api]   {code}: bad JSON — {exc}", file=sys.stderr)
+        return None
 
-    return 0
+
+def main() -> int:
+    codes = load_master_codes()
+    print(f"[sync_api] Loaded {len(codes)} IFB Point code(s) from "
+          f"{MASTER_FILE.name if MASTER_FILE.exists() else 'fallback config'}")
+    print(f"[sync_api] Logging in as {USERNAME}...")
+
+    with httpx.Client(timeout=30) as client:
+        token = _login(client)
+        if not token:
+            return 1
+        print("[sync_api] Login OK, token received.")
+
+        # Per-franchise stats so the summary tells you exactly what flowed in
+        total_inserted = 0
+        total_records  = 0
+        success_codes: list[str]            = []
+        empty_codes:   list[str]            = []
+        failed_codes:  list[str]            = []
+        primary_payload: dict | None        = None  # for api_data.json
+        primary_records: list[dict] = []
+        primary_name:    str = ""
+
+        for i, code in enumerate(codes, 1):
+            print(f"[sync_api] ({i}/{len(codes)}) fetching {code}...", flush=True)
+            payload = _fetch_one(client, token, code)
+            if payload is None:
+                failed_codes.append(code)
+                continue
+
+            records, parsed_code, parsed_name = parse_payload(payload)
+            total_records += len(records)
+
+            # SQLite append (idempotent by key — re-runs are safe)
+            try:
+                inserted = append_to_sqlite(payload, code)
+                total_inserted += inserted
+            except Exception as exc:
+                print(f"[sync_api]   {code}: SQLite append failed — {exc}", file=sys.stderr)
+                failed_codes.append(code)
+                continue
+
+            if records:
+                success_codes.append(code)
+            else:
+                empty_codes.append(code)
+
+            # Snapshot the configured franchise (IFB_CODE) into api_data.json
+            # so Streamlit Cloud's bootstrap still has its single-franchise feed
+            if code == IFB_CODE:
+                primary_payload = payload
+                primary_records = records
+                primary_name    = parsed_name
+
+        # ── Write api_data.json for the primary (config.py) franchise ────────
+        if primary_payload is not None:
+            out = {
+                "synced_at_utc":  datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "ifb_point_code": IFB_CODE,
+                "ifb_point_name": primary_name,
+                "record_count":   len(primary_records),
+                "records":        primary_records,
+            }
+            OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            OUT_FILE.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+            print(f"[sync_api] Wrote {len(primary_records)} primary records "
+                  f"({IFB_CODE}) → {OUT_FILE.relative_to(REPO_ROOT)}")
+        else:
+            print(f"[sync_api] IFB_POINT_CODE {IFB_CODE!r} not in master list "
+                  f"— api_data.json not refreshed")
+
+    # ── Summary ────────────────────────────────────────────────────────────
+    print("")
+    print(f"[sync_api] ═══ SUMMARY ═══")
+    print(f"[sync_api]   Codes processed : {len(codes)}")
+    print(f"[sync_api]   With records    : {len(success_codes)}")
+    print(f"[sync_api]   Empty responses : {len(empty_codes)}")
+    print(f"[sync_api]   Failed          : {len(failed_codes)}")
+    print(f"[sync_api]   API records seen: {total_records}")
+    print(f"[sync_api]   New DB rows     : {total_inserted}")
+    if failed_codes:
+        print(f"[sync_api]   Failed codes    : {', '.join(failed_codes[:20])}"
+              f"{' ...' if len(failed_codes) > 20 else ''}")
+
+    return 0 if not failed_codes else 0  # non-fatal — partial syncs are fine
 
 
 if __name__ == "__main__":
