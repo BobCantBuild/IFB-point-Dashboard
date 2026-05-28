@@ -174,50 +174,26 @@ def _load_followups() -> pd.DataFrame:
     return df
 
 
-def _resolve_point_code_and_url() -> tuple[str, str | None]:
+def _resolve_point_code_and_url() -> tuple[str | None, str | None]:
     """
-    Resolve the active IFB point code.
+    Read the IFB Point code ONLY from the URL query string.
 
-    Priority stack (lowest → highest, highest wins):
-      1. config.py  IFB_POINT_CODE
-      2. data/api_data.json  ifb_point_code   ← canonical default: matches actual data
-      3. URL query param  ?id=1017061         ← per-link override
-      4. URL query param  ?ifb_point_code=…  ← alternate long form
+    Accepted params:
+      ?id=1017061              ← canonical short form
+      ?ifb_point_code=1017061  ← alternate long form
 
-    WHY secrets is NOT used for the IFB code:
-      A stale value in Streamlit secrets (e.g. "1016070") caused the card to
-      display that code while the data came from a different franchise ("1017061")
-      stored in api_data.json — a silent mismatch.  The secrets file is only
-      used for API credentials (username/password) and github_token.
+    Returns (None, None) when no code is present in the URL.
+    config.py, api_data.json, and Streamlit secrets are intentionally
+    NOT used as a code source — the URL is the single source of truth.
     """
-    code    = _API_CODE          # level 1: hardcoded config fallback
+    code: str | None = None
     api_url: str | None = None
-
-    # ── Secrets — credentials only, NOT the IFB code ─────────────────────────
     try:
-        s = st.secrets.get("api", {})
-        api_url = s.get("api_url") or None   # api_url override still allowed
-    except Exception:
-        pass
-
-    # ── api_data.json — use its own ifb_point_code as level-2 default ─────────
-    # This guarantees the card and data always agree when no URL param is given,
-    # because the JSON is the committed snapshot we actually have data for.
-    try:
-        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        _jcode = str(_blob.get("ifb_point_code", "") or "").strip()
-        if _jcode:
-            code = _jcode
-    except Exception:
-        pass
-
-    # ── URL query params — highest priority, override everything above ─────────
-    try:
-        qp = st.query_params          # Streamlit >= 1.30
-        q_id = qp.get("id")          # ?id=1017061  (canonical short form)
+        qp    = st.query_params          # Streamlit >= 1.30
+        q_id  = qp.get("id")
         if isinstance(q_id, str) and q_id.strip():
             code = q_id.strip()
-        q_code = qp.get("ifb_point_code")   # ?ifb_point_code=… (long form)
+        q_code = qp.get("ifb_point_code")
         if isinstance(q_code, str) and q_code.strip():
             code = q_code.strip()
         q_url = qp.get("api_url")
@@ -225,8 +201,7 @@ def _resolve_point_code_and_url() -> tuple[str, str | None]:
             api_url = q_url.strip()
     except Exception:
         pass
-
-    return str(code), api_url
+    return code, api_url
 
 
 def _extract_point_code_from_url(url: str) -> str | None:
@@ -581,59 +556,30 @@ def _load_records_from_sqlite(ifb_point_code: str) -> list[dict]:
     return out
 
 
-def fetch_api_records(*, ifb_point_code: str, api_url: str | None) -> tuple[list[dict], str]:
+def fetch_api_records(*, ifb_point_code: str) -> tuple[list[dict], str]:
     """Return (records, source_label).
 
-    New flow (SQLite-first):
-      1. Bootstrap SQLite from api_data.json if empty for this IFB Point.
-      2. Read records from SQLite — this is the source of truth.
-      3. Fall back to JSON snapshot only if SQLite is somehow empty.
+    Flow:
+      1. Bootstrap SQLite from api_data.json if the table has no rows for
+         this IFB Point (Cloud cold-start restore).
+      2. Read from SQLite — sole source of truth.
+      3. If still empty → return [] so the UI shows "No records".
+         No JSON fallback, no live-API fallback.
     """
-    # Step 1: ensure SQLite has data for this IFB Point
     _bootstrap_sqlite_from_json(ifb_point_code)
-
-    # Step 2: read from SQLite
-    sql_records = _load_records_from_sqlite(ifb_point_code)
-    if sql_records:
-        return sql_records, f"sqlite · {len(sql_records)} rows"
-
-    # Step 3: fallback to JSON (should rarely happen after bootstrap)
-    if DATA_FILE.exists():
-        try:
-            blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            blob = None
-
-        if isinstance(blob, dict):
-            synced = blob.get("synced_at_utc", "?")
-
-            # Normalized snapshot format: {"ifb_point_code": "...", "records": [...]}
-            if "records" in blob and isinstance(blob.get("records"), list):
-                records = [r for r in blob["records"] if isinstance(r, dict)]
-                if records:
-                    return records, f"snapshot · synced {synced} UTC"
-
-            # Raw API payload (bucket-list shape) — normalize on the fly
-            records, _snap_code, _snap_name = _normalize_api_payload(blob)
-            if records:
-                return records, f"snapshot · synced {synced} UTC"
-
-    # Snapshot empty or missing — try live API as last resort
-    try:
-        records = _fetch_live_api(ifb_point_code=str(ifb_point_code), api_url=api_url)
-        return records, "live API"
-    except Exception:
-        return [], "no data — snapshot empty and live API unreachable"
+    rows = _load_records_from_sqlite(ifb_point_code)
+    if rows:
+        return rows, f"sqlite · {len(rows)} rows"
+    return [], f"no-data · {ifb_point_code}"
 
 
 def load_all() -> tuple[pd.DataFrame, str]:
     """
-    Fetch customer records (JSON snapshot / live API), compute follow-up buckets,
-    then merge in any saved follow-up edits from followups.json.
+    Fetch customer records from SQLite for the IFB Point code in the URL,
+    compute follow-up stages, merge followups.json edits.
     Returns (merged_df, source_label).
     """
-    point_code, api_url = _resolve_point_code_and_url()
-    records, source = fetch_api_records(ifb_point_code=point_code, api_url=api_url)
+    point_code, _api_url = _resolve_point_code_and_url()
 
     _COLS = [
         "customer_id", "customer_name", "purchase_date",
@@ -641,6 +587,11 @@ def load_all() -> tuple[pd.DataFrame, str]:
         "customer_follow_up",
         "status", "next_appointment", "interested", "remarks", "updated_at",
     ]
+
+    if not point_code:
+        return pd.DataFrame(columns=_COLS), "no-url-param"
+
+    records, source = fetch_api_records(ifb_point_code=point_code)
 
     if not records:
         return pd.DataFrame(columns=_COLS), source
@@ -704,56 +655,6 @@ def load_all() -> tuple[pd.DataFrame, str]:
     merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
     merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
 
-    # Best-effort: cache the freshest customer data into local SQLite
-    try:
-        _ensure_tables()
-        point_code, _api_url = _resolve_point_code_and_url()
-        # Try to get point name from the snapshot if present
-        point_name = None
-        if DATA_FILE.exists():
-            try:
-                _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-                _recs, _pc, _pn = _normalize_api_payload(_blob)
-                if _pc and str(_pc).strip() == str(point_code).strip():
-                    point_name = _pn
-            except Exception:
-                pass
-
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.executemany(
-                """INSERT OR REPLACE INTO customers
-                   (customer_id, customer_name, purchase_date,
-                    installation_date, machine_type,
-                    phone_number, alt_number, email_id,
-                    pin_code, serial_no,
-                    ifb_point_code, ifb_point_name,
-                    customer_follow_up, synced_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [
-                    (
-                        str(r.get("customer_id")),
-                        r.get("customer_name"),
-                        r.get("purchase_date").isoformat() if isinstance(r.get("purchase_date"), date) else str(r.get("purchase_date") or ""),
-                        r.get("installation_date").isoformat() if isinstance(r.get("installation_date"), date) else str(r.get("installation_date") or ""),
-                        r.get("machine_type"),
-                        str(r.get("phone_number") or ""),
-                        str(r.get("alt_number") or ""),
-                        r.get("email_id"),
-                        str(r.get("pin_code") or ""),
-                        str(r.get("serial_no") or ""),
-                        point_code,
-                        point_name,
-                        r.get("customer_follow_up"),
-                        source,
-                    )
-                    for r in merged.to_dict(orient="records")
-                ],
-            )
-            conn.commit()
-    except Exception:
-        # Cache failures must never break the UI
-        pass
-
     return merged, source
 
 
@@ -798,7 +699,7 @@ def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
                        SET status = ?, next_appointment = ?, interested = ?, remarks = ?
                      WHERE customer_id = ? AND ifb_point = ?
                     """,
-                    (status, appt_str, interested, remarks, cid, _resolve_point_code_and_url()[0]),
+                    (status, appt_str, interested, remarks, cid, _resolve_point_code_and_url()[0] or ""),
                 )
                 conn.commit()
                 saved["_sqlite"]["rows_updated"] = cur.rowcount
@@ -1330,13 +1231,21 @@ _badge_html = (
 )
 
 _ifb_code, _active_api_url = _resolve_point_code_and_url()
+_ifb_code_display = _ifb_code or "—"
 
-# Read IFB Point Name from the snapshot if available
+# IFB Point Name — read from the first SQLite row for this code (most accurate)
 _ifb_name = ""
-if DATA_FILE.exists():
+if _ifb_code and not df_all.empty and "ifb_point_name" in df_all.columns:
+    _n = df_all["ifb_point_name"].dropna()
+    if not _n.empty:
+        _ifb_name = str(_n.iloc[0]).strip()
+# fallback: read from JSON snapshot if names not in SQLite result
+if not _ifb_name and DATA_FILE.exists():
     try:
         _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        _ifb_name = str(_blob.get("ifb_point_name", "") or "").strip()
+        _jcode = str(_blob.get("ifb_point_code", "") or "").strip()
+        if _jcode == _ifb_code:          # only use if it's the right franchise
+            _ifb_name = str(_blob.get("ifb_point_name", "") or "").strip()
     except Exception:
         pass
 
@@ -1354,7 +1263,7 @@ st.markdown(f"""
   <div class="stats-row">
     <div class="stat-solo">
       <div class="s-label">🏪 IFB Point Code</div>
-      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code}</div>
+      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code_display}</div>
     </div>
     <div class="stat-solo">
       <div class="s-label">👥 Total Follow Up's</div>
@@ -1681,11 +1590,26 @@ def edit_lead_dialog(row: dict):
 
 # ── Table rendering ─────────────────────────────────────────────────────────
 if len(filtered) == 0:
+    # Pick a context-aware message depending on WHY there are no records
+    _src = st.session_state.get("_api_sync_msg", "")
+    if not _ifb_code:
+        _no_rec_html = (
+            "<b style='color:#475569;font-size:16px;'>No IFB Point code in URL</b><br>"
+            "<span style='font-size:13px;'>Add <code>?id=&lt;code&gt;</code> to the URL — e.g.&nbsp;"
+            "<code>https://ifb-point-dashboard.streamlit.app/?id=1017061</code></span>"
+        )
+    elif "no-data" in _src:
+        _no_rec_html = (
+            f"<b style='color:#475569;font-size:16px;'>No records for IFB Point {_ifb_code}</b><br>"
+            "<span style='font-size:13px;'>Run <code>sync_api.py</code> from the IFB office network "
+            "to sync data for this franchise into the database.</span>"
+        )
+    else:
+        _no_rec_html = "No records match the current filters."
     st.markdown(
         "<div id='no-records-msg' style='text-align:center;padding:64px 20px;color:#94A3B8;"
         "background:#fff;border:1px solid #E2E8F0;border-radius:14px;"
-        "box-shadow:0 1px 4px rgba(0,0,0,.04);font-size:14px;'>"
-        "No records match the current filters.</div>",
+        f"box-shadow:0 1px 4px rgba(0,0,0,.04);line-height:1.8;'>{_no_rec_html}</div>",
         unsafe_allow_html=True,
     )
 else:
