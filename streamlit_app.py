@@ -1,23 +1,17 @@
-"""IFB Point Dashboard — Streamlit UI backed by followups.json + GitHub API."""
+"""IFB Point Dashboard — Streamlit UI backed by local SQLite (ifb_point.db)."""
 from __future__ import annotations
 
-import base64
 import json
-import os
 import sqlite3
 from datetime import date, datetime as _dt
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import httpx as _req
 import streamlit as st
-import streamlit.components.v1 as components
 
-_APP_DIR       = Path(__file__).resolve().parent
-DATA_FILE      = _APP_DIR / "data" / "api_data.json"
-FOLLOWUPS_FILE = _APP_DIR / "data" / "followups.json"
-DB_PATH        = _APP_DIR / "ifb_point.db"
+_APP_DIR    = Path(__file__).resolve().parent
+DB_PATH     = _APP_DIR / "ifb_point.db"
 MASTER_FILE    = _APP_DIR / "IFB_Point_Master.txt"
 
 
@@ -46,43 +40,6 @@ STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 
 
-def _ensure_tables() -> None:
-    """Create/upgrade the local SQLite cache (best-effort; may be ephemeral on Streamlit Cloud)."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS customers (
-                customer_id        TEXT PRIMARY KEY,
-                customer_name      TEXT,
-                purchase_date      TEXT,
-                installation_date  TEXT,
-                installation_type  TEXT,
-                machine_type       TEXT,
-                phone_number       TEXT,
-                alt_number         TEXT,
-                email_id           TEXT,
-                pin_code           TEXT,
-                serial_no          TEXT,
-                ifb_point_id       TEXT,
-                ifb_point_code     TEXT,
-                ifb_point_name     TEXT,
-                customer_follow_up TEXT,
-                synced_at          TEXT
-            )
-        """)
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
-        for name, ddl in [
-            ("installation_date", "ALTER TABLE customers ADD COLUMN installation_date TEXT"),
-            ("alt_number", "ALTER TABLE customers ADD COLUMN alt_number TEXT"),
-            ("pin_code", "ALTER TABLE customers ADD COLUMN pin_code TEXT"),
-            ("serial_no", "ALTER TABLE customers ADD COLUMN serial_no TEXT"),
-            ("ifb_point_code", "ALTER TABLE customers ADD COLUMN ifb_point_code TEXT"),
-            ("ifb_point_name", "ALTER TABLE customers ADD COLUMN ifb_point_name TEXT"),
-        ]:
-            if name not in cols:
-                conn.execute(ddl)
-        conn.commit()
-
-
 def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
     if purchase_date is None:
         return None
@@ -97,145 +54,20 @@ def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
         return "8 Year Upgrade"
 
 
-# ─── Data architecture ───────────────────────────────────────────────────────
-# Primary source: data/api_data.json committed by GitHub Actions every 30 min.
-# Fallback: live httpx call (only works from IFB-whitelisted networks).
-# SQLite stores ONLY user-edited follow-up fields (status, next_appointment,
-# interested, remarks) — keyed by customer_id.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─── Config is in config.py — change IFB_POINT_CODE there to switch franchise ─
-from config import IFB_POINT_CODE as _API_CODE  # ← single source of truth
-from config import API_BASE as _API_BASE
-from config import API_USER as _API_USER, API_PASS as _API_PASS
-
-# ─── Followup storage: data/followups.json + GitHub API ──────────────────────
-# WHY not SQLite: Streamlit Cloud rebuilds the container on every git push,
-# wiping any files written at runtime. SQLite data never survives a redeploy.
-#
-# HOW THIS WORKS:
-#   • followups.json lives in data/ alongside api_data.json (tracked by git).
-#   • Every save writes to the local file immediately (fast, works offline).
-#   • Then _gh_commit_followups() commits the file back to GitHub via the
-#     Contents API, so the next deployment starts with the latest saves.
-#   • Requires  github_token  (fine-grained PAT with Contents write) stored
-#     in Streamlit secrets.  Without a token, saves persist only for the
-#     current deployment lifetime (still useful for the same browser session).
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _read_followups() -> dict[str, dict]:
-    """Load followups.json → {customer_id: row_dict}. Returns {} if missing."""
-    if FOLLOWUPS_FILE.exists():
-        try:
-            raw = json.loads(FOLLOWUPS_FILE.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                return raw
-        except Exception:
-            pass
-    return {}
-
-
-def _gh_commit_followups() -> None:
-    """
-    Push data/followups.json to GitHub via the Contents API.
-    Silent no-op when github_token is absent — local write already succeeded.
-    """
+def _resolve_point_code() -> str | None:
+    """Read the IFB Point code from the URL query string (?id= or ?ifb_point_code=).
+    Returns None when no code is present — URL is the single source of truth."""
     try:
-        token = (st.secrets.get("github_token") or
-                 st.secrets.get("GITHUB_TOKEN") or "")
-    except Exception:
-        token = ""
-    if not token:
-        return
-
-    try:
-        repo = st.secrets.get("github_repo", "IFB-Analytics/ifbpoint-followup")
-    except Exception:
-        repo = "IFB-Analytics/ifbpoint-followup"
-
-    api_url = f"https://api.github.com/repos/{repo}/contents/data/followups.json"
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept":        "application/vnd.github.v3+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    try:
-        encoded = base64.b64encode(FOLLOWUPS_FILE.read_bytes()).decode()
-        r       = _req.get(api_url, headers=headers, timeout=10)
-        sha     = r.json().get("sha") if r.status_code == 200 else None
-        payload: dict = {
-            "message": "chore(data): save followup edits [skip ci]",
-            "content": encoded,
-            "branch":  "main",
-        }
-        if sha:
-            payload["sha"] = sha
-        _req.put(api_url, json=payload, headers=headers, timeout=15)
-    except Exception:
-        pass  # best-effort — local file write already succeeded
-
-
-def _write_followups(data: dict[str, dict]) -> None:
-    """Persist followups to the local JSON file, then push to GitHub."""
-    FOLLOWUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    FOLLOWUPS_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False, default=str),
-        encoding="utf-8",
-    )
-    _gh_commit_followups()
-
-
-def _load_followups() -> pd.DataFrame:
-    """Return followups as a DataFrame (empty if no saves yet)."""
-    data = _read_followups()
-    if not data:
-        return pd.DataFrame(
-            columns=["customer_id", "status", "next_appointment",
-                     "interested", "remarks", "updated_at"]
-        )
-    df = pd.DataFrame(list(data.values()))
-    df["customer_id"] = df["customer_id"].astype(str)
-    return df
-
-
-def _resolve_point_code_and_url() -> tuple[str | None, str | None]:
-    """
-    Read the IFB Point code ONLY from the URL query string.
-
-    Accepted params:
-      ?id=1017061              ← canonical short form
-      ?ifb_point_code=1017061  ← alternate long form
-
-    Returns (None, None) when no code is present in the URL.
-    config.py, api_data.json, and Streamlit secrets are intentionally
-    NOT used as a code source — the URL is the single source of truth.
-    """
-    code: str | None = None
-    api_url: str | None = None
-    try:
-        qp    = st.query_params          # Streamlit >= 1.30
-        q_id  = qp.get("id")
+        qp = st.query_params
+        q_id = qp.get("id")
         if isinstance(q_id, str) and q_id.strip():
-            code = q_id.strip()
+            return q_id.strip()
         q_code = qp.get("ifb_point_code")
         if isinstance(q_code, str) and q_code.strip():
-            code = q_code.strip()
-        q_url = qp.get("api_url")
-        if isinstance(q_url, str) and q_url.strip():
-            api_url = q_url.strip()
+            return q_code.strip()
     except Exception:
         pass
-    return code, api_url
-
-
-def _extract_point_code_from_url(url: str) -> str | None:
-    try:
-        from urllib.parse import urlparse, parse_qs
-        qs = parse_qs(urlparse(url).query)
-        v = qs.get("IFBPointCode", [None])[0]
-        return str(v).strip() if v else None
-    except Exception:
-        return None
+    return None
 
 
 def _parse_api_date(v: Any) -> date | None:
@@ -256,136 +88,6 @@ def _parse_api_date(v: Any) -> date | None:
         return None
 
 
-_STAGE_KEY_TO_FOLLOWUP = {
-    "twoDays_details": "Post-Purchase",
-    "twoDaysDetails": "Post-Purchase",
-    "oneMonth_details": "1st 30 days call",
-    "oneMonthDetails": "1st 30 days call",
-    "fortySevenMonthDetails": "Pre-AMC",
-    "fortySevenMonth_details": "Pre-AMC",
-    "eightyFourMonthDetails": "8 Year Upgrade",
-    "eightyFourMonth_details": "8 Year Upgrade",
-}
-
-
-def _normalize_api_payload(payload: Any) -> tuple[list[dict], str | None, str | None]:
-    """
-    Normalize API payloads into a flat list of customer dicts.
-
-    Supports the newer shape:
-      { ifbPointCode, ifbPointName, twoDays_details: [...], oneMonth_details: [...], ... }
-    plus older list/dict formats.
-    """
-    if payload is None:
-        return [], None, None
-
-    if isinstance(payload, list):
-        return [r for r in payload if isinstance(r, dict)], None, None
-
-    if not isinstance(payload, dict):
-        return [], None, None
-
-    point_code = payload.get("ifbPointCode") or payload.get("ifb_point_code")
-    point_name = payload.get("ifbPointName") or payload.get("ifb_point_name")
-
-    records: list[dict] = []
-    for k, v in payload.items():
-        if not isinstance(v, list):
-            continue
-        follow_up = _STAGE_KEY_TO_FOLLOWUP.get(k)
-        for item in v:
-            if not isinstance(item, dict):
-                continue
-            rec = dict(item)
-            if follow_up and not rec.get("customer_follow_up"):
-                rec["customer_follow_up"] = follow_up
-            records.append(rec)
-
-    # Fallback: dict-of-lists under arbitrary keys
-    if not records:
-        for v in payload.values():
-            if isinstance(v, list):
-                for item in v:
-                    if isinstance(item, dict):
-                        records.append(dict(item))
-
-    pc = str(point_code).strip() if point_code else None
-    pn = str(point_name).strip() if point_name else None
-    return records, pc, pn
-
-
-def _fetch_live_api(*, ifb_point_code: str, api_url: str | None = None) -> list[dict]:
-    """Direct API call via httpx — only works from networks IFB whitelisted.
-    Used as a fallback when data/api_data.json is missing (local development).
-    """
-    u, p = _API_USER, _API_PASS
-    code = str(ifb_point_code or _API_CODE)
-    base_url = f"{_API_BASE}/IFBPointFollowUp/GetInstallationAgeingDetails"
-    url = api_url.strip() if isinstance(api_url, str) and api_url.strip() else base_url
-
-    try:
-        s = st.secrets["api"]
-        u = s.get("username", u)
-        p = s.get("password", p)
-        code = s.get("ifb_point_code", code) or code
-        url = s.get("api_url", url) or url
-    except Exception:
-        pass
-
-    # If the provided api_url already includes IFBPointCode, treat that as the
-    # source of truth unless an explicit ifb_point_code query param was provided.
-    code_from_url = _extract_point_code_from_url(url)
-    if code_from_url:
-        code = code_from_url
-
-    # If a bearer token is explicitly provided (secrets/env), use it directly.
-    bearer = None
-    try:
-        bearer = st.secrets.get("api", {}).get("bearer_token")
-    except Exception:
-        bearer = None
-    if not bearer:
-        bearer = str(os.environ.get("IFB_BEARER_TOKEN", "")).strip() or None
-
-    if bearer:
-        with _req.Client(timeout=25) as client:
-            r2 = client.get(
-                url,
-                params={"IFBPointCode": code} if "IFBPointCode=" not in url else None,
-                headers={"Authorization": f"Bearer {bearer}"},
-            )
-        if r2.status_code != 200:
-            raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
-        j = r2.json()
-        records, _pc, _pn = _normalize_api_payload(j)
-        return records
-
-    with _req.Client(timeout=20) as client:
-        r1 = client.post(
-            f"{_API_BASE}/Auth/login",
-            json={"userName": u, "password": p},
-            headers={"Content-Type": "application/json"},
-        )
-    if r1.status_code != 200:
-        raise RuntimeError(f"Login HTTP {r1.status_code}: {r1.text[:200]}")
-    tok = r1.json().get("token")
-    if not tok:
-        raise RuntimeError(f"Login OK but no token. Keys: {list(r1.json().keys())}")
-
-    with _req.Client(timeout=25) as client:
-        r2 = client.get(
-            url,
-            params={"IFBPointCode": code} if "IFBPointCode=" not in url else None,
-            headers={"Authorization": f"Bearer {tok}"},
-        )
-    if r2.status_code != 200:
-        raise RuntimeError(f"GetInstallationAgeingDetails HTTP {r2.status_code}: {r2.text[:200]}")
-
-    j = r2.json()
-    records, _pc, _pn = _normalize_api_payload(j)
-    return records
-
-
 # ─── DB bucket → display stage label ─────────────────────────────────────────
 _BUCKET_TO_STAGE = {
     "twoDays_details":         "Post-Purchase",
@@ -401,15 +103,13 @@ _BUCKET_TO_STAGE = {
 
 def _read_db(ifb_point_code: str) -> list[dict]:
     """
-    Direct read from ifb_point.db.
-    SELECT * FROM api_leads WHERE ifb_point = <code>.
-    Returns one dict per unique key (latest row wins), empty list if DB
-    missing or franchise not found.
+    Read all rows for one franchise from ifb_point.db.
+    Returns one dict per unique key (latest row wins).
+    status/next_appointment/interested/remarks come straight from SQLite
+    — no secondary JSON merge needed.
     """
     if not DB_PATH.exists():
-        st.session_state["_db_missing"] = str(DB_PATH)
         return []
-    st.session_state.pop("_db_missing", None)
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -417,11 +117,8 @@ def _read_db(ifb_point_code: str) -> list[dict]:
                 "SELECT * FROM api_leads WHERE ifb_point = ? ORDER BY id DESC",
                 (ifb_point_code,),
             ).fetchall()
-    except Exception as _exc:
-        st.session_state["_read_db_error"] = f"{type(_exc).__name__}: {_exc}"
+    except Exception:
         return []
-    else:
-        st.session_state.pop("_read_db_error", None)
 
     seen: set[str] = set()
     out:  list[dict] = []
@@ -451,306 +148,83 @@ def _read_db(ifb_point_code: str) -> list[dict]:
     return out
 
 
-def _cloud_bootstrap(ifb_point_code: str) -> None:
-    """
-    Streamlit Cloud cold-start helper.
-
-    On Cloud the DB is ephemeral (wiped on every redeploy).  When the DB has
-    no rows for the requested franchise, this reads data/api_data.json and
-    inserts them — restoring the snapshot so the app has something to show.
-
-    Completely skipped when:
-      • api_data.json doesn't exist
-      • JSON is for a different franchise than requested
-      • DB already has rows for this franchise
-
-    Errors are stored in st.session_state["_bootstrap_error"] so the DEBUG
-    panel can surface them rather than silently swallowing failures.
-    """
-    st.session_state.pop("_bootstrap_error", None)
-
-    if not DATA_FILE.exists():
-        st.session_state["_bootstrap_error"] = f"api_data.json not found at {DATA_FILE}"
-        return
-    try:
-        blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        if not isinstance(blob, dict):
-            st.session_state["_bootstrap_error"] = "api_data.json is not a JSON object"
-            return
-        json_code = str(blob.get("ifb_point_code", "") or "").strip()
-        if json_code != ifb_point_code:
-            st.session_state["_bootstrap_error"] = (
-                f"api_data.json is for franchise {json_code!r}, "
-                f"but URL requested {ifb_point_code!r} — no bootstrap"
-            )
-            return
-        records = [r for r in blob.get("records", []) if isinstance(r, dict)]
-        if not records:
-            st.session_state["_bootstrap_error"] = "api_data.json has no records"
-            return
-
-        lead_date = _dt.now().strftime("%d-%m-%Y")
-        fu = _read_followups()
-
-        # Try app directory first; fall back to /tmp on Cloud (read-only app dirs)
-        db_candidates = [DB_PATH]
-        tmp_db = Path("/tmp/ifb_point.db")
-        if tmp_db.parent != DB_PATH.parent:
-            db_candidates.append(tmp_db)
-
-        last_exc: Exception | None = None
-        for db_path in db_candidates:
-            try:
-                with sqlite3.connect(str(db_path)) as conn:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS api_leads (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            ifb_point TEXT, key TEXT, lead_date TEXT, follow_up TEXT,
-                            customer_id TEXT, customer_name TEXT,
-                            purchase_date TEXT, installationdate TEXT,
-                            machine_type TEXT, phone_number TEXT, alt_number TEXT,
-                            email_id TEXT, "pinCode" TEXT, "serialNo" TEXT,
-                            status TEXT, next_appointment TEXT,
-                            interested TEXT, remarks TEXT
-                        )
-                    """)
-                    cnt = conn.execute(
-                        "SELECT COUNT(*) FROM api_leads WHERE ifb_point = ?",
-                        (ifb_point_code,),
-                    ).fetchone()[0]
-                    if cnt > 0:
-                        # Already populated (second visit in same Cloud session)
-                        if db_path != DB_PATH:
-                            # We used /tmp — update DB_PATH global so _read_db finds it
-                            globals()["DB_PATH"] = db_path
-                        st.session_state["_bootstrap_db"] = str(db_path)
-                        return
-
-                    _stage_to_bucket = {
-                        "Post-Purchase":    "twoDays_details",
-                        "1st 30 days call": "oneMonth_details",
-                        "Pre-AMC":          "fortySevenMonthDetails",
-                        "8 Year Upgrade":   "eightyFourMonthDetails",
-                    }
-                    seen_keys: set[str] = set()
-                    inserted = 0
-                    for r in records:
-                        cust_id = str(r.get("customer_id", "") or "").strip()
-                        serial  = str(r.get("serial_no") or r.get("serialNo", "") or "").strip()
-                        key_val = f"{json_code}-{cust_id}-{serial}"
-                        if key_val in seen_keys:
-                            continue
-                        seen_keys.add(key_val)
-                        bucket  = _stage_to_bucket.get(r.get("customer_follow_up", ""), "")
-                        fu_row  = fu.get(cust_id, {})
-                        conn.execute("""
-                            INSERT OR IGNORE INTO api_leads
-                              (ifb_point, key, lead_date, follow_up,
-                               customer_id, customer_name, purchase_date, installationdate,
-                               machine_type, phone_number, alt_number, email_id,
-                               "pinCode", "serialNo",
-                               status, next_appointment, interested, remarks)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                        """, (
-                            json_code, key_val, lead_date, bucket,
-                            cust_id,
-                            r.get("customer_name", ""),
-                            str(r.get("purchase_date") or ""),
-                            str(r.get("installation_date") or r.get("installationdate") or ""),
-                            r.get("machine_type", ""),
-                            r.get("phone_number", ""),
-                            r.get("alt_number", ""),
-                            r.get("email_id", ""),
-                            r.get("pin_code") or r.get("pinCode") or "",
-                            serial,
-                            fu_row.get("status"),
-                            fu_row.get("next_appointment"),
-                            fu_row.get("interested"),
-                            fu_row.get("remarks"),
-                        ))
-                        inserted += 1
-                    conn.commit()
-
-                # Success — update globals if we used /tmp
-                if db_path != DB_PATH:
-                    globals()["DB_PATH"] = db_path
-                st.session_state["_bootstrap_db"] = str(db_path)
-                st.session_state["_bootstrap_inserted"] = inserted
-                return  # done — don't try next candidate
-
-            except Exception as exc:
-                last_exc = exc
-                continue  # try next candidate (e.g. /tmp)
-
-        # All candidates failed
-        st.session_state["_bootstrap_error"] = (
-            f"All DB paths failed. Last error: {type(last_exc).__name__}: {last_exc}"
-        )
-    except Exception as exc:
-        st.session_state["_bootstrap_error"] = f"{type(exc).__name__}: {exc}"
-
-
-def get_records(ifb_point_code: str) -> tuple[list[dict], str]:
-    """
-    Entry point for data loading.
-
-    1. Try reading ifb_point.db directly.
-    2. If empty, attempt Cloud bootstrap from api_data.json, then re-read.
-    3. Return (records, source_label).
-    """
-    rows = _read_db(ifb_point_code)
-    if rows:
-        return rows, f"sqlite · {len(rows)} rows"
-
-    # DB empty for this code — Cloud cold-start or wrong code
-    _cloud_bootstrap(ifb_point_code)
-    rows = _read_db(ifb_point_code)
-    if rows:
-        return rows, f"sqlite · {len(rows)} rows"
-
-    return [], f"no-data · {ifb_point_code}"
-
-
 def load_all() -> tuple[pd.DataFrame, str]:
     """
-    Fetch customer records from SQLite for the IFB Point code in the URL,
-    compute follow-up stages, merge followups.json edits.
-    Returns (merged_df, source_label).
+    Fetch customer records from ifb_point.db for the franchise code in the URL.
+    SQLite is the single source of truth — status/next_appointment/interested/
+    remarks are read directly from api_leads (no followups.json merge).
+    Returns (df, source_label).
     """
-    point_code, _api_url = _resolve_point_code_and_url()
+    point_code = _resolve_point_code()
 
     _COLS = [
         "customer_id", "customer_name", "purchase_date",
         "machine_type", "phone_number", "email_id",
-        "customer_follow_up",
-        "status", "next_appointment", "interested", "remarks", "updated_at",
+        "customer_follow_up", "status", "next_appointment", "interested", "remarks",
     ]
 
     if not point_code:
         return pd.DataFrame(columns=_COLS), "no-url-param"
 
-    # Validate against the master list — anything not in IFB_Point_Master.txt
-    # is treated as an invalid ID. If the master file is missing (_MASTER_CODES
-    # is empty), skip this check so the app still works.
     if _MASTER_CODES and point_code not in _MASTER_CODES:
         return pd.DataFrame(columns=_COLS), f"invalid-id · {point_code}"
 
-    records, source = get_records(point_code)
+    rows = _read_db(point_code)
+    if not rows:
+        return pd.DataFrame(columns=_COLS), f"no-data · {point_code}"
 
-    if not records:
-        return pd.DataFrame(columns=_COLS), source
+    df = pd.DataFrame(rows)
+    df["customer_id"]   = df["customer_id"].astype(str)
+    df["phone_number"]  = df["phone_number"].astype(str)
 
-    df = pd.DataFrame(records)
-    if "customer_id" not in df.columns:
-        df["customer_id"] = None
-    df["customer_id"] = df["customer_id"].astype(str)
-
-    # Map/standardize known API keys
-    if "installationdate" in df.columns and "installation_date" not in df.columns:
-        df["installation_date"] = df["installationdate"]
-    if "pinCode" in df.columns and "pin_code" not in df.columns:
-        df["pin_code"] = df["pinCode"]
-    if "serialNo" in df.columns and "serial_no" not in df.columns:
-        df["serial_no"] = df["serialNo"]
-
-    df["phone_number"] = df.get("phone_number", pd.Series(dtype=str)).astype(str)
-
-    # Parse dates like "5/22/2026 12:00:00 AM"
     if "purchase_date" in df.columns:
         df["purchase_date"] = df["purchase_date"].apply(_parse_api_date)
-    else:
-        df["purchase_date"] = None
     if "installation_date" in df.columns:
         df["installation_date"] = df["installation_date"].apply(_parse_api_date)
+    if "next_appointment" in df.columns:
+        df["next_appointment"] = pd.to_datetime(df["next_appointment"], errors="coerce").dt.date
 
-    for col in (
-        "customer_name", "machine_type", "email_id",
-        "customer_follow_up", "alt_number", "pin_code",
-        "serial_no", "installation_date",
-        "ifb_point_code", "ifb_point_name",
-    ):
+    for col in ("customer_name", "machine_type", "email_id",
+                "customer_follow_up", "status", "interested", "remarks"):
         if col not in df.columns:
             df[col] = None
 
-    # If API didn't provide a stage, compute it from purchase_date
+    # Compute follow-up stage from purchase_date when API bucket is absent
     today = date.today()
     df["customer_follow_up"] = df.apply(
-        lambda r: r.get("customer_follow_up") or (
-            compute_follow_up(r.get("purchase_date"), today) if isinstance(r.get("purchase_date"), date) else None
+        lambda r: r["customer_follow_up"] or (
+            compute_follow_up(r["purchase_date"], today)
+            if isinstance(r["purchase_date"], date) else None
         ),
         axis=1,
     )
 
-    fu_df = _load_followups()
+    df["purchase_date"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date
 
-    if fu_df.empty:
-        for col in ("status", "next_appointment", "interested", "remarks", "updated_at"):
-            df[col] = None
-        merged = df
-    else:
-        fu_df["customer_id"] = fu_df["customer_id"].astype(str)
-        merged = df.merge(
-            fu_df[["customer_id", "status", "next_appointment",
-                   "interested", "remarks", "updated_at"]],
-            on="customer_id",
-            how="left",
-        )
-
-    merged["purchase_date"]    = pd.to_datetime(merged["purchase_date"],    errors="coerce").dt.date
-    merged["next_appointment"] = pd.to_datetime(merged["next_appointment"], errors="coerce").dt.date
-
-    return merged, source
+    return df, f"sqlite · {len(df)} rows"
 
 
 def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
-    """
-    Save user edits for one customer to data/followups.json.
-    Immediately writes locally, then pushes to GitHub so the data
-    survives the next Streamlit Cloud redeploy.
-    """
+    """Save user edits directly to SQLite api_leads — single source of truth."""
     appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
     cid      = str(cid)
-    now      = _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    point_code = _resolve_point_code() or ""
 
-    saved = {
-        "customer_id":      cid,
-        "status":           status,
-        "next_appointment": appt_str,
-        "interested":       interested,
-        "remarks":          remarks,
-        "updated_at":       now,
-    }
-
-    data      = _read_followups()
-    data[cid] = saved
-    _write_followups(data)
-
-    # Mirror user edits into the SQLite api_leads table so the DB stays in sync.
-    # Updates every row for this customer_id within the current IFB Point.
-    saved["_sqlite"] = {"rows_updated": 0, "error": None, "db_path": str(DB_PATH)}
+    result = {"rows_updated": 0, "error": None}
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
-            if not existing:
-                saved["_sqlite"]["error"] = "api_leads table does not exist"
-            else:
-                for col in ("status", "next_appointment", "interested", "remarks"):
-                    if col not in existing:
-                        conn.execute(f"ALTER TABLE api_leads ADD COLUMN {col} TEXT")
-                cur = conn.execute(
-                    """
-                    UPDATE api_leads
-                       SET status = ?, next_appointment = ?, interested = ?, remarks = ?
-                     WHERE customer_id = ? AND ifb_point = ?
-                    """,
-                    (status, appt_str, interested, remarks, cid, _resolve_point_code_and_url()[0] or ""),
-                )
-                conn.commit()
-                saved["_sqlite"]["rows_updated"] = cur.rowcount
+            cur = conn.execute(
+                """UPDATE api_leads
+                      SET status = ?, next_appointment = ?, interested = ?, remarks = ?
+                    WHERE customer_id = ? AND ifb_point = ?""",
+                (status, appt_str, interested, remarks, cid, point_code),
+            )
+            conn.commit()
+            result["rows_updated"] = cur.rowcount
     except Exception as exc:
-        saved["_sqlite"]["error"] = f"{type(exc).__name__}: {exc}"
+        result["error"] = f"{type(exc).__name__}: {exc}"
 
-    return saved
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -1274,31 +748,26 @@ _badge_html = (
     '<span class="api-err">🔴&nbsp;Sync failed</span>'
 )
 
-_ifb_code, _active_api_url = _resolve_point_code_and_url()
+_ifb_code = _resolve_point_code()
 _ifb_code_display = _ifb_code or "—"
 
-# IFB Point Name — read from the first SQLite row for this code (most accurate)
+# IFB Point Name — read from the first SQLite row that has a non-empty name
 _ifb_name = ""
 if _ifb_code and not df_all.empty and "ifb_point_name" in df_all.columns:
     _n = df_all["ifb_point_name"].dropna()
     if not _n.empty:
         _ifb_name = str(_n.iloc[0]).strip()
-# fallback: read from JSON snapshot if names not in SQLite result
-if not _ifb_name and DATA_FILE.exists():
-    try:
-        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        _jcode = str(_blob.get("ifb_point_code", "") or "").strip()
-        if _jcode == _ifb_code:          # only use if it's the right franchise
-            _ifb_name = str(_blob.get("ifb_point_name", "") or "").strip()
-    except Exception:
-        pass
 
-st.markdown(f"""
-<div class="fixed-header">
+_name_html = (
+    f'<p style="margin:3px 0 0;font-size:13px;color:#94A3B8;font-weight:500;">{_ifb_name}</p>'
+    if _ifb_name else '<!---->'
+)
+
+st.markdown(f"""<div class="fixed-header">
   <div class="hero">
     <div>
       <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
-      {f'<p style="margin:3px 0 0;font-size:13px;color:#94A3B8;font-weight:500;">{_ifb_name}</p>' if _ifb_name else ''}
+      {_name_html}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       <p style="margin:0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
@@ -1447,7 +916,7 @@ st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 # JS injection — measure the fixed-header height and set `.block-container`
 # padding-top to match it. Filter rows scroll naturally with the page
 # content (no pin), eliminating the empty-gap artifact.
-components.html("""
+st.html("""
 <script>
 (function(){
   function run(){
@@ -1487,7 +956,7 @@ components.html("""
   }catch(e){}
 })();
 </script>
-""", height=0)
+""")
 
 
 # --------------------------------------------------------------------------- #
@@ -1606,22 +1075,20 @@ def edit_lead_dialog(row: dict):
         if st.button("💾  Save", type="primary", use_container_width=True,
                      key=f"dlg_save_{cid}"):
             try:
-                saved = update_row(
+                result = update_row(
                     cid,
                     None if ns == "—" else ns,
                     na if isinstance(na, date) else None,
                     None if ni == "—" else ni,
                     nr.strip() or None,
                 )
-                _sql = saved.get("_sqlite", {}) or {}
-                _rows = _sql.get("rows_updated", 0)
-                _err  = _sql.get("error")
+                _rows = result.get("rows_updated", 0)
+                _err  = result.get("error")
                 if _err:
                     st.warning(f"⚠️ SQLite write failed — {_err}")
                 else:
                     st.toast(
-                        f"✅ Saved — followups.json + SQLite "
-                        f"({_rows} row{'s' if _rows != 1 else ''} updated)",
+                        f"✅ Saved — {_rows} row{'s' if _rows != 1 else ''} updated",
                         icon="💾",
                     )
                 st.rerun()
@@ -1780,80 +1247,3 @@ else:
             st.rerun()
 
 
-# ─── DEBUG PANEL ─────────────────────────────────────────────────────────────
-st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
-
-with st.expander("🗃️ DEBUG — SQLite Database"):
-    _active_db = DB_PATH  # may have been updated to /tmp by bootstrap
-    st.write(f"**DB_PATH**: `{_active_db}`")
-    st.write(f"**DB exists**: {_active_db.exists()}")
-
-    _bootstrap_err = st.session_state.get("_bootstrap_error")
-    _read_db_err   = st.session_state.get("_read_db_error")
-    _db_missing    = st.session_state.get("_db_missing")
-    _bootstrap_db  = st.session_state.get("_bootstrap_db")
-    _bootstrap_ins = st.session_state.get("_bootstrap_inserted")
-
-    if _bootstrap_err:
-        st.error(f"❌ Bootstrap error: {_bootstrap_err}")
-    elif _bootstrap_db:
-        st.success(f"✅ Bootstrap succeeded → `{_bootstrap_db}` ({_bootstrap_ins} rows inserted)")
-    else:
-        st.info("ℹ️ Bootstrap not triggered (DB had rows, or first _read_db succeeded)")
-
-    if _read_db_err:
-        st.error(f"❌ _read_db error: {_read_db_err}")
-    if _db_missing:
-        st.warning(f"⚠️ DB file not found at: {_db_missing}")
-
-    if _active_db.exists():
-        try:
-            with sqlite3.connect(str(_active_db)) as _dbg_conn:
-                _all_codes = _dbg_conn.execute(
-                    "SELECT ifb_point, COUNT(*) FROM api_leads GROUP BY ifb_point ORDER BY COUNT(*) DESC"
-                ).fetchall()
-                if _all_codes:
-                    st.write("**Rows per ifb_point in api_leads:**")
-                    st.table(pd.DataFrame(_all_codes, columns=["ifb_point", "row_count"]))
-                else:
-                    st.warning("⚠️ api_leads table is empty")
-        except Exception as _dbg_e:
-            st.error(f"Could not query DB: {_dbg_e}")
-    else:
-        st.warning("⚠️ DB file does not exist — bootstrap should have created it above")
-
-with st.expander("🔧 DEBUG — Followup Storage"):
-    st.write(f"**Storage file**: `{FOLLOWUPS_FILE}`")
-    st.write(f"**File exists**: {FOLLOWUPS_FILE.exists()}")
-
-    _has_token = False
-    try:
-        _has_token = bool(st.secrets.get("github_token") or st.secrets.get("GITHUB_TOKEN"))
-    except Exception:
-        pass
-    st.write(f"**GitHub auto-commit**: {'✅ token set — saves push to GitHub' if _has_token else '⚠️ no github_token secret — saves local only (lost on redeploy)'}")
-
-    _fu_data = _read_followups()
-    st.write(f"**Saved followups**: {len(_fu_data)} customer(s)")
-    if _fu_data:
-        st.write("**Last 5 saved rows:**")
-        st.dataframe(pd.DataFrame(list(_fu_data.values())).tail(5), use_container_width=True)
-    else:
-        st.info("⚠️ No saves yet — followups.json is empty.")
-
-with st.expander("📦 DEBUG — Raw API Data (api_data.json)"):
-    st.write(f"**DATA_FILE path**: `{DATA_FILE}`")
-    st.write(f"**DATA_FILE exists**: {DATA_FILE.exists()}")
-    if DATA_FILE.exists():
-        try:
-            _raw_blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-            st.write(f"**synced_at_utc**: {_raw_blob.get('synced_at_utc', 'N/A')}")
-            st.write(f"**ifb_point_code**: {_raw_blob.get('ifb_point_code', 'N/A')}")
-            st.write(f"**record_count**: {_raw_blob.get('record_count', 'N/A')}")
-            _rec_preview = _raw_blob.get("records", [])[:3]
-            st.write(f"**First 3 records (preview):**")
-            st.json(_rec_preview)
-        except Exception as _e:
-            st.error(f"Could not read api_data.json: {_e}")
-    else:
-        st.error("❌ api_data.json NOT FOUND — this is why no data shows.")

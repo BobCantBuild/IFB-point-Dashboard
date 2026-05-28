@@ -301,12 +301,9 @@ def main() -> int:
         # Per-franchise stats so the summary tells you exactly what flowed in
         total_inserted = 0
         total_records  = 0
-        success_codes: list[str]            = []
-        empty_codes:   list[str]            = []
-        failed_codes:  list[str]            = []
-        primary_payload: dict | None        = None  # for api_data.json
-        primary_records: list[dict] = []
-        primary_name:    str = ""
+        success_codes: list[str] = []
+        empty_codes:   list[str] = []
+        failed_codes:  list[str] = []
 
         for i, code in enumerate(codes, 1):
             print(f"[sync_api] ({i}/{len(codes)}) fetching {code}...", flush=True)
@@ -315,7 +312,7 @@ def main() -> int:
                 failed_codes.append(code)
                 continue
 
-            records, parsed_code, parsed_name = parse_payload(payload)
+            records, _parsed_code, _parsed_name = parse_payload(payload)
             total_records += len(records)
 
             # SQLite append (idempotent by key — re-runs are safe)
@@ -331,30 +328,6 @@ def main() -> int:
                 success_codes.append(code)
             else:
                 empty_codes.append(code)
-
-            # Snapshot the configured franchise (IFB_CODE) into api_data.json
-            # so Streamlit Cloud's bootstrap still has its single-franchise feed
-            if code == IFB_CODE:
-                primary_payload = payload
-                primary_records = records
-                primary_name    = parsed_name
-
-        # ── Write api_data.json for the primary (config.py) franchise ────────
-        if primary_payload is not None:
-            out = {
-                "synced_at_utc":  datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "ifb_point_code": IFB_CODE,
-                "ifb_point_name": primary_name,
-                "record_count":   len(primary_records),
-                "records":        primary_records,
-            }
-            OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-            OUT_FILE.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
-            print(f"[sync_api] Wrote {len(primary_records)} primary records "
-                  f"({IFB_CODE}) → {OUT_FILE.relative_to(REPO_ROOT)}")
-        else:
-            print(f"[sync_api] IFB_POINT_CODE {IFB_CODE!r} not in master list "
-                  f"— api_data.json not refreshed")
 
     # ── Summary ────────────────────────────────────────────────────────────
     print("")

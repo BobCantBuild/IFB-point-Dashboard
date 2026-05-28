@@ -1,8 +1,14 @@
-# SQLite — runtime artifact (stores staff edits, recreated automatically)
+# SQLite — local-only; populated by sync_api.py from the IFB office network
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+
+# Local data files — generated at runtime, not needed in git
+data/api_data.json
+data/followups.json
 
 # Python
 __pycache__/
