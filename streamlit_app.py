@@ -18,12 +18,31 @@ MASTER_FILE    = _APP_DIR / "IFB_Point_Master.txt"
 def _load_master_codes() -> set[str]:
     """
     Return the full set of valid IFB Point codes from IFB_Point_Master.txt.
-    Codes may be separated by commas, whitespace, or newlines.
+    Supports tab-separated format (code\tname) and legacy comma/whitespace format.
     Empty set if the master file is missing (treat all IDs as valid then).
     """
     if not MASTER_FILE.exists():
         return set()
+
     raw = MASTER_FILE.read_text(encoding="utf-8")
+    lines = raw.split("\n")
+    codes: set[str] = set()
+
+    # Try tab-separated format first (new format: code\tname)
+    has_tabs = any("\t" in line for line in lines if line.strip())
+    if has_tabs:
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            code = parts[0].strip()
+            if code:
+                codes.add(code)
+        if codes:
+            return codes
+
+    # Fallback to legacy format (comma-separated, whitespace-separated)
     tokens = (
         raw.replace("\r", " ")
            .replace("\n", " ")
@@ -34,7 +53,36 @@ def _load_master_codes() -> set[str]:
     return {t.strip() for t in tokens if t.strip()}
 
 
+def _load_channel_names() -> dict[str, str]:
+    """
+    Load channel code to friendly name mapping from IFB_Point_Master.txt.
+    Returns {code: name, ...}. Works with tab-separated format only.
+    Returns empty dict if file is missing or not in correct format.
+    """
+    mapping: dict[str, str] = {}
+
+    if not MASTER_FILE.exists():
+        return mapping
+
+    raw = MASTER_FILE.read_text(encoding="utf-8")
+    lines = raw.split("\n")
+
+    for line in lines:
+        line = line.strip()
+        if not line or "\t" not in line:
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) == 2:
+            code = parts[0].strip()
+            name = parts[1].strip()
+            if code and name:
+                mapping[code] = name
+
+    return mapping
+
+
 _MASTER_CODES = _load_master_codes()
+_CHANNEL_NAMES = _load_channel_names()
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
@@ -793,34 +841,32 @@ _badge_html = (
 )
 
 _ifb_code = _resolve_point_code()
-_ifb_code_display = _ifb_code or "—"
 
-# IFB Point Name — read from the first SQLite row that has a non-empty name
+# IFB Point Name — read from the channel names mapping (IFB_Point_Master.txt)
+# Falls back to database column if mapping is unavailable
 _ifb_name = ""
-if _ifb_code and not df_all.empty and "ifb_point_name" in df_all.columns:
+if _ifb_code and _ifb_code in _CHANNEL_NAMES:
+    _ifb_name = _CHANNEL_NAMES[_ifb_code]
+elif _ifb_code and not df_all.empty and "ifb_point_name" in df_all.columns:
     _n = df_all["ifb_point_name"].dropna()
     if not _n.empty:
         _ifb_name = str(_n.iloc[0]).strip()
 
-_name_html = (
-    f'<p style="margin:3px 0 0;font-size:13px;color:#94A3B8;font-weight:500;">{_ifb_name}</p>'
-    if _ifb_name else '<!---->'
-)
+# For display: use channel name if available, otherwise show the code
+_ifb_display = _ifb_name if _ifb_name else (_ifb_code or "—")
 
 st.markdown(f"""<div class="fixed-header">
   <div class="hero">
     <div>
       <h1>📊&nbsp; IFB POINT &middot; Customer Follow Up</h1>
-      {_name_html}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-      <p style="margin:0;font-size:12px;color:#94A3B8;">{_sync_msg}</p>
     </div>
   </div>
   <div class="stats-row">
     <div class="stat-solo">
-      <div class="s-label">🏪 IFB Point Code</div>
-      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code_display}</div>
+      <div class="s-label">🏪 {_ifb_display}</div>
+      <div class="s-value" style="font-size:22px;letter-spacing:1px;">Code: {_ifb_code or "—"}</div>
     </div>
     <div class="stat-solo">
       <div class="s-label">👥 Total Follow Up's</div>

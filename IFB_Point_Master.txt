@@ -1,1 +1,545 @@
-1018638, 1009733, 1012710, 1009808, 1009737, 1015782, 1016070, 1020189, 1010491, 1014515, 1011130, 1017780, 1019871, 1019236, 1013625, 1021029, 1009312, 1023078, 1013773, 1024549, 1017061, 1020370, 1023508, 1012483, 1013225, 1014044, 1005311, 1016825, 1002725, 1002628, 1015872, 1011907, 1011538, 1013159, 1002711, 1012164, 1015331, 1016946, 1012197, 1019147, 1002606, 1024009, 1000562, 1014548, 1019734, 1000657, 1008193, 1008195, 1009603, 1013043, 1013089, 1013308, 1013533, 1013879, 1014154, 1014472, 1015199, 1015510, 1018239, 1018240, 1018481, 1019411, 1020438, 1012398, 1010706, 1020329, 1019715, 1013977, 1017794, 1012052, 1017887, 1014677, 1017567, 1007347, 1020950, 1013119, 1012530, 1014855, 1014689, 1012420, 1017215, 1020951, 1017660, 1013909, 1015997, 1013060, 1013193, 1021969, 1008155, 7006065, 1016073, 1003377, 7006064, 1003351, 1011468, 1003292, 1011808, 1023177, 1023351, 1023445, 1003343, 1011673, 1013397, 1015160, 1015567, 1015753, 1016557, 1041582, 1020624, 1024036, 1007724, 1012382, 1012675, 1013924, 1014144, 1018450, 1004252, 1012305, 1012302, 1041013, 1015565, 1036364, 1014210, 1014143, 1018946, 1020714, 1011792, 1010241, 1012822, 1015564, 1020713, 1008300, 1012037, 1018335, 1023223, 1002889, 1002912, 1002913, 1002950, 1003059, 1003167, 1007437, 1009311, 1009378, 1010003, 1011285, 1012283, 1005834, 1012432, 1012699, 1013439, 1013912, 1014051, 1015666, 1015769, 1019743, 1009762, 1011789, 1012028, 1012278, 1012450, 1018262, 1028857, 1006596, 1013835, 1009314, 1008666, 1013258, 1001767, 1000347, 1011255, 1004538, 1016226, 1011029, 1000196, 1000290, 1001823, 1005346, 1009823, 1010735, 1011767, 1012360, 1013854, 1013949, 1014169, 1014211, 1015509, 1020916, 1018836, 1018846, 1019115, 1023720, 1011737, 1012248, 1012424, 1012537, 1013862, 1014082, 1014516, 1014658, 1019194, 1019395, 1019396, 1020154, 1020155, 1008754, 1012014, 1008947, 1014209, 1014745, 1003777, 1003888, 1004734, 1011654, 1012400, 1012468, 1012738, 1012389, 1014092, 1014065, 1004912, 1008899, 1005553, 1005495, 1004922, 1009824, 1006931, 1010623, 1002155, 1002212, 1021033, 1025033, 1001151, 1004675, 1006091, 1007744, 1009070, 1013341, 1013751, 1013939, 1013940, 1014356, 1014479, 1014480, 1015367, 1017806, 1018394, 1019412, 1020291, 1019694, 1018783, 1026539, 1015716, 1017234, 1012250, 1021075, 1000530, 1021714, 1019840, 1011204, 1026520, 7003352, 1021661, 1024275, 1023399, 1022186, 1021870, 1024209, 1026310, 1018137, 1020608, 1022311, 1022097, 1009878, 1010496, 1023437, 1012979, 7014049, 1026622, 1019239, 1021131, 1002123, 1021076, 1022682, 1010391, 1010474, 1012908, 1012907, 1012704, 1018200, 1022510, 1024226, 1023772, 1017808, 1022127, 1025028, 1024424, 1018862, 1027508, 1001465, 1018482, 1012236, 1004920, 1023803, 1027855, 1024829, 1013475, 1025681, 7015101, 7005088, 1020198, 1027318, 1027317, 1002693, 1027661, 1012470, 1027027, 1027112, 1014052, 1027761, 1017977, 1012676, 1016907, 1040383, 1004443, 1019098, 1014067, 1001290, 1019693, 1013582, 1011756, 1012482, 1012397, 1012407, 1002720, 1002642, 1011216, 1008378, 1011641, 1024987, 1007517, 1015496, 1000195, 1004781, 1009512, 1013921, 1008069, 1012813, 1024828, 1012565, 1012222, 1010392, 1012247, 1012321, 1012322, 1013254, 1026378, 1010683, 1033834, 1018738, 1017266, 1013752, 1018930, 1012570, 1016389, 1000118, 1016325, 1011629, 1018530, 1017019, 1018395, 1006306, 1012311, 1029040, 1027648, 1022048, 1023141, 1027747, 1000241, 1018081, 7012407, 1027254, 1012066, 1025931, 1019696, 1030765, 1029322, 1029767, 1030446, 1029768, 1031698, 1018617, 1012702, 1031911, 1032178, 1029941, 1018449, 1028958, 1028154, 7016127, 1032324, 1020760, 1032782, 1033016, 1033015, 1032653, 1033288, 1025403, 1034387, 1033014, 1033106, 1033084, 1033059, 1014091, 1008192, 1032804, 1018541, 1024858, 1033017, 1032927, 1033819, 1028751, 1034667, 1020412, 1029091, 7019324, 1021383, 1025913, 1025885, 1031674, 1023148, 1031031, 1039354, 1012223, 1012574, 1029939, 1031174, 1031350, 1034554, 1035359, 1011038, 1025326, 1031299, 7004744, 1033921, 1035509, 1036093, 1035742, 7021376, 1020609, 1022935, 7008678, 1036482, 1036893, 1036975, 1038219, 1037800, 1038311, 1038220, 1037802, 1037801, 1038718, 1039078, 1036088, 1039352, 1039351, 1039353, 1039658, 1034532, 1015885, 1040364, 1039672, 1039645, 1039644, 1039940, 1036685, 1036092, 1040643, 1008942, 1028601, 1040369, 1005754, 1001701, 1039847, 1014575, 1039939, 1001560, 1031578, 1040365, 1039572, 1039535, 7026408, 1041678, 1041585, 1040751, 1040967, 1040763, 1041505, 1043281, 1043798, 1043613, 1040235, 1042826, 1043518, 1043492, 1039831, 1043586, 1011265, 1008682, 1044564, 1026315, 1013281, 1009063, 1020896, 1009875, 1039360, 1008092, 1032042, 1011153, 1008716, 1034294, 1031050, 1040399, 1012658, 1018859, 1035534, 1016843, 7024531, 1040141, 1019016, 1022091, 1009530, 1011721, 1024085, 1041711, 1044186, 1044116, 7031010, 1032030, 1045338, 1044643, 1044327, 1046776, 1046601, 1046632
+1000118	IFB Point AMUTHA & CO
+1000195	IFB Point Kalpakkam Sr.Arcot
+1000196	IFB Point Palladam Coimbatore
+1000241	IFB Point Karaikudi Madurai
+1000290	IFB Point Thanjavur Trichy
+1000347	IFB Point Thiruvannamalai Nr.Arcot
+1000530	IFB Point City Light House
+1000562	IFB Point Kakinada
+1000657	IFB Point Srikakulam
+1001151	IFB Point Mavelikkara Kayamkulam
+1001290	IFB Point Kallangodan Tower Kalpetta
+1001465	IFB Point Razzle Dazzle Electronics
+1001560	IFB Point Malviya Nagar
+1001701	IFB Point Ghitorni
+1001767	IFB Point Kancheepuram Nr.Arcot
+1001823	IFB Point Palani Madurai
+1002123	IFB Point P.R.Marge Ajmer
+1002155	IFB Point Chavi Electricals
+1002212	IFB Point Kanchan Agency
+1002606	IFB Point Gakhar Electronics
+1002628	IFB Point Khanna
+1002642	IFB Point Bathinda
+1002693	IFB Point Johnson Electricals
+1002711	IFB Point Jalandhar
+1002720	IFB Point Amritsar
+1002725	IFB Point Dhariwal
+1002889	IFB Point Aakansha Services
+1002912	IFB Point Nitin Agency
+1002913	IFB Point Prasad Agencies
+1002950	IFB Point Jai Mata Electronics
+1003059	IFB Point Vijay Agecies
+1003167	IFB Point Uday Electronics
+1003292	IFB Point Palanpur
+1003343	IFB Point Shiv Shakti Agencies
+1003351	IFB Point Nana Varachha Surat
+1003377	IFB Point Vapi
+1003777	IFB Point Barasat
+1003888	IFB Point Asansol
+1004252	IFB Point Koramangala
+1004443	IFB Point Ramakanth Digital Shoppe
+1004538	IFB Point Thirupattur Nr.Arcot
+1004675	IFB Point Podyady P.O Thiruvalla
+1004734	IFB Point Coochbehar
+1004781	IFB Point Kumbakonam Trichy
+1004912	IFB Point Golghar Gorakhpur
+1004920	IFB Point ACE Technomark
+1004922	IFB Point Aligarh Electronics
+1005311	IFB Point Kapurthala
+1005346	IFB Point Paramathivellore Salem
+1005495	IFB Point Sita Furniture
+1005553	IFB Point Rampur
+1005754	IFB Point Sector 7, Dwarka
+1005834	IFB Point Garh Road Meerut
+1006091	IFB Point Pattom Trivandrum
+1006306	IFB Point West Mambalam
+1006596	IFB Point Pothatturpet Nr.Arcot
+1006931	IFB Point Yashu Enterprises
+1007347	IFB Point Vaishali
+1007437	IFB Point Poona E House
+1007517	IFB Point Main Gopalpura Jaipur
+1007724	IFB Point Mandi
+1007744	IFB Point Kaloor Ernakulam
+1008069	IFB Point 2nd agraharam
+1008092	IFB Point Pehowa
+1008155	IFB Point Morbi
+1008192	IFB Point Moospet
+1008193	IFB Point Old Bank Centre VJA
+1008195	IFB Point Karakambadi Road Tirupathi
+1008300	IFB Point Shopping Complex Indore
+1008378	IFB Point Ambedkar Chowk Sriganganagar
+1008666	IFB Point Panruti
+1008682	IFB Point Karnal
+1008716	IFB Point Rohtak
+1008754	IFB Point Kiccha Sitarganj
+1008899	IFB Point Civil Lines Allahabad
+1008942	IFB Point New Rhythm House
+1008947	IFB Point Dharampur Dehradun
+1009063	IFB Point Jind
+1009070	IFB Point Grand Thamarashery
+1009311	IFB Point Gruh Vastu Bhandar
+1009312	IFB Point Srinagar
+1009314	IFB Point Karaikkal Sr.Arcot
+1009378	IFB Point Kahrale Sales
+1009512	IFB Point Thillai Nagar Trichy
+1009530	IFB Point Hissar
+1009603	IFB Point Kurnool Road Ongole
+1009733	IFB Point Caranzalem
+1009737	IFB Point Margao
+1009762	IFB Point New sangenar road sodala
+1009808	IFB Point Ponda
+1009823	IFB Point Tallakulam Madurai
+1009824	IFB Point Pallav puram2 Meerut
+1009875	IFB Point JRS Electronics
+1009878	IFB Point Palampur
+1010003	IFB Point Arihant Electroncs
+1010241	IFB Point Guddodagi Enterprises
+1010391	IFB Point Juhu
+1010392	IFB Point Ballygunge
+1010474	IFB Point Andheri
+1010491	IFB Point Naharlagun
+1010496	IFB Point Ghumarwin
+1010623	IFB Point Sarojini Nagar Kanpur
+1010683	IFB Point Cool Control
+1010706	IFB Point Chandigarh
+1010735	IFB Point Rajapalayam
+1011029	IFB Point Polur Nr.Arcot
+1011038	IFB Point Patel nagar Muz. Nagar
+1011130	IFB Point Aizwal
+1011153	IFB Point Jhajjar
+1011204	IFB Point Aadhav Electronics Vadavalli
+1011216	IFB Point Ajmer Road Jaipur
+1011255	IFB Point Cheyyar Nr.Arcot
+1011265	IFB Point Bhiwani
+1011285	IFB Point E Store
+1011468	IFB Point  Bardoli
+1011538	IFB Point Hoshiarpur
+1011629	IFB Point Thirumangalam
+1011641	IFB Point Ratanada Jodhpur
+1011654	IFB Point Midnapore
+1011673	IFB Point Bhuntar
+1011721	IFB Point Sonipat
+1011737	IFB Point VanasthalipuramÂ
+1011756	IFB Point M P Nagar Bhopal
+1011767	IFB Point Coimbatore
+1011789	IFB POINT RAILWAY STATIN ROAD  Chittorhgarh
+1011792	IFB Point Purvaj Info Sales
+1011808	IFB Point Dawn chowk Bhavnagar
+1011907	IFB Point Moga
+1012014	IFB Point Mukhani Chauraha Haldwani
+1012028	IFB Point Rajapark Jaipur
+1012037	IFB Point Dhanvantari
+1012052	IFB Point Teliapra Bilaspur
+1012066	IFB Point Palitana
+1012164	IFB Point Malout
+1012197	IFB Point Sangrur
+1012222	IFB Point MAHANAGAR
+1012223	IFB Point Gachibowli
+1012236	IFB Point Bharat Agencies
+1012247	IFB Point Viman nagar
+1012248	IFB Point Shivam Road
+1012250	IFB Point SRI Krishna Appliances
+1012278	IFB Point KASHIPURI
+1012283	IFB Point Dhantoli
+1012302	IFB Point Rajaji Nagar
+1012305	IFB Point Nagarbhavi
+1012311	IFB Point Okkiyampet
+1012321	IFB Point Hadapsar
+1012322	IFB Point Pimple Saudagar
+1012360	IFB Point Sathyamoorthi nagar Madurai
+1012382	IFB Point Basveshwarnagar
+1012389	IFB Point M G Road Kanpur
+1012397	IFB Point Mohali
+1012398	IFB Point Zirakpur
+1012400	IFB Point Siliguri
+1012407	IFB Point Pakhowal Road
+1012420	IFB Point Adajan Surat
+1012424	IFB Point Kukatpally
+1012432	IFB Point Rajarampur
+1012450	IFB Point M.I.ROAD Jaipur
+1012468	IFB Point Behala
+1012470	IFB Point Chandralok Colony Indore
+1012482	IFB Point Bhubaneswar
+1012483	IFB Point Rourkela
+1012530	IFB Point Maninagar Ahmedabad
+1012537	IFB Point Suryapet
+1012565	IFB Point Avarampalayam Coimbatore
+1012570	IFB Point OWP
+1012574	IFB Point Guwahati, Zoo Road
+1012658	IFB Point Tohana
+1012675	IFB Point Indiranagar
+1012676	IFB Point Whitefield
+1012699	IFB Point Khushi Marketing
+1012702	IFB Point Kharghar
+1012704	IFB Point Chembur
+1012710	IFB Point Porvorim
+1012738	IFB Point Srerampur
+1012813	IFB Point Sivakasi
+1012822	IFB Point Navaloor Dairy
+1012907	IFB Point Mulund
+1012908	IFB Point Miraroad
+1012979	IFB Point Baddi
+1013043	IFB Point Produttor
+1013060	IFB Point junagadh
+1013089	IFB Point Chittoor
+1013119	IFB Point Chandkheda
+1013159	IFB Point Batala
+1013193	IFB Point Mehsana
+1013225	IFB Point Hambran Road
+1013254	IFB Point Kothrud
+1013258	IFB Point Kattumannarkoil Sr.Arcot
+1013281	IFB Point Fatehabad
+1013308	IFB Point Sullurpet
+1013341	IFB Point Chakorathukulam Calicut
+1013397	IFB Point Nagrota Bhagwan
+1013439	IFB Point Swaraj Electronics
+1013475	IFB point anandnagar
+1013533	IFB Point Museum Road
+1013582	IFB Point Thripunnithura Ernakulam
+1013625	IFB Point Jammu
+1013751	IFB Point SH Mount Kottayam
+1013752	IFB Point Nandanam
+1013773	IFB Point Thane
+1013835	IFB Point Porur Chennai
+1013854	IFB Point  Tiruppur Coimbatore
+1013862	IFB Point AS Rao Nagar
+1013879	IFB Point Kurnool
+1013909	IFB Point Bodakdev
+1013912	IFB Point Gangapur Road
+1013921	IFB Point Annur coimbatore
+1013924	IFB Point Jayanagar
+1013939	IFB Point Kazhakuttam Trivandrum
+1013940	IFB Point Panampilly Nagar Ernakulam
+1013949	IFB Point  Meyyanur Main Road Salem
+1013977	IFB Point Jail road Raipur
+1014044	IFB Point Chandigarh Road
+1014051	IFB Point Dharampeth
+1014052	IFB Point Aundh
+1014065	IFB Point Swaroop nagar Kanpur
+1014067	IFB Point Kodungallur Ernakulam
+1014082	IFB Point Nacharam
+1014091	IFB Point Indiranagar Lucknow
+1014092	IFB Point Rajajipuram Lucknow
+1014143	IFB Point Yalahanka
+1014144	IFB Point Kengeri
+1014154	IFB Point Annamayya Marg Tirupathi
+1014169	IFB Point Avinashi Coimbatore
+1014209	IFB Point Jwalapur Haridwar
+1014210	IFB Point Kuvempunagara
+1014211	IFB Point KK Nagar Trichy
+1014356	IFB Point Thodupuzha Ernakulam
+1014472	IFB Point Payakaraopeta
+1014479	IFB Point Nemom Trivandrum
+1014480	IFB Point Aluva
+1014515	IFB Point Diphu
+1014516	IFB Point Hastinapuram
+1014548	IFB Point Mandapeta
+1014575	IFB Point Pitampura
+1014658	IFB Point Tolichowki
+1014677	IFB Point Raigarh
+1014689	IFB Point Subhanpura
+1014745	IFB Point Tanakpur Road Khatima
+1014855	IFB Point Usmanpura Ahmedabad
+1015160	IFB Point Una
+1015199	IFB Point DG Eelectronics
+1015331	IFB Point Pathankot
+1015367	IFB Point Cherthala Alleppy
+1015496	IFB Point Habsiguda
+1015509	IFB Point Bodinayakanur
+1015510	IFB Point Kadapa
+1015564	IFB Point Buntshostel
+1015565	IFB Point T.C.Palya
+1015567	IFB Point Paonta Sahib
+1015666	IFB Point Siddesh Mobile Shop
+1015716	IFB Point Vaishali Traders
+1015753	IFB Point Dehra Gopipur
+1015769	IFB Point Pratik Digital World
+1015782	IFB Point Old Goa
+1015872	IFB Point Abohar
+1015885	IFB Point BTM Layout
+1015997	The Hotel Vaibhav Inn and Vaibhav Electronics
+1016070	IFB Point Airport Road
+1016073	IFB Point Porbandar
+1016226	IFB Point Vandavasi Nr.Arcot
+1016325	IFB Point Taramani Chennai
+1016389	IFB Point Selaiyur
+1016557	IFB Point Sundernagar
+1016825	IFB Point Gurdaspur
+1016843	IFB Point Narwana
+1016907	IFB Point Hesarghatta
+1016946	IFB Point Nabha
+1017019	IFB Point Vanagaram
+1017061	IFB Point Cuttack
+1017215	IFB Point NehruNagar Ahmedabad
+1017234	IFB Point Sangeeth Nagar
+1017266	IFB Point Mylapore
+1017567	IFB Point Plaza mall
+1017660	IFB Point Nikol Ahmedabad
+1017780	IFB Point Agartala
+1017794	IFB Point GE road Raipur
+1017806	IFB Point  Chavakkad
+1017808	IFB Point Pioneer Enterprise
+1017887	IFB Point Bhilai
+1017977	IFB Point Hamirpur
+1018081	IFB Point COCO Rajkot
+1018137	IFB Point Best Ind Computer Shoppe
+1018200	IFB Point Kandivali
+1018239	IFB Point SRI HYMAVATHI ENTERPRISES
+1018240	IFB Point Tadepalligudem
+1018262	IFB Point Vidhyadhar nagar
+1018335	IFB Point Shri Namiun
+1018394	IFB Point Pala Road Ettumanoor
+1018395	IFB Point Velachery
+1018449	IFB Point Ballupur Chowk
+1018450	IFB Point Kanakpura
+1018481	IFB Point Guntur
+1018482	IFB Industries Limit- IFB Point City mall
+1018530	IFB Point Vadapalani
+1018541	IFB Point Thirumala Enterprises
+1018617	IFB Point Vasai
+1018638	IFB Point ST.Inez  Panjim
+1018738	IFB Point Mogappair
+1018783	IFB Point Pala Manarkattu Trade Links
+1018836	IFB Point Erode
+1018846	IFB Point Karur
+1018859	IFB Point Hansi
+1018862	IFB Point Sathi Traders
+1018930	IFB Point Nanganallur
+1018946	IFB Point Kaggdaspura
+1019016	IFB Point Safidon
+1019098	IFB Point Taranga Electronics
+1019115	IFB Point Kamarajar Salai
+1019147	IFB Point Nihal Singh Wala
+1019194	IFB Point Jagityal
+1019236	IFB Point Samba
+1019239	IFB Point Ayushi Services
+1019395	IFB Point SR Nagar
+1019396	IFB Point Tirmulgiri
+1019411	IFB Point Patamata
+1019412	IFB Point Calicut Kasaba
+1019693	IFB Point T and S Enterprises
+1019694	IFB Point AC TRADERS
+1019696	IFB Point Saravanampatti
+1019715	IFB Point Sector70 Mohali
+1019734	IFB Point Narsapuram
+1019743	IFB Point Kankavali
+1019840	IFB Point Bidar
+1019871	IFB Point Beltola
+1020154	IFB Point Attapur
+1020155	IFB Point RC Puram
+1020189	IFB Point Gogol
+1020198	IFB Point Amar Enterprises
+1020291	IFB Point Palakkar Hail Mary
+1020329	IFB Point Chandigarh sec 41
+1020370	IFB Point Berhumpur
+1020412	IFB Point Belapur
+1020438	IFB Point Poranki
+1020608	IFB Point Karungapally
+1020609	IFB Point St George Electronica P Ltd
+1020624	IFB Point Solan
+1020713	IFB Point Rajarajeshwari Nagar
+1020714	IFB Point Mysore 2
+1020760	IFB Point Banashankari
+1020896	IFB Point SK Electronics Ambala
+1020916	IFB Point Star Agency
+1020950	IFB Point Paldi
+1020951	IFB Point Bopal
+1021029	IFB Point Channi Himmat
+1021033	IFB Point VS Traders
+1021075	IFB Point Sri Sarojini Agencies
+1021076	IFB Point Udaipur
+1021131	IFB Point Techworld
+1021383	IFB Point Deepali Mobiles Jalgaon
+1021661	IFB Point Gopalapatnam
+1021714	IFB Point Panipat
+1021870	IFB Point Jyothi Electronics
+1021969	IFB Point Valsad
+1022048	IFB Point Shankarmatam
+1022091	IFB Point Tanuj Electronics
+1022097	IFB Point B R Enterprise
+1022127	IFB Point Satyam Plaza
+1022186	IFB Point SRI Hymavathi Enterprises
+1022311	IFB Point Garg Electroworld
+1022510	IFB Point Sai Enterprises
+1022682	IFB Point Clock Tower
+1022935	IFB Point Melco Elctrical Supermarket
+1023078	IFB Point Millennium Technologies
+1023141	IFB Point Better Life
+1023148	IFB Point Umiya Electronics
+1023177	IFB Point New Om Television
+1023223	IFB Point Satna
+1023351	IFB Point Maruti Electronics
+1023399	IFB Point Sai Ganpathi Home Needs
+1023437	IFB Point VR Engineers
+1023445	IFB Point Kiran Enterprise
+1023508	IFB Point Prince Agency
+1023720	IFB Point Pollachi
+1023772	IFB Point Rohini Electronics
+1023803	IFB Point HSR
+1024009	IFB Point Shree Ganesh Enterprises
+1024036	IFB Point Raman Enterprises
+1024085	IFB Point Sharma Electronics
+1024209	IFB Point SL Electronics
+1024226	IFB Point Tulsi Home Appliances
+1024275	IFB Point RamaKrishna Electronics
+1024424	IFB Point Abhishek NU
+1024549	IFB Point Style Furniture
+1024828	IFB Point Harini Electronics
+1024829	IFB Point Thaltej
+1024858	IFB Point New Maruthi Electronics  Home Needs
+1024987	IFB Point Govindam Plaza
+1025028	IFB Point Shiv Shakti
+1025033	IFB Point Maa Maya Enterprises
+1025326	IFB Point M/S Tyre House
+1025403	IFB Point Chaitanyapuri
+1025681	IFB Point Maruti Electronics
+1025885	IFB Point Dinesh Enterprises
+1025913	IFB Point Maharaja Electronics
+1025931	IFB Point Karur
+1026310	IFB Point Sri padma sai agencies
+1026315	IFB Point Jindal enterprises
+1026378	IFB Point Mahadevpura
+1026520	IFB Point Sri Sri Enterprises
+1026539	IFB Point Guduvanchery
+1026622	IFB Point Chamba Neeom Enterprises
+1027027	IFB Point Dattakrupa Agencies
+1027112	IFB Point Pleazer Electronics
+1027254	IFB Point Radheshyam Electronics
+1027317	IFB Point Varindera Electronics
+1027318	IFB Point Kamal Electronics
+1027508	IFB Point GoutamTrading
+1027648	IFB Point RR Electronics
+1027661	IFB Point Mittal Electro world
+1027747	IFB Point Tusli Shopee Hosur
+1027761	IFB Point Dhanori
+1027855	IFB Point Pranav sales
+1028154	IFB Point M/S Aarti Gonda
+1028601	IFB Point Adchini
+1028751	IFB Point Prasannadata Home Appliances
+1028857	IFB Point Lally Aircon
+1028958	IFB Point SS electronics
+1029040	IFB Point DLN Electronics & Home Needs
+1029091	IFB Point Vashi
+1029322	IFB Point  Ramanattukara
+1029767	IFB Point Hanumakonda
+1029768	IFB Point Karmanghat
+1029939	IFB Point Srimad Elecronics
+1029941	IFB Point Moradabad
+1030446	IFB Point SVG Enterprises
+1030765	IFB Point Wakad
+1031031	IFB Point Vaibhav Sales
+1031050	IFB Point Shri Ram Furniture and Electronics
+1031174	IFB Point Shree Hari Enterprises
+1031299	IFB Point Sainik Electronics
+1031350	IFB Point Sector 20 PKL
+1031578	IFB Point kbm Electronics
+1031674	IFB Point Shree Krishna Electronics
+1031698	IFB Point Mall De Goa - Porvorim
+1031911	IFB Point Bobbili
+1032030	IFB Point Krishna Electronics
+1032042	IFB Point Thakral Home world
+1032178	IFB Point Simplex Electronic
+1032324	IFB Point Baner Pune
+1032653	IFB Point Pileru
+1032782	IFB Point Avyukta Enterprises
+1032804	IFB Point Gudivada
+1032927	IFB Point Sree Vajra Elecronics
+1033014	IFB Point Chilimbi
+1033015	IFB Point Manipal
+1033016	IFB Point Banaswadi
+1033017	IFB Point Vishnusowrya
+1033059	IFB Point Mohan Cooperative
+1033084	IFB Point Kothari Sales
+1033106	IFB Point Himanshu Electric & Electronics
+1033288	IFB Point JD Enterprise
+1033819	IFB Point Rekha Enterprises
+1033834	IFB Point Santhosapuram
+1033921	IFB Point Rajat Enterprises
+1034294	IFB Point Bhutani Electronics
+1034387	IFB Point Nallagandla
+1034532	IFB Point RV electronics
+1034554	IFB Point Sikar
+1034667	IFB Point Samarth Enterprises
+1035359	IFB Point Jhunjhunu
+1035509	IFB Point Shakti Plaza
+1035534	IFB Point Singh electronics sirsa
+1035742	IFB Point Vihan enterprise
+1036088	IFB Point New Santhoshi Mata
+1036092	IFB Point Nerkundram
+1036093	IFB Point Dream Home Solutions
+1036364	IFB Point IFB Point V Electronics
+1036482	IFB Point Ravi Sales Modasa
+1036685	IFB Point Smart Tech Enterprises
+1036893	IFB Point Baleswar
+1036975	IFB Point Leo Electronics
+1037800	IFB Point Station Road
+1037801	IFB Point Satara Road
+1037802	IFB Point NIBM
+1038219	IFB Point Manish Nagar
+1038220	IFB Point Ganesh Peth
+1038311	IFB Point Gurukrupa Electronics  Electricals
+1038718	IFB Point Classic Industrial Services
+1039078	IFB Point PATIA
+1039351	SC IFB Point Boduppal
+1039352	SC IFB Point Bachupally
+1039353	IFB Point Nizampet
+1039354	SC IFB Point Chandanagar 2
+1039360	IFB Point Jojhu Kalan
+1039535	IFB Point Uttarahalli
+1039572	IFB Point E Solutions
+1039644	IFB Point Kelambakkam
+1039645	IFB Point Neelangarai
+1039658	IFB Point Goregaon
+1039672	IFB Point Wellcome House
+1039831	IFB Point Karnatak radio House
+1039847	IFB Point Mahajan Electronics
+1039939	IFB Point Shakti Nagar
+1039940	IFB Point Nungambakkam
+1040141	IFB Point Ms S.K Electronics
+1040235	IFB Point Shri Balaji Enterprises
+1040364	IFB Point COCO Vesu Road
+1040365	IFB Point  COCO OP Road
+1040369	IFB Point Dwarka SEC 12
+1040383	IFB Point SJM Enterprises
+1040399	IFB Point Electronics Gallery
+1040643	IFB Point COCO Ratan Khand
+1040751	IFB Point IFB Point Palarivattom
+1040763	IFB Point Muvattupuzha
+1040967	IFB Point DH Techno Solution
+1041013	IFB Point Abhinav Enterprises
+1041505	IFB Point BARGARH
+1041582	IFB Point Shri Krishna Elec
+1041585	IFB Point Sanwariya Enterprises Ajmer
+1041678	IFB Point Madan Lal and Brothers
+1041711	IFB Point Nagpal Elec
+1042826	IFB Point Vinayaka Distributor
+1043281	IFB Point New Pankaj Electronics
+1043492	Ifb Point Sri Lakshmi Enterprises
+1043518	IFB Point Indiranagar
+1043586	IFB Point Bapuji Nagar
+1043613	IFB Point Elan Miracle Mall
+1043798	IFB Point Patel Nagar
+1044116	IFB Point Ballabhgarh
+1044186	IFB Point Sector 11 Faridabad
+1044327	IFB Point Vijayanagar Mysore
+1044564	IFB Point Sundry coco Azadnagar
+1044643	IFB Point Durga puri
+1045338	IFB Point IFB Point Sadar
+1046601	IFB Point SNK Enterprises
+1046632	IFB Point Ritwik Enterprise
+1046776	IFB Point Adhvaith Enterprises
+7003352	IFB Point DG Amalapuram
+7004744	IFB Point Muzaffarnagar
+7005088	IFB Point M G Road Bhavnagar
+7006064	IFB Point Bharuch
+7006065	IFB Point Mota Varachha Surat
+7008678	IFB Point Bharat Agencies SEC 49
+7012407	IFB Point Shree Shivdhara Electronics
+7014049	IFB Point Chawla Enterprises-Amb
+7015101	IFB Point Ram Enterprise
+7016127	IFB Point Jayadev Vihar
+7019324	IFB Point Arihant Electronics
+7021376	IFB Point Kiran enterprise
+7024531	IFB Point Singh Electronics Sirsa
+7026408	IFB Point Kishangarh
+7031010	Ifb Point Kalkaji

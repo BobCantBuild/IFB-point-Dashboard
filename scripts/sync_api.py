@@ -214,14 +214,44 @@ def parse_payload(payload: dict | list) -> tuple[list[dict], str, str]:
     return records, point_code, point_name
 
 
+def load_channel_names() -> dict[str, str]:
+    """
+    Load the channel code to channel name mapping from IFB_Point_Master.txt.
+    Returns a dict: {code: name, ...}
+
+    Only works with the new tab-separated format.
+    """
+    mapping: dict[str, str] = {}
+
+    if not MASTER_FILE.exists():
+        return mapping
+
+    raw = MASTER_FILE.read_text(encoding="utf-8")
+    lines = raw.split("\n")
+
+    for line in lines:
+        line = line.strip()
+        if not line or "\t" not in line:
+            continue
+        parts = line.split("\t", 1)  # Split on first tab only
+        if len(parts) == 2:
+            code = parts[0].strip()
+            name = parts[1].strip()
+            if code and name:
+                mapping[code] = name
+
+    return mapping
+
+
 def load_master_codes() -> list[str]:
     """
     Read IFB_Point_Master.txt and return every IFB Point Code in it.
 
-    Format is permissive: codes may be separated by commas, whitespace, or
-    newlines — anything non-empty after splitting on those delimiters is
-    treated as a code. Duplicates are removed but original order is preserved
-    (so the configured IFB_POINT_CODE keeps its position if it's in the file).
+    Supports two formats:
+    1. Tab-separated: code\\tname (one per line) - NEW FORMAT
+    2. Legacy: codes separated by commas, whitespace, or newlines - BACKWARD COMPATIBLE
+
+    Duplicates are removed but original order is preserved.
     """
     if not MASTER_FILE.exists():
         print(f"[sync_api] Master file not found at {MASTER_FILE} — "
@@ -229,7 +259,29 @@ def load_master_codes() -> list[str]:
         return [IFB_CODE]
 
     raw = MASTER_FILE.read_text(encoding="utf-8")
-    # Treat commas, whitespace and newlines as separators
+
+    # Try to detect if it's the new tab-separated format
+    # New format: each line is "code\tname"
+    lines = raw.split("\n")
+    codes: list[str] = []
+    seen: set[str] = set()
+
+    # Try tab-separated format first
+    has_tabs = any("\t" in line for line in lines if line.strip())
+    if has_tabs:
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            code = parts[0].strip()
+            if code and code not in seen:
+                seen.add(code)
+                codes.append(code)
+        if codes:
+            return codes
+
+    # Fallback to legacy comma-separated or whitespace-separated format
     tokens = (
         raw.replace("\r", " ")
            .replace("\n", " ")
@@ -237,8 +289,6 @@ def load_master_codes() -> list[str]:
            .replace(",", " ")
            .split()
     )
-    seen: set[str] = set()
-    codes: list[str] = []
     for t in tokens:
         c = t.strip()
         if not c or c in seen:
