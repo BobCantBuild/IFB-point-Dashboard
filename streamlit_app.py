@@ -293,9 +293,9 @@ st.markdown("""
   }
 
   .block-container {
-    /* JS sets the exact value; fallback = 0 so there is never a white gap
-       before JS fires. A brief overlap (< 80ms) is acceptable. */
-    padding-top:0px !important; padding-bottom:2rem;
+    /* Enough top-padding to clear the fixed hero+stats band (~220px).
+       JS below fine-tunes to the exact measured height. */
+    padding-top:260px !important; padding-bottom:2rem;
     max-width:1700px;
   }
 
@@ -305,7 +305,8 @@ st.markdown("""
 
   /* Collapse element-container wrappers around fixed/hidden elements */
   .element-container:has(.fixed-header),
-  .element-container:has([data-testid="stCustomComponentV1"]) {
+  .element-container:has([data-testid="stCustomComponentV1"]),
+  .element-container:has([data-testid="stHtml"]) {
     height:0 !important; min-height:0 !important;
     margin:0 !important; padding:0 !important;
     overflow:hidden !important;
@@ -828,90 +829,85 @@ if section not in _SEC_OPTS:
 
 
 # --------------------------------------------------------------------------- #
-# Filters (two fixed rows)
+# Filter bar — two rows in a white card panel
 # --------------------------------------------------------------------------- #
-# Anchor marker — JS locates the two sibling element-containers and pins them.
-st.markdown('<span id="filter-anchor"></span>', unsafe_allow_html=True)
-
-st.markdown('<div class="filter-wrap">', unsafe_allow_html=True)
-
-# ── Row 1: Lead type toggles + date range ──────────────────────────────────
 _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
 min_pd = min(_pds) if _pds else date(2019, 1, 1)
 max_pd = max(_pds) if _pds else today
 
-lr1, lr2, lr3 = st.columns([1, 1, 2], gap="medium")
-with lr1:
-    if st.button("📅  Today Leads", key="btn_today",
-                 use_container_width=True,
-                 type="primary" if lead_view == "Today" else "secondary"):
-        st.session_state["_lead_view"] = "Today"
-        st.rerun()
-with lr2:
-    if st.button("⚠️  Missed Leads", key="btn_missed",
-                 use_container_width=True,
-                 type="primary" if lead_view == "Missed" else "secondary"):
-        st.session_state["_lead_view"] = "Missed"
-        st.rerun()
-with lr3:
-    date_range = st.date_input(
-        "📅  Lead Date Range",
-        value=(min_pd, max_pd),
-        min_value=min_pd,
-        max_value=max_pd,
-        format="DD/MM/YYYY",
-        label_visibility="collapsed",
-    )
+with st.container():
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
 
-# gap between the two filter rows
-st.markdown('<div class="filter-row-gap"></div>', unsafe_allow_html=True)
+    # ── Row 1: lead-type toggles  +  date range ──────────────────────────
+    r1c1, r1c2, r1c3, r1c4 = st.columns([1.1, 1.1, 0.1, 2.2], gap="small")
+    with r1c1:
+        if st.button("📅  Today Leads", key="btn_today",
+                     use_container_width=True,
+                     type="primary" if lead_view == "Today" else "secondary"):
+            st.session_state["_lead_view"] = "Today"
+            st.rerun()
+    with r1c2:
+        if st.button("⚠️  Missed Leads", key="btn_missed",
+                     use_container_width=True,
+                     type="primary" if lead_view == "Missed" else "secondary"):
+            st.session_state["_lead_view"] = "Missed"
+            st.rerun()
+    # r1c3 is a narrow visual spacer — intentionally empty
+    with r1c4:
+        date_range = st.date_input(
+            "Lead Date Range",
+            value=(min_pd, max_pd),
+            min_value=min_pd,
+            max_value=max_pd,
+            format="DD/MM/YYYY",
+            label_visibility="collapsed",
+        )
 
-# ── Row 2: Open/Attempted toggles + stage filter + search ─────────────────
-_FU_OPTS = [
-    "All Follow-Up Stages",
-    "Post-Purchase",
-    "1st 30 days call",
-    "Pre-AMC",
-    "8 Year Upgrade",
-]
-_FU_LABEL = {
-    "All Follow-Up Stages": "🌐  All Follow-Up Stages",
-    "Post-Purchase":        "🎉  Post-Purchase",
-    "1st 30 days call":     "🔄  1st 30 days call",
-    "Pre-AMC":              "⏰  Pre-AMC",
-    "8 Year Upgrade":       "🏆  8 Year Upgrade",
-}
-rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 1], gap="medium")
-with rc1:
-    if st.button("📋  Open Followup's", key="btn_open",
-                 use_container_width=True,
-                 type="primary" if section == "Open" else "secondary"):
-        st.session_state["_view_section"] = "Open"
-        st.rerun()
-with rc2:
-    if st.button("📞  Attempted's", key="btn_att",
-                 use_container_width=True,
-                 type="primary" if section == "Attempted" else "secondary"):
-        st.session_state["_view_section"] = "Attempted"
-        st.rerun()
-with rc3:
-    fu_filter = st.selectbox(
-        "Follow-Up Stage",
-        options=_FU_OPTS,
-        format_func=lambda x: _FU_LABEL.get(x, x),
-        label_visibility="collapsed",
-    )
-with rc4:
-    search_q = st.text_input(
-        "Search",
-        placeholder="🔍  Name · Phone · Email · ID",
-        label_visibility="collapsed",
-    )
+    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+    # ── Row 2: section toggles  +  stage dropdown  +  search ─────────────
+    _FU_OPTS = [
+        "All Follow-Up Stages", "Post-Purchase",
+        "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
+    ]
+    _FU_LABEL = {
+        "All Follow-Up Stages": "🌐  All Stages",
+        "Post-Purchase":        "🎉  Post-Purchase",
+        "1st 30 days call":     "🔄  1st 30 Days",
+        "Pre-AMC":              "⏰  Pre-AMC",
+        "8 Year Upgrade":       "🏆  8 Year Upgrade",
+    }
+    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns([1.1, 1.1, 0.1, 1.4, 2.2], gap="small")
+    with r2c1:
+        if st.button("📋  Open Followups", key="btn_open",
+                     use_container_width=True,
+                     type="primary" if section == "Open" else "secondary"):
+            st.session_state["_view_section"] = "Open"
+            st.rerun()
+    with r2c2:
+        if st.button("📞  Attempted", key="btn_att",
+                     use_container_width=True,
+                     type="primary" if section == "Attempted" else "secondary"):
+            st.session_state["_view_section"] = "Attempted"
+            st.rerun()
+    # r2c3 is a narrow visual spacer — intentionally empty
+    with r2c4:
+        fu_filter = st.selectbox(
+            "Stage",
+            options=_FU_OPTS,
+            format_func=lambda x: _FU_LABEL.get(x, x),
+            label_visibility="collapsed",
+        )
+    with r2c5:
+        search_q = st.text_input(
+            "Search",
+            placeholder="🔍  Name · Phone · Email · ID",
+            label_visibility="collapsed",
+        )
 
-# small spacer so the data table has breathing room below the filter rows
-st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
 # JS injection — measure the fixed-header height and set `.block-container`
 # padding-top to match it. Filter rows scroll naturally with the page
@@ -919,9 +915,11 @@ st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 st.html("""
 <script>
 (function(){
+  /* st.html renders inline (no iframe), so we use document directly.
+     Falls back to window.parent.document for any sandboxed context. */
   function run(){
     try{
-      var doc = window.parent.document;
+      var doc = (window.parent !== window) ? window.parent.document : document;
       var fh  = doc.querySelector('.fixed-header');
       if(!fh) return false;
       var hdrRect = fh.getBoundingClientRect();
@@ -931,7 +929,7 @@ st.html("""
       var bc = doc.querySelector('.block-container');
       if(!bc) return false;
 
-      // Keep it simple: content should start just below the fixed header.
+      // Fine-tune the padding to exactly match the measured header height.
       // Using header height avoids occasional overestimates that create
       // a large blank gap between the stats row and the filter rows.
       var paddingTop = Math.max(0, hdrH + 12);
