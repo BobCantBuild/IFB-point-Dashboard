@@ -418,7 +418,6 @@ st.markdown("""
 
   /* ── Filter panel ── */
   .st-key-filter_panel {
-    --filter-fixed-col: clamp(260px, 23vw, 430px);
     background:#fff; border:1px solid var(--line); border-radius:16px;
     padding:10px 12px 4px; margin-bottom:18px;
     box-shadow:var(--shadow-sm);
@@ -432,37 +431,13 @@ st.markdown("""
   .st-key-filter_row_top [data-testid="stHorizontalBlock"],
   .st-key-filter_row_bottom [data-testid="stHorizontalBlock"]{
     align-items:stretch;
-    gap:6px !important;
+    gap:8px !important;
     margin:0 !important;
   }
   .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"],
   .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]{
     display:flex;
-  }
-
-  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1),
-  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1) {
-    flex:0 0 var(--filter-fixed-col) !important;
-    width:var(--filter-fixed-col) !important;
-  }
-
-  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2),
-  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) {
-    flex:0 0 var(--filter-fixed-col) !important;
-    width:var(--filter-fixed-col) !important;
-  }
-
-  .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) {
-    flex:1 1 auto !important;
-  }
-
-  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) {
-    flex:1.15 1 0 !important;
-    width:auto !important;
-  }
-
-  .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) {
-    flex:1 1 0 !important;
+    min-width:0;
   }
 
   .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"] > div,
@@ -906,7 +881,7 @@ max_pd = today
 with st.container():
     with st.container(key="filter_panel"):
         with st.container(key="filter_row_top"):
-            r1c1, r1c2, r1c3 = st.columns([1.35, 1.35, 2.7], gap="small")
+            r1c1, r1c2, r1c3 = st.columns([2.2, 2.2, 5.6], gap="small")
             with r1c1:
                 if st.button("📅  Today Leads", key="btn_today",
                              use_container_width=True,
@@ -947,7 +922,7 @@ with st.container():
                 "Pre-AMC":              "⏰  Pre-AMC",
                 "8 Year Upgrade":       "🏆  8 Year Upgrade",
             }
-            r2c1, r2c2, r2c3, r2c4 = st.columns([1.35, 1.35, 1.9, 1.45], gap="small")
+            r2c1, r2c2, r2c3, r2c4 = st.columns([2.2, 2.2, 3, 2.6], gap="small")
             with r2c1:
                 if st.button("📋  Open Followup's", key="btn_open",
                              use_container_width=True,
