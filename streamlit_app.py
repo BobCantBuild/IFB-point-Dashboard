@@ -188,6 +188,11 @@ def _resolve_point_code_and_url() -> tuple[str, str | None]:
 
     try:
         qp = st.query_params  # Streamlit >= 1.30
+        # Support both ?id= (short form) and ?ifb_point_code= (long form).
+        # ?id= is checked first so ?ifb_point_code= can override it if both are present.
+        q_id = qp.get("id")
+        if isinstance(q_id, str) and q_id.strip():
+            code = q_id.strip()
         q_code = qp.get("ifb_point_code")
         if isinstance(q_code, str) and q_code.strip():
             code = q_code.strip()
@@ -744,7 +749,7 @@ def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
                        SET status = ?, next_appointment = ?, interested = ?, remarks = ?
                      WHERE customer_id = ? AND ifb_point = ?
                     """,
-                    (status, appt_str, interested, remarks, cid, _API_CODE),
+                    (status, appt_str, interested, remarks, cid, _resolve_point_code_and_url()[0]),
                 )
                 conn.commit()
                 saved["_sqlite"]["rows_updated"] = cur.rowcount
@@ -1300,7 +1305,7 @@ st.markdown(f"""
   <div class="stats-row">
     <div class="stat-solo">
       <div class="s-label">🏪 IFB Point Code</div>
-      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_API_CODE}</div>
+      <div class="s-value" style="font-size:22px;letter-spacing:1px;">{_ifb_code}</div>
     </div>
     <div class="stat-solo">
       <div class="s-label">👥 Total Follow Up's</div>
@@ -1690,7 +1695,7 @@ else:
 
         # 0 — pencil edit icon (circular outlined button)
         with cols[0]:
-            if st.button("✏️", key=f"edit_{cid}", help=f"Edit lead {cid}"):
+            if st.button("✏️", key=f"edit_{ri}_{cid}", help=f"Edit lead {cid}"):
                 edit_lead_dialog(row.to_dict())
 
         # 1–10 data cells
