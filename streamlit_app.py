@@ -470,11 +470,11 @@ st.markdown("""
 
   /* ── Buttons ── */
   .stButton > button {
-    background:#0F172A; color:#F8FAFC; border:0; border-radius:6px;
-    padding:0 10px; font-weight:600; font-size:12px;
-    height:34px !important; min-height:34px !important;
-    line-height:34px !important; display:inline-flex;
-    align-items:center; justify-content:center;
+    background:#0F172A; color:#F8FAFC; border:0; border-radius:8px;
+    padding:0 14px; font-weight:600; font-size:13px;
+    height:36px !important; min-height:36px !important; max-height:36px !important;
+    line-height:36px !important; display:inline-flex;
+    align-items:center; justify-content:center; white-space:nowrap;
   }
   .stButton > button:hover { background:#1E293B; }
 
@@ -538,8 +538,8 @@ st.markdown("""
   .stButton > button[kind="secondary"] {
     background:#FFFFFF !important; color:#475569 !important;
     border:1px solid #CBD5E1 !important;
-    height:34px !important; min-height:34px !important;
-    padding:0 14px !important; font-size:12px !important; font-weight:600 !important;
+    height:36px !important; min-height:36px !important; max-height:36px !important;
+    padding:0 14px !important; font-size:13px !important; font-weight:600 !important;
     border-radius:8px !important;
   }
   .stButton > button[kind="secondary"]:hover {
@@ -551,9 +551,9 @@ st.markdown("""
     background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%) !important;
     color:#FFFFFF !important; border:0 !important;
     box-shadow:0 2px 8px rgba(15,23,42,0.35) !important;
-    height:34px !important; min-height:34px !important;
-    padding:0 14px !important; font-size:12px !important; font-weight:700 !important;
-    border-radius:10px !important;
+    height:36px !important; min-height:36px !important; max-height:36px !important;
+    padding:0 14px !important; font-size:13px !important; font-weight:700 !important;
+    border-radius:8px !important;
   }
   .stButton > button[kind="primary"]:hover {
     background:linear-gradient(135deg,#1a1f35 0%,#242c45 100%) !important;
@@ -838,8 +838,8 @@ max_pd = max(_pds) if _pds else today
 with st.container():
     st.markdown('<div class="panel">', unsafe_allow_html=True)
 
-    # ── Row 1: lead-type toggles  +  date range ──────────────────────────
-    r1c1, r1c2, r1c3, r1c4 = st.columns([1.1, 1.1, 0.1, 2.2], gap="small")
+    # ── Row 1 : lead-type toggles  ·  date range ─────────────────────────
+    r1c1, r1c2, r1c3 = st.columns([1, 1, 2], gap="medium")
     with r1c1:
         if st.button("📅  Today Leads", key="btn_today",
                      use_container_width=True,
@@ -852,8 +852,7 @@ with st.container():
                      type="primary" if lead_view == "Missed" else "secondary"):
             st.session_state["_lead_view"] = "Missed"
             st.rerun()
-    # r1c3 is a narrow visual spacer — intentionally empty
-    with r1c4:
+    with r1c3:
         date_range = st.date_input(
             "Lead Date Range",
             value=(min_pd, max_pd),
@@ -865,19 +864,19 @@ with st.container():
 
     st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
-    # ── Row 2: section toggles  +  stage dropdown  +  search ─────────────
+    # ── Row 2 : section toggles  ·  stage dropdown  ·  search ────────────
     _FU_OPTS = [
         "All Follow-Up Stages", "Post-Purchase",
         "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
     ]
     _FU_LABEL = {
-        "All Follow-Up Stages": "🌐  All Stages",
+        "All Follow-Up Stages": "🌐  All Follow-Up Stages",
         "Post-Purchase":        "🎉  Post-Purchase",
-        "1st 30 days call":     "🔄  1st 30 Days",
+        "1st 30 days call":     "🔄  1st 30 days call",
         "Pre-AMC":              "⏰  Pre-AMC",
         "8 Year Upgrade":       "🏆  8 Year Upgrade",
     }
-    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns([1.1, 1.1, 0.1, 1.4, 2.2], gap="small")
+    r2c1, r2c2, r2c3, r2c4 = st.columns([1, 1, 1.4, 1.6], gap="medium")
     with r2c1:
         if st.button("📋  Open Followups", key="btn_open",
                      use_container_width=True,
@@ -890,15 +889,14 @@ with st.container():
                      type="primary" if section == "Attempted" else "secondary"):
             st.session_state["_view_section"] = "Attempted"
             st.rerun()
-    # r2c3 is a narrow visual spacer — intentionally empty
-    with r2c4:
+    with r2c3:
         fu_filter = st.selectbox(
             "Stage",
             options=_FU_OPTS,
             format_func=lambda x: _FU_LABEL.get(x, x),
             label_visibility="collapsed",
         )
-    with r2c5:
+    with r2c4:
         search_q = st.text_input(
             "Search",
             placeholder="🔍  Name · Phone · Email · ID",
