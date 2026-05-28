@@ -178,40 +178,48 @@ def _resolve_point_code_and_url() -> tuple[str, str | None]:
     """
     Resolve the active IFB point code.
 
-    Priority (highest wins):
-      1. URL query param  ?id=1017061          ← highest — drives the app per link
-      2. URL query param  ?ifb_point_code=...  ← alternate long form
-      3. Streamlit secrets  [api] ifb_point_code
-      4. config.py IFB_POINT_CODE              ← lowest fallback
+    Priority stack (lowest → highest, highest wins):
+      1. config.py  IFB_POINT_CODE
+      2. data/api_data.json  ifb_point_code   ← canonical default: matches actual data
+      3. URL query param  ?id=1017061         ← per-link override
+      4. URL query param  ?ifb_point_code=…  ← alternate long form
 
-    Rationale: the URL must win so that sharing a link like
-    https://ifb-point-dashboard.streamlit.app/?id=1017061 always loads
-    that specific franchise regardless of what the secrets file contains.
+    WHY secrets is NOT used for the IFB code:
+      A stale value in Streamlit secrets (e.g. "1016070") caused the card to
+      display that code while the data came from a different franchise ("1017061")
+      stored in api_data.json — a silent mismatch.  The secrets file is only
+      used for API credentials (username/password) and github_token.
     """
-    code    = _API_CODE          # lowest-priority default
+    code    = _API_CODE          # level 1: hardcoded config fallback
     api_url: str | None = None
 
-    # ── Secrets — override config default, but yield to URL params ────────────
+    # ── Secrets — credentials only, NOT the IFB code ─────────────────────────
     try:
         s = st.secrets.get("api", {})
-        if s.get("ifb_point_code"):
-            code = str(s["ifb_point_code"]).strip()
-        api_url = s.get("api_url") or None
+        api_url = s.get("api_url") or None   # api_url override still allowed
+    except Exception:
+        pass
+
+    # ── api_data.json — use its own ifb_point_code as level-2 default ─────────
+    # This guarantees the card and data always agree when no URL param is given,
+    # because the JSON is the committed snapshot we actually have data for.
+    try:
+        _blob = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        _jcode = str(_blob.get("ifb_point_code", "") or "").strip()
+        if _jcode:
+            code = _jcode
     except Exception:
         pass
 
     # ── URL query params — highest priority, override everything above ─────────
     try:
         qp = st.query_params          # Streamlit >= 1.30
-        # ?id= short form (canonical link format)
-        q_id = qp.get("id")
+        q_id = qp.get("id")          # ?id=1017061  (canonical short form)
         if isinstance(q_id, str) and q_id.strip():
             code = q_id.strip()
-        # ?ifb_point_code= long form (can override ?id= if both are present)
-        q_code = qp.get("ifb_point_code")
+        q_code = qp.get("ifb_point_code")   # ?ifb_point_code=… (long form)
         if isinstance(q_code, str) and q_code.strip():
             code = q_code.strip()
-        # Optional API URL override
         q_url = qp.get("api_url")
         if isinstance(q_url, str) and q_url.strip():
             api_url = q_url.strip()
@@ -452,7 +460,12 @@ def _bootstrap_sqlite_from_json(ifb_point_code: str) -> None:
             if not isinstance(blob, dict):
                 return
             records = [r for r in blob.get("records", []) if isinstance(r, dict)]
+            # Use the JSON's own code (single source of truth for what data we have).
+            # If the JSON is for a DIFFERENT franchise than requested, abort —
+            # we must never bootstrap franchise A's data under franchise B's key.
             point_code = str(blob.get("ifb_point_code", ifb_point_code) or ifb_point_code)
+            if point_code != ifb_point_code:
+                return  # JSON doesn't have data for the requested franchise
             lead_date  = _dt.now().strftime("%d-%m-%Y")
 
             for r in records:
@@ -515,22 +528,28 @@ def _load_records_from_sqlite(ifb_point_code: str) -> list[dict]:
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
+            # Fetch all rows for this franchise, newest first.
+            # Python dedup (by key) keeps the freshest row per customer+machine
+            # and is safe against NULL / empty keys (each gets its own id slot).
+            raw_rows = conn.execute(
                 """
-                SELECT a.*
-                  FROM api_leads a
-                 INNER JOIN (
-                       SELECT MAX(id) AS max_id
-                         FROM api_leads
-                        WHERE ifb_point = ?
-                        GROUP BY key
-                   ) latest ON a.id = latest.max_id
-                 ORDER BY a.customer_name COLLATE NOCASE
+                SELECT * FROM api_leads
+                 WHERE ifb_point = ?
+                 ORDER BY id DESC
                 """,
                 (ifb_point_code,),
             ).fetchall()
     except Exception:
         return []
+
+    # Deduplicate: keep the first occurrence per key (= highest id = freshest)
+    seen: set[str] = set()
+    rows = []
+    for r in raw_rows:
+        k = (r["key"] or "").strip() or f"__id_{r['id']}"
+        if k not in seen:
+            seen.add(k)
+            rows.append(r)
 
     bucket_to_stage = {
         "twoDays_details":        "Post-Purchase",
