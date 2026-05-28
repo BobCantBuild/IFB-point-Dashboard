@@ -163,9 +163,9 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                     continue
 
                 values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
-                conn.execute(
+                cur2 = conn.execute(
                     """
-                    INSERT INTO api_leads
+                    INSERT OR IGNORE INTO api_leads
                       (ifb_point, key, lead_date, follow_up,
                        customer_id, customer_name, purchase_date, installationdate,
                        machine_type, phone_number, alt_number, email_id,
@@ -174,7 +174,10 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                     """,
                     (point_code, key_val, lead_date, bucket_key, *values),
                 )
-                inserted += 1
+                if cur2.rowcount:
+                    inserted += 1
+                else:
+                    skipped += 1
 
         conn.commit()
 
@@ -262,10 +265,10 @@ def _login(client: httpx.Client) -> str | None:
     return tok
 
 
-def _fetch_one(client: httpx.Client, token: str, code: str) -> dict | None:
+def _fetch_one(client: httpx.Client, token: str, code: str) -> tuple[dict | None, str | None]:
     """
     GET /GetInstallationAgeingDetails?IFBPointCode=<code>.
-    Returns the raw JSON payload, or None if the call failed.
+    Returns (payload, None) on success, or (None, reason_string) on failure.
     """
     try:
         r = client.get(
@@ -274,16 +277,19 @@ def _fetch_one(client: httpx.Client, token: str, code: str) -> dict | None:
             headers={"Authorization": f"Bearer {token}"},
         )
     except Exception as exc:
-        print(f"[sync_api]   {code}: HTTP exception — {type(exc).__name__}: {exc}", file=sys.stderr)
-        return None
+        reason = f"Network error - {type(exc).__name__}: {exc}"
+        print(f"[sync_api]   {code}: {reason}", file=sys.stderr)
+        return None, reason
     if r.status_code != 200:
-        print(f"[sync_api]   {code}: HTTP {r.status_code} — {r.text[:200]}", file=sys.stderr)
-        return None
+        reason = f"HTTP {r.status_code} - {r.text[:200].strip()}"
+        print(f"[sync_api]   {code}: {reason}", file=sys.stderr)
+        return None, reason
     try:
-        return r.json()
+        return r.json(), None
     except Exception as exc:
-        print(f"[sync_api]   {code}: bad JSON — {exc}", file=sys.stderr)
-        return None
+        reason = f"Bad JSON - {exc}"
+        print(f"[sync_api]   {code}: {reason}", file=sys.stderr)
+        return None, reason
 
 
 def main() -> int:
@@ -301,15 +307,17 @@ def main() -> int:
         # Per-franchise stats so the summary tells you exactly what flowed in
         total_inserted = 0
         total_records  = 0
-        success_codes: list[str] = []
-        empty_codes:   list[str] = []
-        failed_codes:  list[str] = []
+        success_codes: list[str]       = []
+        empty_codes:   list[str]       = []
+        failed_codes:  list[str]       = []
+        failure_reasons: dict[str, str] = {}   # code → reason string
 
         for i, code in enumerate(codes, 1):
             print(f"[sync_api] ({i}/{len(codes)}) fetching {code}...", flush=True)
-            payload = _fetch_one(client, token, code)
+            payload, fetch_err = _fetch_one(client, token, code)
             if payload is None:
                 failed_codes.append(code)
+                failure_reasons[code] = fetch_err or "Unknown fetch error"
                 continue
 
             records, _parsed_code, _parsed_name = parse_payload(payload)
@@ -320,8 +328,10 @@ def main() -> int:
                 inserted = append_to_sqlite(payload, code)
                 total_inserted += inserted
             except Exception as exc:
-                print(f"[sync_api]   {code}: SQLite append failed — {exc}", file=sys.stderr)
+                reason = f"SQLite error - {type(exc).__name__}: {exc}"
+                print(f"[sync_api]   {code}: {reason}", file=sys.stderr)
                 failed_codes.append(code)
+                failure_reasons[code] = reason
                 continue
 
             if records:
@@ -329,20 +339,47 @@ def main() -> int:
             else:
                 empty_codes.append(code)
 
-    # ── Summary ────────────────────────────────────────────────────────────
+    # -- Summary --
+    sep = "=" * 35
     print("")
-    print(f"[sync_api] ═══ SUMMARY ═══")
+    print(f"[sync_api] {sep}")
+    print(f"[sync_api]  SUMMARY")
+    print(f"[sync_api] {sep}")
     print(f"[sync_api]   Codes processed : {len(codes)}")
     print(f"[sync_api]   With records    : {len(success_codes)}")
     print(f"[sync_api]   Empty responses : {len(empty_codes)}")
     print(f"[sync_api]   Failed          : {len(failed_codes)}")
     print(f"[sync_api]   API records seen: {total_records}")
     print(f"[sync_api]   New DB rows     : {total_inserted}")
-    if failed_codes:
-        print(f"[sync_api]   Failed codes    : {', '.join(failed_codes[:20])}"
-              f"{' ...' if len(failed_codes) > 20 else ''}")
 
-    return 0 if not failed_codes else 0  # non-fatal — partial syncs are fine
+    if empty_codes:
+        print("")
+        print(f"[sync_api] {sep}")
+        print(f"[sync_api]  EMPTY RESPONSES ({len(empty_codes)} codes)")
+        print(f"[sync_api] {sep}")
+        print(f"[sync_api]  (API returned data but no records matched known buckets)")
+        for j in range(0, len(empty_codes), 10):
+            print(f"[sync_api]    -> {', '.join(empty_codes[j:j+10])}")
+
+    if failure_reasons:
+        # Group codes by the first 80 chars of the reason (normalises per-code body)
+        reason_groups: dict[str, list[str]] = {}
+        for code, reason in failure_reasons.items():
+            group_key = reason[:80]
+            reason_groups.setdefault(group_key, []).append(code)
+
+        print("")
+        print(f"[sync_api] {sep}")
+        print(f"[sync_api]  FAILURE BREAKDOWN ({len(failed_codes)} codes)")
+        print(f"[sync_api] {sep}")
+        for _prefix, grp_codes in sorted(reason_groups.items(),
+                                         key=lambda x: -len(x[1])):
+            full_reason = failure_reasons[grp_codes[0]]
+            print(f"[sync_api]  [{len(grp_codes):>3} code(s)]  {full_reason}")
+            for j in range(0, len(grp_codes), 10):
+                print(f"[sync_api]    -> {', '.join(grp_codes[j:j+10])}")
+
+    return 0  # non-fatal — partial syncs are fine
 
 
 if __name__ == "__main__":
