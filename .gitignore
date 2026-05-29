@@ -1,5 +1,6 @@
-# SQLite — local-only; populated by sync_api.py from the IFB office network
+# SQLite — ifb_point.db is committed intentionally (API sync data)
 *.db
+!ifb_point.db
 *.db-journal
 *.db-wal
 *.db-shm
