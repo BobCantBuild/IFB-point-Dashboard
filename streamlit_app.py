@@ -7,6 +7,7 @@ from datetime import date, datetime as _dt
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pandas as pd
 import streamlit as st
 
@@ -84,8 +85,56 @@ def _load_channel_names() -> dict[str, str]:
 _MASTER_CODES = _load_master_codes()
 _CHANNEL_NAMES = _load_channel_names()
 
+# ── API config for customer detail lookup (eye icon) ──────────────────────────
+_EYE_API_BASE = "https://bseapi.ifbsupport.com/api"
+_EYE_API_USER = "IFBFollowUPAPP"
+_EYE_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
+
 STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
+
+
+def _get_api_token() -> str | None:
+    """Login to IFB API and return JWT token. Cached in session_state for the session."""
+    if "_api_jwt_token" in st.session_state:
+        return st.session_state["_api_jwt_token"]
+    try:
+        r = httpx.post(
+            f"{_EYE_API_BASE}/Auth/login",
+            json={"userName": _EYE_API_USER, "password": _EYE_API_PASS},
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            tok = r.json().get("token")
+            if tok:
+                st.session_state["_api_jwt_token"] = tok
+                return tok
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_customer_details(customer_id: str) -> dict | None:
+    """
+    Call the IFB API to get decrypted phone & email for a customer.
+    Returns {"mobileNo": "...", "emailID": "..."} or None on failure.
+    """
+    token = _get_api_token()
+    if not token:
+        return None
+    try:
+        r = httpx.get(
+            f"{_EYE_API_BASE}/IFBPointFollowUp/GetIFBPointFollowUpCustomerDetails",
+            params={"CustCode": customer_id},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
 
 
 def compute_follow_up(purchase_date: date | None, today: date) -> str | None:
@@ -1276,125 +1325,156 @@ if len(filtered) == 0:
             unsafe_allow_html=True,
         )
 else:
-    # ── Pagination ──────────────────────────────────────────────────────────
-    PAGE_SIZE = 30
-    total_rows  = len(filtered)
-    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+    # ── Table as @st.fragment — only this section re-renders on eye/page
+    #    clicks. Header, stats, filters stay completely frozen. ───────────
+    @st.fragment
+    def _render_table(df_filt, sec):
+        PAGE_SIZE = 30
+        total_rows  = len(df_filt)
+        total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    # reset page if filters changed the row count below current page's range
-    pg_sig_key = f"pg_sig_{section}"
-    sig = (section, total_rows, tuple(filtered["customer_id"].head(3).tolist()))
-    if st.session_state.get(pg_sig_key) != sig:
-        st.session_state[pg_sig_key] = sig
-        st.session_state["page_num"] = 1
+        pg_sig_key = f"pg_sig_{sec}"
+        sig = (sec, total_rows, tuple(df_filt["customer_id"].head(3).tolist()))
+        if st.session_state.get(pg_sig_key) != sig:
+            st.session_state[pg_sig_key] = sig
+            st.session_state["page_num"] = 1
 
-    st.session_state.setdefault("page_num", 1)
-    page = max(1, min(st.session_state["page_num"], total_pages))
-    st.session_state["page_num"] = page
+        st.session_state.setdefault("page_num", 1)
+        page = max(1, min(st.session_state["page_num"], total_pages))
+        st.session_state["page_num"] = page
 
-    start = (page - 1) * PAGE_SIZE
-    end   = min(start + PAGE_SIZE, total_rows)
-    page_df = filtered.iloc[start:end]
+        start = (page - 1) * PAGE_SIZE
+        end   = min(start + PAGE_SIZE, total_rows)
+        page_df = df_filt.iloc[start:end]
 
-    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks  view
-    R   = [0.4,      1.7,       2.0,  1.1,    1.5,    1.0,   1.6,   1.3,   1.1,  1.4,  2.0,     0.4]
-    HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
-           "Machine Type", "Phone", "Email",
-           "Status", "Next Appt", "Interested?", "Remarks", ""]
+        R   = [0.4, 1.7, 2.0, 1.1, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.6, 0.4]
+        HDR = ["", "Customer Follow-Up", "Customer Name", "Purchase Date",
+               "Machine Type", "Phone", "Email",
+               "Status", "Next Appt", "Interested?", "Remarks", ""]
 
-    # Header row
-    hdr = st.columns(R)
-    last_i = len(HDR) - 1
-    for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-        extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-        style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
-        c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
+        hdr = st.columns(R)
+        last_i = len(HDR) - 1
+        for i, (c, lbl) in enumerate(zip(hdr, HDR)):
+            extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
+            style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
+            c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
 
-    def _status_chip(v):
-        s = _safe(v)
-        if s == "Contacted":     return f"<span class='chip green'>{s}</span>"
-        if s == "Not Contacted": return f"<span class='chip red'>{s}</span>"
-        if s == "—":             return "<span class='chip'>—</span>"
-        return f"<span class='chip slate'>{s}</span>"
+        def _status_chip(v):
+            s = _safe(v)
+            if s == "Contacted":     return f"<span class='chip green'>{s}</span>"
+            if s == "Not Contacted": return f"<span class='chip red'>{s}</span>"
+            if s == "—":             return "<span class='chip'>—</span>"
+            return f"<span class='chip slate'>{s}</span>"
 
-    def _interest_chip(v):
-        s = _safe(v)
-        if s == "Interested":     return f"<span class='chip green'>{s}</span>"
-        if s == "Not Interested": return f"<span class='chip red'>{s}</span>"
-        if s == "—":              return "<span class='chip'>—</span>"
-        return f"<span class='chip slate'>{s}</span>"
+        def _interest_chip(v):
+            s = _safe(v)
+            if s == "Interested":     return f"<span class='chip green'>{s}</span>"
+            if s == "Not Interested": return f"<span class='chip red'>{s}</span>"
+            if s == "—":              return "<span class='chip'>—</span>"
+            return f"<span class='chip slate'>{s}</span>"
 
-    # Data rows
-    for ri, (_, row) in enumerate(page_df.iterrows()):
-        cid = str(row["customer_id"])
-        cols = st.columns(R)
+        def _on_eye_click(cid: str):
+            details = _fetch_customer_details(cid)
+            if details is not None:
+                revealed = st.session_state.get("_revealed", {})
+                mob = (details.get("mobileNo") or "").strip()
+                eml = (details.get("emailID")  or "").strip()
+                revealed[cid] = {
+                    "mobileNo": mob if mob else "N/A",
+                    "emailID":  eml if eml else "N/A",
+                }
+                st.session_state["_revealed"] = revealed
+            else:
+                st.session_state["_eye_error"] = True
 
-        # 0 — pencil edit icon (circular outlined button)
-        with cols[0]:
-            if st.button("✏️", key=f"edit_{ri}_{cid}", help=f"Edit lead {cid}"):
-                edit_lead_dialog(row.to_dict())
+        if st.session_state.pop("_eye_error", False):
+            st.toast("Could not fetch customer details — API error", icon="⚠️")
 
-        # 1–10 data cells
-        cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>",   unsafe_allow_html=True)
-        # Customer name: fall back to a labelled placeholder so blank-name rows
-        # (incomplete records from the API) stay visually identifiable.
-        _name_raw = (str(row.get('customer_name') or '')).strip()
-        if _name_raw:
-            _name_html = f"<b>{_safe(_name_raw)}</b>"
-        else:
-            _mt = str(row.get('machine_type') or '').strip() or 'Customer'
-            _name_html = f"<span style='color:#94A3B8;font-style:italic;'>(unnamed {_mt.lower()})</span>"
-        cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
-        cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>",    unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>",         unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='td'>{_safe(row.get('phone_number'))}</div>",         unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='td'>{_safe(row.get('email_id'))}</div>",             unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>",        unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
-        cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>",  unsafe_allow_html=True)
-        _rem_full = _safe(row.get('remarks'))
-        _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-        cols[10].markdown(
-            f"<div class='td' title='{_rem_tip}'>"
-            f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-            f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        for ri, (_, row) in enumerate(page_df.iterrows()):
+            cid = str(row["customer_id"])
+            cols = st.columns(R)
 
-        # 11 — eye view icon (functionality to be added later)
-        with cols[11]:
-            if st.button("👁️", key=f"view_{ri}_{cid}", help=f"View lead {cid}"):
-                pass
+            with cols[0]:
+                if st.button("✏️", key=f"edit_{ri}_{cid}", help=f"Edit lead {cid}"):
+                    edit_lead_dialog(row.to_dict())
 
-    # ── Pagination bar ──────────────────────────────────────────────────────
-    st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
-    pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
-    with pc1:
-        if st.button("◀  Previous", key="pg_prev", type="secondary",
-                     use_container_width=True, disabled=(page <= 1)):
-            st.session_state["page_num"] = page - 1
-            st.rerun()
-    with pc2:
-        cap = "Click the ✏️ icon on any row to open the edit dialog."
-        showing_from = start + 1 if total_rows else 0
-        st.markdown(
-            f"<div style='text-align:center;padding:10px 0;color:var(--slate);"
-            f"font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;'>"
-            f"Showing <b style='color:var(--ink);'>{showing_from}–{end}</b> "
-            f"of <b style='color:var(--ink);'>{total_rows}</b> "
-            f"&nbsp;·&nbsp; Page "
-            f"<span style='background:var(--brand-l);color:var(--brand-d);"
-            f"padding:2px 8px;border-radius:6px;font-weight:700;'>{page}</span>"
-            f" of <b>{total_pages}</b></div>"
-            f"<div style='text-align:center;color:var(--muted);font-size:12px;"
-            f"margin-top:2px;'>{cap}</div>",
-            unsafe_allow_html=True,
-        )
-    with pc3:
-        if st.button("Next  ▶", key="pg_next", type="secondary",
-                     use_container_width=True, disabled=(page >= total_pages)):
-            st.session_state["page_num"] = page + 1
-            st.rerun()
+            cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
+            _name_raw = (str(row.get('customer_name') or '')).strip()
+            if _name_raw:
+                _name_html = f"<b>{_safe(_name_raw)}</b>"
+            else:
+                _mt = str(row.get('machine_type') or '').strip() or 'Customer'
+                _name_html = f"<span style='color:#94A3B8;font-style:italic;'>(unnamed {_mt.lower()})</span>"
+            cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
+            cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>", unsafe_allow_html=True)
+            cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>", unsafe_allow_html=True)
+
+            _revealed = st.session_state.get("_revealed", {})
+            _rev = _revealed.get(cid)
+            if _rev:
+                _phone_display = _rev.get("mobileNo") or "N/A"
+                _email_display = _rev.get("emailID")  or "N/A"
+                _ph_style = "color:#16A34A;font-weight:600;" if _phone_display != "N/A" else "color:#94A3B8;"
+                _em_style = "color:#16A34A;font-weight:600;" if _email_display != "N/A" else "color:#94A3B8;"
+            else:
+                _phone_display = _safe(row.get('phone_number'))
+                _email_display = _safe(row.get('email_id'))
+                _ph_style = ""
+                _em_style = ""
+            cols[5].markdown(f"<div class='td' style='{_ph_style}'>{_phone_display}</div>", unsafe_allow_html=True)
+            cols[6].markdown(f"<div class='td' style='{_em_style}'>{_email_display}</div>", unsafe_allow_html=True)
+            cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>", unsafe_allow_html=True)
+            cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
+            cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
+            _rem_full = _safe(row.get('remarks'))
+            _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
+            cols[10].markdown(
+                f"<div class='td' title='{_rem_tip}'>"
+                f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            with cols[11]:
+                _already_revealed = cid in st.session_state.get("_revealed", {})
+                st.button(
+                    "🔓" if _already_revealed else "👁️",
+                    key=f"view_{ri}_{cid}",
+                    help=f"View lead {cid}",
+                    on_click=_on_eye_click,
+                    args=(cid,),
+                )
+
+        st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
+        pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
+        with pc1:
+            if st.button("◀  Previous", key="pg_prev", type="secondary",
+                         use_container_width=True, disabled=(page <= 1)):
+                st.session_state["page_num"] = page - 1
+                st.rerun()
+        with pc2:
+            cap = "Click the ✏️ icon on any row to open the edit dialog."
+            showing_from = start + 1 if total_rows else 0
+            st.markdown(
+                f"<div style='text-align:center;padding:10px 0;color:var(--slate);"
+                f"font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;'>"
+                f"Showing <b style='color:var(--ink);'>{showing_from}–{end}</b> "
+                f"of <b style='color:var(--ink);'>{total_rows}</b> "
+                f"&nbsp;·&nbsp; Page "
+                f"<span style='background:var(--brand-l);color:var(--brand-d);"
+                f"padding:2px 8px;border-radius:6px;font-weight:700;'>{page}</span>"
+                f" of <b>{total_pages}</b></div>"
+                f"<div style='text-align:center;color:var(--muted);font-size:12px;"
+                f"margin-top:2px;'>{cap}</div>",
+                unsafe_allow_html=True,
+            )
+        with pc3:
+            if st.button("Next  ▶", key="pg_next", type="secondary",
+                         use_container_width=True, disabled=(page >= total_pages)):
+                st.session_state["page_num"] = page + 1
+                st.rerun()
+
+    _render_table(filtered, section)
 
 
