@@ -924,76 +924,86 @@ _pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
 min_pd = date(2019, 1, 1)
 max_pd = today
 
-with st.container():
-    with st.container(key="filter_panel"):
-        with st.container(key="filter_row_top"):
-            r1c1, r1c2, r1c3 = st.columns([2.2, 2.2, 5.6], gap="small")
-            with r1c1:
-                if st.button("📅  Today Leads", key="btn_today",
-                             use_container_width=True,
-                             type="primary" if lead_view == "Today" else "secondary"):
-                    st.session_state["_lead_view"] = "Today"
-                    st.rerun()
-            with r1c2:
-                if st.button("⚠️  Missed Leads", key="btn_missed",
-                             use_container_width=True,
-                             type="primary" if lead_view == "Missed" else "secondary"):
-                    st.session_state["_lead_view"] = "Missed"
-                    st.rerun()
-            with r1c3:
-                if st.session_state.get("_lead_date_range_sig") != _resolve_point_code():
-                    st.session_state["lead_date_range"] = (min_pd, max_pd)
-                    st.session_state["_lead_date_range_sig"] = _resolve_point_code()
-                date_range = st.date_input(
-                    "Lead Date Range",
-                    value=st.session_state["lead_date_range"],
-                    min_value=min_pd,
-                    max_value=max_pd,
-                    key="lead_date_range",
-                    format="DD/MM/YYYY",
-                    label_visibility="collapsed",
-                )
+# Always initialize session_state defaults — prevents KeyError on any page load
+if "lead_date_range" not in st.session_state:
+    st.session_state["lead_date_range"] = (min_pd, max_pd)
 
-        # Real Streamlit containers give us stable hooks so the two rows
-        # can be spaced independently without relying on markdown wrappers.
-        with st.container(key="filter_row_bottom"):
-            _FU_OPTS = [
-                "All Follow-Up Stages", "Post-Purchase",
-                "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
-            ]
-            _FU_LABEL = {
-                "All Follow-Up Stages": "🌐  All Follow-Up Stages",
-                "Post-Purchase":        "🎉  Post-Purchase",
-                "1st 30 days call":     "🔄  1st 30 days call",
-                "Pre-AMC":              "⏰  Pre-AMC",
-                "8 Year Upgrade":       "🏆  8 Year Upgrade",
-            }
-            r2c1, r2c2, r2c3, r2c4 = st.columns([2.2, 2.2, 3, 2.6], gap="small")
-            with r2c1:
-                if st.button("📋  Open Followup's", key="btn_open",
-                             use_container_width=True,
-                             type="primary" if section == "Open" else "secondary"):
-                    st.session_state["_view_section"] = "Open"
-                    st.rerun()
-            with r2c2:
-                if st.button("📞  Attempted's", key="btn_att",
-                             use_container_width=True,
-                             type="primary" if section == "Attempted" else "secondary"):
-                    st.session_state["_view_section"] = "Attempted"
-                    st.rerun()
-            with r2c3:
-                fu_filter = st.selectbox(
-                    "Stage",
-                    options=_FU_OPTS,
-                    format_func=lambda x: _FU_LABEL.get(x, x),
-                    label_visibility="collapsed",
-                )
-            with r2c4:
-                search_q = st.text_input(
-                    "Search",
-                    placeholder="🔍  Name · Phone · Email · ID",
-                    label_visibility="collapsed",
-                )
+# Default values used when no point code in URL (filter bar hidden)
+date_range = (min_pd, max_pd)
+fu_filter  = "All Follow-Up Stages"
+search_q   = ""
+
+if _ifb_code:
+    with st.container():
+        with st.container(key="filter_panel"):
+            with st.container(key="filter_row_top"):
+                r1c1, r1c2, r1c3 = st.columns([2.2, 2.2, 5.6], gap="small")
+                with r1c1:
+                    if st.button("📅  Today Leads", key="btn_today",
+                                 use_container_width=True,
+                                 type="primary" if lead_view == "Today" else "secondary"):
+                        st.session_state["_lead_view"] = "Today"
+                        st.rerun()
+                with r1c2:
+                    if st.button("⚠️  Missed Leads", key="btn_missed",
+                                 use_container_width=True,
+                                 type="primary" if lead_view == "Missed" else "secondary"):
+                        st.session_state["_lead_view"] = "Missed"
+                        st.rerun()
+                with r1c3:
+                    if st.session_state.get("_lead_date_range_sig") != _resolve_point_code():
+                        st.session_state["lead_date_range"] = (min_pd, max_pd)
+                        st.session_state["_lead_date_range_sig"] = _resolve_point_code()
+                    date_range = st.date_input(
+                        "Lead Date Range",
+                        value=st.session_state["lead_date_range"],
+                        min_value=min_pd,
+                        max_value=max_pd,
+                        key="lead_date_range",
+                        format="DD/MM/YYYY",
+                        label_visibility="collapsed",
+                    )
+
+            # Real Streamlit containers give us stable hooks so the two rows
+            # can be spaced independently without relying on markdown wrappers.
+            with st.container(key="filter_row_bottom"):
+                _FU_OPTS = [
+                    "All Follow-Up Stages", "Post-Purchase",
+                    "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
+                ]
+                _FU_LABEL = {
+                    "All Follow-Up Stages": "🌐  All Follow-Up Stages",
+                    "Post-Purchase":        "🎉  Post-Purchase",
+                    "1st 30 days call":     "🔄  1st 30 days call",
+                    "Pre-AMC":              "⏰  Pre-AMC",
+                    "8 Year Upgrade":       "🏆  8 Year Upgrade",
+                }
+                r2c1, r2c2, r2c3, r2c4 = st.columns([2.2, 2.2, 3, 2.6], gap="small")
+                with r2c1:
+                    if st.button("📋  Open Followup's", key="btn_open",
+                                 use_container_width=True,
+                                 type="primary" if section == "Open" else "secondary"):
+                        st.session_state["_view_section"] = "Open"
+                        st.rerun()
+                with r2c2:
+                    if st.button("📞  Attempted's", key="btn_att",
+                                 use_container_width=True,
+                                 type="primary" if section == "Attempted" else "secondary"):
+                        st.session_state["_view_section"] = "Attempted"
+                        st.rerun()
+                with r2c3:
+                    fu_filter = st.selectbox(
+                        "Stage",
+                        options=_FU_OPTS,
+                        format_func=lambda x: _FU_LABEL.get(x, x),
+                        label_visibility="collapsed",
+                    )
+                with r2c4:
+                    search_q = st.text_input(
+                        "Search",
+                        placeholder="🔍  Name · Phone · Email · ID",
+                        label_visibility="collapsed",
+                    )
 
 st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
@@ -1190,17 +1200,9 @@ if len(filtered) == 0:
     # Pick a context-aware message depending on WHY there are no records
     _src = st.session_state.get("_api_sync_msg", "")
     if not _ifb_code:
-        _no_rec_html = (
-            "<b style='color:#475569;font-size:16px;'>No IFB Point code in URL</b><br>"
-            "<span style='font-size:13px;'>Add <code>?id=&lt;code&gt;</code> to the URL — e.g.&nbsp;"
-            "<code>https://ifb-point-dashboard.streamlit.app/?id=1017061</code></span>"
-        )
+        _no_rec_html = "<b style='color:#DC2626;font-size:18px;'>❌ Invalid Code</b>"
     elif "invalid-id" in _src:
-        _no_rec_html = (
-            f"<b style='color:#DC2626;font-size:18px;'>❌ Invalid ID — {_ifb_code}</b><br>"
-            "<span style='font-size:13px;color:#475569;'>This IFB Point Code is not in the master list "
-            "(<code>IFB_Point_Master.txt</code>). Please check the URL.</span>"
-        )
+        _no_rec_html = f"<b style='color:#DC2626;font-size:18px;'>❌ Invalid ID - {_ifb_code}</b>"
     elif "no-data" in _src:
         _no_rec_html = (
             f"<b style='color:#475569;font-size:16px;'>No records for IFB Point {_ifb_code}</b><br>"
@@ -1209,12 +1211,13 @@ if len(filtered) == 0:
         )
     else:
         _no_rec_html = "No records match the current filters."
-    st.markdown(
-        "<div id='no-records-msg' style='text-align:center;padding:64px 20px;color:#94A3B8;"
-        "background:#fff;border:1px solid #E2E8F0;border-radius:14px;"
-        f"box-shadow:0 1px 4px rgba(0,0,0,.04);line-height:1.8;'>{_no_rec_html}</div>",
-        unsafe_allow_html=True,
-    )
+    if _no_rec_html:
+        st.markdown(
+            "<div id='no-records-msg' style='text-align:center;padding:64px 20px;color:#94A3B8;"
+            "background:#fff;border:1px solid #E2E8F0;border-radius:14px;"
+            f"box-shadow:0 1px 4px rgba(0,0,0,.04);line-height:1.8;'>{_no_rec_html}</div>",
+            unsafe_allow_html=True,
+        )
 else:
     # ── Pagination ──────────────────────────────────────────────────────────
     PAGE_SIZE = 30
