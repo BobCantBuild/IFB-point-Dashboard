@@ -187,6 +187,7 @@ def _read_db(ifb_point_code: str) -> list[dict]:
             "pin_code":           r["pinCode"],
             "serial_no":          r["serialNo"],
             "ifb_point_code":     r["ifb_point"],
+            "lead_date":          r["lead_date"],
             "customer_follow_up": _BUCKET_TO_STAGE.get(r["follow_up"] or "", r["follow_up"] or ""),
             "status":             r["status"],
             "next_appointment":   r["next_appointment"],
@@ -208,7 +209,7 @@ def load_all() -> tuple[pd.DataFrame, str]:
     _COLS = [
         "customer_id", "customer_name", "purchase_date",
         "machine_type", "phone_number", "email_id",
-        "customer_follow_up", "status", "next_appointment", "interested", "remarks",
+        "customer_follow_up", "lead_date", "status", "next_appointment", "interested", "remarks",
     ]
 
     if not point_code:
@@ -229,6 +230,11 @@ def load_all() -> tuple[pd.DataFrame, str]:
         df["purchase_date"] = df["purchase_date"].apply(_parse_api_date)
     if "installation_date" in df.columns:
         df["installation_date"] = df["installation_date"].apply(_parse_api_date)
+    # lead_date is stored as DD-MM-YYYY by sync_api.py — parse to date
+    if "lead_date" in df.columns:
+        df["lead_date"] = pd.to_datetime(
+            df["lead_date"], format="%d-%m-%Y", errors="coerce"
+        ).dt.date
     if "next_appointment" in df.columns:
         df["next_appointment"] = pd.to_datetime(df["next_appointment"], errors="coerce").dt.date
 
@@ -1058,13 +1064,27 @@ st.html("""
 # --------------------------------------------------------------------------- #
 # Filter
 # --------------------------------------------------------------------------- #
+filtered = df_all.copy()
+
+# 1. lead_view filter on lead_date
+#    "Today"  → lead_date == today
+#    "Missed" → lead_date <  today (everything up to and including yesterday)
+if "lead_date" in filtered.columns:
+    if lead_view == "Today":
+        filtered = filtered[filtered["lead_date"] == today]
+    elif lead_view == "Missed":
+        filtered = filtered[
+            filtered["lead_date"].apply(
+                lambda d: isinstance(d, date) and d < today
+            )
+        ]
+
+# 2. section filter on status
+#    "Attempted" → status is Contacted or Not Contacted
+#    "Open"      → all leads (no status restriction)
 if section == "Attempted":
-    # Leads where a follow-up was attempted — status is Contacted or Not Contacted
-    attempted_mask = df_all["status"].fillna("").isin(["Contacted", "Not Contacted"])
-    filtered = df_all[attempted_mask].copy()
-else:
-    # "Open Followup" — all leads
-    filtered = df_all.copy()
+    attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted"])
+    filtered = filtered[attempted_mask].copy()
 
 # follow-up stage filter
 if fu_filter != "All Follow-Up Stages":
