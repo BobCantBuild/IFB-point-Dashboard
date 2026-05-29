@@ -563,6 +563,19 @@ st.markdown("""
   div[data-baseweb="select"] [data-testid="stMarkdownContainer"] {
     display:flex; align-items:center; justify-content:center;
   }
+  /* Fix: select text was clipped at the bottom (descenders like g/p).
+     Use normal line-height + flex vertical-centering instead of a
+     fixed 34px line-height that pinned the text and cut it off. */
+  div[data-baseweb="select"] [role="combobox"] {
+    line-height:1.4 !important;
+    display:flex !important;
+    align-items:center !important;
+  }
+  div[data-baseweb="select"] [data-testid="stMarkdownContainer"],
+  div[data-baseweb="select"] [data-testid="stMarkdownContainer"] p {
+    line-height:1.4 !important;
+    font-size:11px !important;
+  }
 
   /* ── Buttons ── */
   .stButton > button {
@@ -613,7 +626,9 @@ st.markdown("""
   .td.center  { justify-content:center; }
   /* Right-edge breathing room so Remarks doesn't touch grey container */
   .td.td-last { padding-right:52px !important; }
-  .th.th-last { padding-right:52px !important; }
+  /* Eye-icon header is the last column now — keep it snug to the icon,
+     not elongated. Small even padding mirrors the narrow icon column. */
+  .th.th-last { padding-right:14px !important; }
 
   /* Status/Interested chips with colored dots */
   .chip {
@@ -677,6 +692,12 @@ st.markdown("""
   }
   [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:active {
     transform:scale(0.95) rotate(0deg);
+  }
+
+  /* Eye view button — push to the far right edge of the row (corner),
+     mirroring how the edit pencil sits at the left edge. */
+  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="column"]:last-child .stButton > button {
+    margin:0 0 0 auto !important;
   }
 
   /* Kill row gaps so cell + button line up perfectly */
@@ -752,13 +773,23 @@ st.markdown("""
     align-items:center !important;
   }
   [data-testid="stContainer"] input,
-  [data-testid="stContainer"] .stDateInput input,
-  [data-testid="stContainer"] div[data-baseweb="select"] [role="combobox"] {
+  [data-testid="stContainer"] .stDateInput input {
     height:34px !important;
     min-height:34px !important;
     line-height:34px !important;
     padding:0 10px !important;
     font-size:12.5px !important;
+  }
+  /* Select combobox: NO fixed line-height (that clipped descenders like g/p).
+     Parent container already flex-centers it vertically. */
+  [data-testid="stContainer"] div[data-baseweb="select"] [role="combobox"] {
+    height:auto !important;
+    min-height:0 !important;
+    line-height:1.3 !important;
+    padding:0 10px !important;
+    font-size:11px !important;
+    display:flex !important;
+    align-items:center !important;
   }
   /* Radio pill row — match the 34px height of the other inputs */
   [data-testid="stContainer"] div[role="radiogroup"] {
@@ -926,9 +957,11 @@ if section not in _SEC_OPTS:
 # --------------------------------------------------------------------------- #
 # Filter bar — two rows in a white card panel
 # --------------------------------------------------------------------------- #
-_pds   = [d for d in df_all["purchase_date"] if isinstance(d, date)]
-min_pd = date(2019, 1, 1)
-max_pd = today
+# Date selector bounds come from the actual lead_date range in the DB
+_lds   = ([d for d in df_all["lead_date"] if isinstance(d, date)]
+          if "lead_date" in df_all.columns else [])
+min_pd = min(_lds) if _lds else date(2019, 1, 1)
+max_pd = max(_lds) if _lds else today
 
 # Always initialize session_state defaults — prevents KeyError on any page load
 if "lead_date_range" not in st.session_state:
@@ -1090,10 +1123,14 @@ if section == "Attempted":
 if fu_filter != "All Follow-Up Stages":
     filtered = filtered[filtered["customer_follow_up"] == fu_filter]
 
-# date range + search apply to all sections
-if isinstance(date_range, tuple) and len(date_range) == 2:
+# date range (on lead_date) + search apply to all sections
+if isinstance(date_range, tuple) and len(date_range) == 2 and "lead_date" in filtered.columns:
     d0, d1 = date_range
-    filtered = filtered[filtered["purchase_date"].between(d0, d1)]
+    filtered = filtered[
+        filtered["lead_date"].apply(
+            lambda d: isinstance(d, date) and d0 <= d <= d1
+        )
+    ]
 q = search_q.strip()
 if q:
     mask = (filtered["customer_name"].str.contains(q, case=False, na=False) |
@@ -1259,11 +1296,11 @@ else:
     end   = min(start + PAGE_SIZE, total_rows)
     page_df = filtered.iloc[start:end]
 
-    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks
-    R   = [0.4,      1.7,       2.0,  1.1,    1.5,    1.0,   1.6,   1.3,   1.1,  1.4,  2.0]
+    # column ratios:  edit  follow-up  name  date  machine  phone  email  status  appt  int   remarks  view
+    R   = [0.4,      1.7,       2.0,  1.1,    1.5,    1.0,   1.6,   1.3,   1.1,  1.4,  2.0,     0.4]
     HDR = ["",       "Customer Follow-Up", "Customer Name", "Purchase Date",
            "Machine Type", "Phone", "Email",
-           "Status", "Next Appt", "Interested?", "Remarks"]
+           "Status", "Next Appt", "Interested?", "Remarks", ""]
 
     # Header row
     hdr = st.columns(R)
@@ -1318,12 +1355,17 @@ else:
         _rem_full = _safe(row.get('remarks'))
         _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
         cols[10].markdown(
-            f"<div class='td td-last' style='padding-right:48px;margin-right:8px;' title='{_rem_tip}'>"
+            f"<div class='td' title='{_rem_tip}'>"
             f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
+
+        # 11 — eye view icon (functionality to be added later)
+        with cols[11]:
+            if st.button("👁️", key=f"view_{ri}_{cid}", help=f"View lead {cid}"):
+                pass
 
     # ── Pagination bar ──────────────────────────────────────────────────────
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
