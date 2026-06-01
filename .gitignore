@@ -1,4 +1,5 @@
 # SQLite — ifb_point.db is committed intentionally (API sync data)
+# ifb_counter.db is local history only — never commit
 *.db
 !ifb_point.db
 *.db-journal

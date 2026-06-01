@@ -108,7 +108,7 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
     """)
     # Migration for DBs created before the 4 user-input columns existed
     existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
-    for new_col in ("status", "next_appointment", "interested", "remarks"):
+    for new_col in ("status", "next_appointment", "interested", "remarks", "final_status"):
         if new_col not in existing:
             conn.execute(f"ALTER TABLE api_leads ADD COLUMN {new_col} TEXT")
     conn.commit()

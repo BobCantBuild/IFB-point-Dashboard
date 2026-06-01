@@ -11,9 +11,10 @@ import httpx
 import pandas as pd
 import streamlit as st
 
-_APP_DIR    = Path(__file__).resolve().parent
-DB_PATH     = _APP_DIR / "ifb_point.db"
-MASTER_FILE    = _APP_DIR / "IFB_Point_Master.txt"
+_APP_DIR     = Path(__file__).resolve().parent
+DB_PATH      = _APP_DIR / "ifb_point.db"
+COUNTER_PATH = _APP_DIR / "ifb_counter.db"
+MASTER_FILE  = _APP_DIR / "IFB_Point_Master.txt"
 
 
 def _load_master_codes() -> set[str]:
@@ -90,7 +91,7 @@ _EYE_API_BASE = "https://bseapi.ifbsupport.com/api"
 _EYE_API_USER = "IFBFollowUPAPP"
 _EYE_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 
-STATUS_OPTIONS   = ["Contacted", "Not Contacted"]
+STATUS_OPTIONS   = ["Contacted", "Not Contacted", "RnR"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 
 
@@ -242,6 +243,7 @@ def _read_db(ifb_point_code: str) -> list[dict]:
             "next_appointment":   r["next_appointment"],
             "interested":         r["interested"],
             "remarks":            r["remarks"],
+            "final_status":       r["final_status"] if "final_status" in r.keys() else None,
         })
     return out
 
@@ -307,23 +309,107 @@ def load_all() -> tuple[pd.DataFrame, str]:
     return df, f"sqlite · {len(df)} rows"
 
 
-def update_row(cid: str, status, next_appt, interested, remarks) -> dict:
-    """Save user edits directly to SQLite api_leads — single source of truth."""
-    appt_str = next_appt.isoformat() if isinstance(next_appt, date) else None
-    cid      = str(cid)
+def _ensure_counter_db() -> None:
+    """Create ifb_counter.db and the edit_log table if they don't exist yet.
+    Also runs idempotent migrations for older schemas.
+    """
+    with sqlite3.connect(COUNTER_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS edit_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                key              TEXT,
+                counter          INTEGER,
+                saved_at         TEXT,
+                call_status      TEXT,
+                next_appointment TEXT,
+                interested       TEXT,
+                final_status     TEXT,
+                remarks          TEXT
+            )
+        """)
+        # Migration: add counter column if table existed before this change
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(edit_log)").fetchall()}
+        if "counter" not in existing:
+            conn.execute("ALTER TABLE edit_log ADD COLUMN counter INTEGER")
+        conn.commit()
+
+
+def _append_counter_db(key: str, status, appt_str, interested, final_status, remarks) -> None:
+    """Append one immutable history row to ifb_counter.db — never overwrites.
+    counter = how many times this composite key has been saved (1-based).
+    """
+    try:
+        _ensure_counter_db()
+        saved_at = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(COUNTER_PATH) as conn:
+            # Count existing rows for this key to derive the next counter value
+            prev = conn.execute(
+                "SELECT COUNT(*) FROM edit_log WHERE key = ?", (key,)
+            ).fetchone()[0]
+            counter = prev + 1
+
+            conn.execute(
+                """INSERT INTO edit_log
+                       (key, counter, saved_at, call_status, next_appointment,
+                        interested, final_status, remarks)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (key, counter, saved_at, status, appt_str, interested, final_status, remarks),
+            )
+            conn.commit()
+    except Exception:
+        pass  # counter DB is non-critical — never block the main save
+
+
+def update_row(cid: str, status, next_appt, interested, remarks, final_status=None) -> dict:
+    """Save user edits directly to SQLite api_leads — single source of truth.
+    Simultaneously appends an immutable history row to ifb_counter.db.
+    """
+    appt_str   = next_appt.isoformat() if isinstance(next_appt, date) else None
+    cid        = str(cid)
     point_code = _resolve_point_code() or ""
 
     result = {"rows_updated": 0, "error": None}
     try:
+        # ── 1. Update ifb_point.db (overwrite as before) ─────────────────────
+        with sqlite3.connect(DB_PATH) as conn:
+            # Fetch the composite key for this customer so we can log it
+            key_row = conn.execute(
+                "SELECT key FROM api_leads WHERE customer_id = ? AND ifb_point = ? LIMIT 1",
+                (cid, point_code),
+            ).fetchone()
+            composite_key = key_row[0] if key_row else f"{point_code}-{cid}"
+
+        # ── 2. RnR auto-LOST rule ─────────────────────────────────────────────
+        # If this key already has 3 RnR saves in the counter DB,
+        # the 4th save (any status) automatically forces Final Status = LOST.
+        try:
+            _ensure_counter_db()
+            with sqlite3.connect(COUNTER_PATH) as cconn:
+                rnr_count = cconn.execute(
+                    "SELECT COUNT(*) FROM edit_log WHERE key = ? AND call_status = 'RnR'",
+                    (composite_key,),
+                ).fetchone()[0]
+            if rnr_count >= 3:
+                final_status = "LOST"
+                result["auto_lose"] = True
+        except Exception:
+            pass  # non-critical — don't block the save
+
+        # ── 3. Write to ifb_point.db ──────────────────────────────────────────
         with sqlite3.connect(DB_PATH) as conn:
             cur = conn.execute(
                 """UPDATE api_leads
-                      SET status = ?, next_appointment = ?, interested = ?, remarks = ?
+                      SET status = ?, next_appointment = ?, interested = ?,
+                          remarks = ?, final_status = ?
                     WHERE customer_id = ? AND ifb_point = ?""",
-                (status, appt_str, interested, remarks, cid, point_code),
+                (status, appt_str, interested, remarks, final_status, cid, point_code),
             )
             conn.commit()
             result["rows_updated"] = cur.rowcount
+
+        # ── 4. Append to ifb_counter.db (with the possibly-forced LOST) ──────
+        _append_counter_db(composite_key, status, appt_str, interested, final_status, remarks)
+
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
 
@@ -507,15 +593,17 @@ st.markdown("""
   .g-label { margin-bottom:7px; }
   .g-inner { display:flex; gap:6px; flex-wrap:wrap; }
   .sub-stat {
-    flex:1; border-radius:8px; padding:7px 6px; text-align:center;
+    flex:1; border-radius:8px; padding:6px 4px; text-align:center;
     background:var(--bg-soft); border:1px solid var(--line);
     transition:transform .2s var(--ease), background .2s var(--ease);
+    min-width:0;
   }
   .sub-stat:hover { transform:translateY(-1px); background:#F1F5F9; }
-  .ss-val   { font-size:18px; font-weight:800; line-height:1; color:var(--ink); }
-  .ss-lbl   { font-size:10px; color:#64748B; margin-top:3px; font-weight:600; }
+  .ss-val   { font-size:16px; font-weight:800; line-height:1; color:var(--ink); }
+  .ss-lbl   { font-size:9px; color:#64748B; margin-top:3px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ss-green .ss-val { color:var(--good); }   .ss-red    .ss-val { color:var(--bad); }
   .ss-grey  .ss-val { color:#475569; }       .ss-blue   .ss-val { color:var(--brand); }
+  .ss-warn  .ss-val { color:#D97706; }
   .ss-teal  .ss-val { color:#0D9488; }       .ss-indigo .ss-val { color:#4F46E5; }
   .ss-slate .ss-val { color:#334155; }
 
@@ -693,7 +781,9 @@ st.markdown("""
   }
   .chip.green::before  { background:#16A34A; }
   .chip.red::before    { background:#DC2626; }
+  .chip.warn::before   { background:#D97706; }
   .chip.slate::before  { background:#94A3B8; }
+  .chip.nodot::before  { display:none; }
 
   /* Default secondary button (dialog Cancel etc.) — proper rectangular */
   .stButton > button[kind="secondary"] {
@@ -753,6 +843,18 @@ st.markdown("""
   [data-testid="stHorizontalBlock"] { gap:0 !important; margin:0 !important; }
   [data-testid="stVerticalBlock"]   { gap:0 !important; }
   .element-container                { margin:0 !important; padding:0 !important; }
+
+  /* Restore normal vertical spacing INSIDE the edit-lead modal dialog so
+     the "Final Status" heading no longer collides with the WIN/Null/LOST
+     buttons. Scoped strictly to the dialog — table layout stays untouched. */
+  [data-testid="stDialog"] [data-testid="stVerticalBlock"] { gap:0.5rem !important; }
+  [data-testid="stDialog"] .element-container { margin:4px 0 !important; }
+  [data-testid="stDialog"] .fs-label {
+    display:block;
+    font-size:13px; font-weight:600; color:#475569;
+    margin:14px 0 8px !important;
+    line-height:1.3 !important;
+  }
   [data-testid="column"] > div      { gap:0 !important; }
 
   /* Restore breathing room inside the filter panel */
@@ -910,7 +1012,8 @@ today = date.today()
 total        = len(df_all)
 contacted    = int((df_all["status"]     == "Contacted").sum())
 not_cont     = int((df_all["status"]     == "Not Contacted").sum())
-s_empty      = total - contacted - not_cont
+rnr_count    = int((df_all["status"]     == "RnR").sum())
+s_empty      = total - contacted - not_cont - rnr_count
 interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
@@ -963,6 +1066,7 @@ st.markdown(f"""<div class="fixed-header">
       <div class="g-inner">
         {sub("ss-green", contacted,    "Contacted")}
         {sub("ss-red",   not_cont,     "Not Contacted")}
+        {sub("ss-warn",  rnr_count,    "RnR")}
         {sub("ss-grey",  s_empty,      "Empty")}
       </div>
     </div>
@@ -988,14 +1092,15 @@ st.markdown(f"""<div class="fixed-header">
 
 
 # --------------------------------------------------------------------------- #
-# Lead view selector (Today / Missed) — read from session_state
+# Lead view selector (Today / Missed / NextAppt) — read from session_state
 # --------------------------------------------------------------------------- #
 lead_view = st.session_state.get("_lead_view", "Today")
-if lead_view not in ["Today", "Missed"]:
+if lead_view not in ["Today", "Missed", "NextAppt"]:
     lead_view = "Today"
 
 # --------------------------------------------------------------------------- #
 # Section selector — Open / Attempted — read from session_state BEFORE filter
+# When "Next Appointment" is active, section toggles are disabled.
 # --------------------------------------------------------------------------- #
 _SEC_OPTS = ["Open", "Attempted"]
 section   = st.session_state.get("_view_section", "Open")
@@ -1025,20 +1130,28 @@ if _ifb_code:
     with st.container():
         with st.container(key="filter_panel"):
             with st.container(key="filter_row_top"):
-                r1c1, r1c2, r1c3 = st.columns([2.2, 2.2, 5.6], gap="small")
+                r1c1, r1c2, r1c3, r1c4 = st.columns([2.2, 2.2, 2.2, 3.4], gap="small")
                 with r1c1:
-                    if st.button("📅  Today Leads", key="btn_today",
+                    if st.button("📅  Today Follow Up", key="btn_today",
                                  use_container_width=True,
                                  type="primary" if lead_view == "Today" else "secondary"):
                         st.session_state["_lead_view"] = "Today"
+                        st.session_state["_view_section"] = "Open"
                         st.rerun()
                 with r1c2:
-                    if st.button("⚠️  Missed Leads", key="btn_missed",
+                    if st.button("⚠️  Missed Follow Up", key="btn_missed",
                                  use_container_width=True,
                                  type="primary" if lead_view == "Missed" else "secondary"):
                         st.session_state["_lead_view"] = "Missed"
+                        st.session_state["_view_section"] = "Open"
                         st.rerun()
                 with r1c3:
+                    if st.button("📆  Follow Up Date", key="btn_nextappt",
+                                 use_container_width=True,
+                                 type="primary" if lead_view == "NextAppt" else "secondary"):
+                        st.session_state["_lead_view"] = "NextAppt"
+                        st.rerun()
+                with r1c4:
                     if st.session_state.get("_lead_date_range_sig") != _resolve_point_code():
                         st.session_state["lead_date_range"] = (min_pd, max_pd)
                         st.session_state["_lead_date_range_sig"] = _resolve_point_code()
@@ -1058,6 +1171,7 @@ if _ifb_code:
                 _FU_OPTS = [
                     "All Follow-Up Stages", "Post-Purchase",
                     "1st 30 days call", "Pre-AMC", "8 Year Upgrade",
+                    "Greetings",
                 ]
                 _FU_LABEL = {
                     "All Follow-Up Stages": "🌐  All Follow-Up Stages",
@@ -1065,18 +1179,22 @@ if _ifb_code:
                     "1st 30 days call":     "🔄  1st 30 days call",
                     "Pre-AMC":              "⏰  Pre-AMC",
                     "8 Year Upgrade":       "🏆  8 Year Upgrade",
+                    "Greetings":            "🎊  Greetings",
                 }
+                _appt_active = lead_view == "NextAppt"
                 r2c1, r2c2, r2c3, r2c4 = st.columns([2.2, 2.2, 3, 2.6], gap="small")
                 with r2c1:
-                    if st.button("📋  Open Followup's", key="btn_open",
+                    if st.button("📋  Open Followup", key="btn_open",
                                  use_container_width=True,
-                                 type="primary" if section == "Open" else "secondary"):
+                                 disabled=_appt_active,
+                                 type="primary" if section == "Open" and not _appt_active else "secondary"):
                         st.session_state["_view_section"] = "Open"
                         st.rerun()
                 with r2c2:
-                    if st.button("📞  Attempted's", key="btn_att",
+                    if st.button("📞  Attempted", key="btn_att",
                                  use_container_width=True,
-                                 type="primary" if section == "Attempted" else "secondary"):
+                                 disabled=_appt_active,
+                                 type="primary" if section == "Attempted" and not _appt_active else "secondary"):
                         st.session_state["_view_section"] = "Attempted"
                         st.rerun()
                 with r2c3:
@@ -1148,25 +1266,37 @@ st.html("""
 # --------------------------------------------------------------------------- #
 filtered = df_all.copy()
 
-# 1. lead_view filter on lead_date
-#    "Today"  → lead_date == today
-#    "Missed" → lead_date <  today (everything up to and including yesterday)
-if "lead_date" in filtered.columns:
-    if lead_view == "Today":
-        filtered = filtered[filtered["lead_date"] == today]
-    elif lead_view == "Missed":
+# 1. lead_view filter
+#    "Today"    → lead_date == today
+#    "Missed"   → lead_date <  today (everything up to and including yesterday)
+#    "NextAppt" → next_appointment == today (ignores lead_date & section)
+if lead_view == "NextAppt":
+    # Next Appointment view: show rows where next_appointment == today
+    if "next_appointment" in filtered.columns:
         filtered = filtered[
-            filtered["lead_date"].apply(
-                lambda d: isinstance(d, date) and d < today
+            filtered["next_appointment"].apply(
+                lambda d: isinstance(d, date) and d == today
             )
         ]
+    else:
+        filtered = filtered.iloc[0:0]  # empty
+else:
+    if "lead_date" in filtered.columns:
+        if lead_view == "Today":
+            filtered = filtered[filtered["lead_date"] == today]
+        elif lead_view == "Missed":
+            filtered = filtered[
+                filtered["lead_date"].apply(
+                    lambda d: isinstance(d, date) and d < today
+                )
+            ]
 
-# 2. section filter on status
-#    "Attempted" → status is Contacted or Not Contacted
-#    "Open"      → all leads (no status restriction)
-if section == "Attempted":
-    attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted"])
-    filtered = filtered[attempted_mask].copy()
+    # 2. section filter on status (only when NOT in NextAppt mode)
+    #    "Attempted" → any call attempt made (Contacted / Not Contacted / RnR)
+    #    "Open"      → all leads (no status restriction)
+    if section == "Attempted":
+        attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted", "RnR"])
+        filtered = filtered[attempted_mask].copy()
 
 # follow-up stage filter
 if fu_filter != "All Follow-Up Stages":
@@ -1227,9 +1357,9 @@ def _fmt_date(d):
 # ── Modal dialog ────────────────────────────────────────────────────────────
 @st.dialog("✏️  Edit Lead")
 def edit_lead_dialog(row: dict):
-    cid = str(row["customer_id"])
-    name = row.get("customer_name") or "—"
-    machine = row.get("machine_type") or "—"
+    cid     = str(row["customer_id"])
+    name    = row.get("customer_name") or "—"
+    machine = row.get("machine_type")  or "—"
 
     st.markdown(
         f"<div style='font-size:12px;color:#94A3B8;text-transform:uppercase;"
@@ -1240,59 +1370,119 @@ def edit_lead_dialog(row: dict):
         unsafe_allow_html=True,
     )
 
-    cur_s = row.get("status")           if pd.notna(row.get("status"))           else None
-    cur_i = row.get("interested")       if pd.notna(row.get("interested"))       else None
-    cur_r = str(row.get("remarks"))     if pd.notna(row.get("remarks")) and row.get("remarks") else ""
+    # ── Saved values ────────────────────────────────────────────────────────
+    cur_s  = row.get("status")      if pd.notna(row.get("status")      or "") else None
+    cur_i  = row.get("interested")  if pd.notna(row.get("interested")  or "") else None
+    cur_r  = str(row.get("remarks") or "") if pd.notna(row.get("remarks") or "") else ""
+    cur_fs = row.get("final_status") if pd.notna(row.get("final_status") or "") else None
 
-    # Date can be None / pd.NaT / datetime.date — coerce safely
     raw_a = row.get("next_appointment")
     cur_a = None
     if raw_a is not None:
         try:
             if not pd.isna(raw_a):
-                if isinstance(raw_a, date):
-                    cur_a = raw_a
-                else:
-                    parsed = pd.to_datetime(raw_a, errors="coerce")
-                    cur_a = parsed.date() if pd.notna(parsed) else None
+                cur_a = raw_a if isinstance(raw_a, date) else pd.to_datetime(raw_a, errors="coerce").date()
         except (TypeError, ValueError):
             cur_a = None
+    if isinstance(cur_a, date) and cur_a < today:
+        cur_a = today
+
+    # ── Final-status session key ─────────────────────────────────────────────
+    _fs_key = f"_dlg_fs_val_{cid}"
+    if _fs_key not in st.session_state:
+        st.session_state[_fs_key] = cur_fs if cur_fs in ("WIN", "LOST") else None
 
     s_opts = ["—"] + STATUS_OPTIONS
     i_opts = ["—"] + INTEREST_OPTIONS
 
-    ns = st.selectbox("Status", s_opts,
+    # ── Q1: Status (always shown) ────────────────────────────────────────────
+    ns = st.selectbox("Call Status", s_opts,
                       index=s_opts.index(cur_s) if cur_s in STATUS_OPTIONS else 0,
                       key=f"dlg_s_{cid}")
-    na = st.date_input("Next Appointment",
-                       value=cur_a, min_value=today, key=f"dlg_a_{cid}")
-    ni = st.selectbox("Interested?", i_opts,
-                      index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
-                      key=f"dlg_i_{cid}")
-    nr = st.text_area("Remarks", value=cur_r, height=110, key=f"dlg_r_{cid}")
 
+    # defaults for fields that may not render
+    ni  = None
+    na  = None
+    nfs = None
+    nr  = ""
+
+    # ── Conditional flow ─────────────────────────────────────────────────────
+    if ns == "Contacted":
+        # Q2: Interested?
+        ni = st.selectbox("Interested?", i_opts,
+                          index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
+                          key=f"dlg_i_{cid}")
+
+        # Q3: Next Appointment (optional)
+        na = st.date_input("Next Appointment",
+                           value=cur_a, min_value=today, key=f"dlg_a_{cid}")
+
+        # Q4: Final Status toggle
+        nfs = st.session_state[_fs_key]
+        st.markdown("<div class='fs-label'>Final Status</div>", unsafe_allow_html=True)
+        _fc1, _fc2, _fc3 = st.columns(3, gap="small")
+        with _fc1:
+            st.button("WIN",  key=f"dlg_fs_win_{cid}",  use_container_width=True,
+                      type="primary" if nfs == "WIN"  else "secondary",
+                      on_click=lambda: st.session_state.update({_fs_key: "WIN"}))
+        with _fc2:
+            st.button("Null", key=f"dlg_fs_null_{cid}", use_container_width=True,
+                      type="primary" if nfs is None   else "secondary",
+                      on_click=lambda: st.session_state.update({_fs_key: None}))
+        with _fc3:
+            st.button("LOST", key=f"dlg_fs_lose_{cid}", use_container_width=True,
+                      type="primary" if nfs == "LOST" else "secondary",
+                      on_click=lambda: st.session_state.update({_fs_key: "LOST"}))
+        nfs = st.session_state[_fs_key]
+
+        # Q5: Remarks
+        nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
+
+        # Save enabled when: Interested answered + Remarks filled
+        _can_save = (ni != "—") and (nr.strip() != "")
+
+    elif ns in ("Not Contacted", "RnR"):
+        # Q2: Next Appointment
+        na = st.date_input("Next Appointment",
+                           value=cur_a, min_value=today, key=f"dlg_a_{cid}")
+
+        # Q3: Remarks
+        nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
+
+        # Save enabled when: Next Appointment set + Remarks filled
+        _can_save = (isinstance(na, date)) and (nr.strip() != "")
+
+    else:
+        # No status selected yet
+        _can_save = False
+
+    # ── Save / Cancel ────────────────────────────────────────────────────────
     st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💾  Save", type="primary", use_container_width=True,
-                     key=f"dlg_save_{cid}"):
+                     key=f"dlg_save_{cid}", disabled=not _can_save):
             try:
                 result = update_row(
                     cid,
-                    None if ns == "—" else ns,
+                    ns,
                     na if isinstance(na, date) else None,
-                    None if ni == "—" else ni,
+                    ni if ni and ni != "—" else None,
                     nr.strip() or None,
+                    nfs,
                 )
                 _rows = result.get("rows_updated", 0)
                 _err  = result.get("error")
                 if _err:
                     st.warning(f"⚠️ SQLite write failed — {_err}")
                 else:
-                    st.toast(
-                        f"✅ Saved — {_rows} row{'s' if _rows != 1 else ''} updated",
-                        icon="💾",
-                    )
+                    if result.get("auto_lose"):
+                        st.toast("🔴 3 RnR attempts reached — Final Status auto-set to LOST", icon="❌")
+                    else:
+                        st.toast(
+                            f"✅ Saved — {_rows} row{'s' if _rows != 1 else ''} updated",
+                            icon="💾",
+                        )
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Save failed — {type(e).__name__}: {e}")
@@ -1347,10 +1537,10 @@ else:
         end   = min(start + PAGE_SIZE, total_rows)
         page_df = df_filt.iloc[start:end]
 
-        R   = [0.4, 1.7, 2.0, 1.1, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.6, 0.4]
+        R   = [0.4, 1.7, 2.0, 1.1, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.3, 1.0, 0.4]
         HDR = ["", "Customer Follow-Up", "Customer Name", "Purchase Date",
                "Machine Type", "Phone", "Email",
-               "Status", "Next Appt", "Interested?", "Remarks", ""]
+               "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", ""]
 
         hdr = st.columns(R)
         last_i = len(HDR) - 1
@@ -1363,6 +1553,7 @@ else:
             s = _safe(v)
             if s == "Contacted":     return f"<span class='chip green'>{s}</span>"
             if s == "Not Contacted": return f"<span class='chip red'>{s}</span>"
+            if s == "RnR":           return f"<span class='chip warn'>{s}</span>"
             if s == "—":             return "<span class='chip'>—</span>"
             return f"<span class='chip slate'>{s}</span>"
 
@@ -1374,16 +1565,22 @@ else:
             return f"<span class='chip slate'>{s}</span>"
 
         def _on_eye_click(cid: str):
+            # If the same row is clicked again → toggle it off
+            current = st.session_state.get("_revealed", {})
+            if cid in current:
+                st.session_state["_revealed"] = {}
+                return
+            # New row clicked → fetch and show ONLY this row (clear any previous)
             details = _fetch_customer_details(cid)
             if details is not None:
-                revealed = st.session_state.get("_revealed", {})
                 mob = (details.get("mobileNo") or "").strip()
                 eml = (details.get("emailID")  or "").strip()
-                revealed[cid] = {
-                    "mobileNo": mob if mob else "N/A",
-                    "emailID":  eml if eml else "N/A",
+                st.session_state["_revealed"] = {
+                    cid: {
+                        "mobileNo": mob if mob else "N/A",
+                        "emailID":  eml if eml else "N/A",
+                    }
                 }
-                st.session_state["_revealed"] = revealed
             else:
                 st.session_state["_eye_error"] = True
 
@@ -1436,7 +1633,17 @@ else:
                 unsafe_allow_html=True,
             )
 
-            with cols[11]:
+            # Final Status chip
+            _fs = _safe(row.get('final_status'))
+            if _fs == "WIN":
+                _fs_html = "<span class='chip nodot'>🏆 WIN</span>"
+            elif _fs == "LOST":
+                _fs_html = "<span class='chip nodot'>❌ LOST</span>"
+            else:
+                _fs_html = "<span class='chip'>—</span>"
+            cols[11].markdown(f"<div class='td center'>{_fs_html}</div>", unsafe_allow_html=True)
+
+            with cols[12]:  # eye icon — last column
                 _already_revealed = cid in st.session_state.get("_revealed", {})
                 st.button(
                     "🔓" if _already_revealed else "👁️",
