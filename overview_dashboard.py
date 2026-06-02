@@ -248,6 +248,140 @@ def _clustered_bar(agg: pd.DataFrame, height: int = 158) -> go.Figure:
     return fig
 
 
+# ── Marimekko / Mosaic chart ───────────────────────────────────────────────────
+
+# Must match _BUCKET_TO_STAGE values in streamlit_app.py exactly
+_STAGE_ORDER = ["Post-Purchase", "1st 30 days call", "Pre-AMC", "8 Year Upgrade"]
+_STAGE_SHORT = {  # shorter labels for the x-axis ticks
+    "Post-Purchase":    "Post-Purchase",
+    "1st 30 days call": "1st 30 Days",
+    "Pre-AMC":          "Pre-AMC",
+    "8 Year Upgrade":   "8 Yr Upgrade",
+}
+
+# Mutually-exclusive outcome segments (sum to each stage's total).
+# Contacted is split into its interest sub-outcomes so all 7 metrics show.
+_MK_SEGMENTS = [
+    ("Interested",      "#16A34A"),   # contacted & interested  (the win path)
+    ("Not Interested",  "#9333EA"),   # contacted & not interested
+    ("Contacted",       "#86EFAC"),   # contacted, interest not logged yet
+    ("Not Contacted",   "#DC2626"),
+    ("RnR",             "#D97706"),
+    ("Untouched",       "#CBD5E1"),   # status = Pending
+]
+
+
+def _segments(sdf: pd.DataFrame) -> dict:
+    """Mutually-exclusive segment counts for any subset of rows."""
+    st_ = sdf["status"]
+    it_ = sdf["interest"]
+    contacted_mask = st_ == "Contacted"
+    return {
+        "Interested":     int((contacted_mask & (it_ == "Interested")).sum()),
+        "Not Interested": int((contacted_mask & (it_ == "Not Interested")).sum()),
+        "Contacted":      int((contacted_mask & (~it_.isin(["Interested", "Not Interested"]))).sum()),
+        "Not Contacted":  int((st_ == "Not Contacted").sum()),
+        "RnR":            int((st_ == "RnR").sum()),
+        "Untouched":      int((st_ == "Pending").sum()),
+    }
+
+
+def _time_buckets(df: pd.DataFrame, period: str, n: int) -> list[tuple]:
+    """
+    Split df into the last `n` time periods (oldest → today), in order.
+    Returns a list of (label, total, segment_breakdown) per period.
+    """
+    today_ts = pd.Timestamp(date.today())
+    if period == "day":
+        idx    = pd.date_range(today_ts.normalize() - pd.Timedelta(days=n - 1),
+                               today_ts.normalize(), freq="D")
+        labels = [d.strftime("%d %b") for d in idx]
+        keys   = df["lead_dt"].dt.normalize() if not df.empty else None
+    elif period == "week":
+        ws     = today_ts.normalize() - pd.Timedelta(days=today_ts.weekday())
+        idx    = pd.date_range(ws - pd.Timedelta(weeks=n - 1), ws, freq="W-MON")
+        labels = [f"W{d.strftime('%V')}<br>{d.strftime('%d %b')}" for d in idx]
+        keys   = ((df["lead_dt"] - pd.to_timedelta(df["lead_dt"].dt.weekday, unit="D"))
+                  .dt.normalize() if not df.empty else None)
+    else:  # month
+        ms     = today_ts.normalize().replace(day=1)
+        idx    = pd.date_range(ms - pd.DateOffset(months=n - 1), ms, freq="MS")
+        labels = [d.strftime("%b %y") for d in idx]
+        keys   = df["lead_dt"].dt.to_period("M").dt.to_timestamp() if not df.empty else None
+
+    buckets = []
+    for i, b in enumerate(idx):
+        sub = df[keys == b] if keys is not None else df.iloc[0:0]
+        buckets.append((labels[i], len(sub), _segments(sub)))
+    return buckets
+
+
+def _marimekko(buckets: list[tuple], height: int = 158) -> go.Figure:
+    """
+    Time-based Marimekko: one column per time period (oldest → today),
+    column WIDTH ∝ that period's lead volume, HEIGHT = status/interest mix.
+    Empty periods keep a thin minimum width so they stay visible in order.
+    """
+    labels    = [b[0] for b in buckets]
+    totals    = [b[1] for b in buckets]
+    breakdown = [b[2] for b in buckets]
+    grand     = sum(totals)
+
+    fig = go.Figure()
+    if grand == 0:
+        fig.update_layout(
+            height=height, margin=dict(l=8, r=8, t=8, b=8),
+            plot_bgcolor="#FFFFFF", paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False), yaxis=dict(visible=False),
+            annotations=[dict(text="No leads in this window", showarrow=False,
+                              font=dict(size=12, color="#94A3B8"), x=0.5, y=0.5,
+                              xref="paper", yref="paper")],
+        )
+        return fig
+
+    # Equal-width columns (categorical x) so every period is evenly spaced
+    # and all 7 / 4 / 6 fit cleanly, regardless of volume.
+    x_labels = [f"{lbl}<br><b>{t:,}</b>" for lbl, t in zip(labels, totals)]
+
+    for seg, color in _MK_SEGMENTS:
+        ys, customs = [], []
+        for i, t in enumerate(totals):
+            cnt = breakdown[i][seg]
+            pct = (cnt / t * 100) if t else 0
+            ys.append(pct)
+            customs.append([labels[i].replace("<br>", " "), cnt, t])
+        fig.add_trace(go.Bar(
+            name=seg, x=x_labels, y=ys,
+            marker_color=color, marker_line=dict(color="#FFFFFF", width=1),
+            customdata=customs,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                + seg + ": %{customdata[1]:,} (%{y:.1f}%)"
+                + "<br>Period total: %{customdata[2]:,}<extra></extra>"
+            ),
+        ))
+
+    fig.update_layout(
+        barmode="stack", height=height, bargap=0.18,
+        margin=dict(l=8, r=8, t=26, b=22),
+        plot_bgcolor="#FFFFFF", paper_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(
+            type="category", tickfont=dict(size=8, color="#475569"),
+            showgrid=False, zeroline=False,
+        ),
+        yaxis=dict(
+            range=[0, 100], ticksuffix="%",
+            tickfont=dict(size=8.5, color="#94A3B8"),
+            gridcolor="#F1F5F9", zeroline=False,
+        ),
+        font=dict(size=9, color="#475569"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0,
+                    xanchor="center", x=0.5, font=dict(size=8, color="#475569"),
+                    bgcolor="rgba(255,255,255,0)"),
+    )
+    return fig
+
+
 # ── Storytelling insights ──────────────────────────────────────────────────────
 
 def _b(text: str, color: str = "#0F172A") -> str:
@@ -331,6 +465,8 @@ def render_overview_dashboard(
         return
 
     df["status"]     = df["status"].fillna("").replace("", "Pending")
+    df["interest"]   = df["interested"].fillna("").replace("", "—")
+    df["stage"]      = df["follow_up"].map(bucket_to_stage).fillna("Other")
     df["point_name"] = df["ifb_point"].map(channel_names).fillna(df["ifb_point"])
     df["lead_dt"]    = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
 
@@ -438,35 +574,35 @@ def render_overview_dashboard(
                 _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont))
                 _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr))
 
-            # Pre-compute aggregates
-            agg_day   = _bucket_aggregate(scope_df, "D", 7)
-            agg_week  = _bucket_aggregate(scope_df, "W", 7)
-            agg_month = _bucket_aggregate(scope_df, "M", 7)
-
             # G — CHART ROWS  (colour-coded per time bucket)
+            #   Day  → last 7 days · Week → last 4 weeks · Month → last 6 months
             _section_colors = {
                 "day":   ("#6366F1", "#EEF2FF"),   # indigo
                 "week":  ("#0891B2", "#ECFEFF"),   # cyan
                 "month": ("#7C3AED", "#F5F3FF"),   # violet
             }
-            for title, agg, period in [
-                ("📅  Day Wise",    agg_day,   "day"),
-                ("📆  Week Wise",   agg_week,  "week"),
-                ("🗓️  Month Wise",  agg_month, "month"),
+            _freq = {"day": "D", "week": "W", "month": "M"}
+            for title, period, n in [
+                ("📅  Day Wise — Last 7 Days",    "day",   7),
+                ("📆  Week Wise — Last 4 Weeks",  "week",  4),
+                ("🗓️  Month Wise — Last 6 Months","month", 6),
             ]:
                 accent, _ = _section_colors[period]
+                agg = _bucket_aggregate(scope_df, _freq[period], n)
                 st.markdown(
                     f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
                     f"text-transform:uppercase;letter-spacing:0.7px;"
                     f"padding-left:3px;margin-bottom:1px;'>{title}</div>",
                     unsafe_allow_html=True,
                 )
+                buckets = _time_buckets(scope_df, period, n)
                 with st.container(border=True):
                     cg1, cg2 = st.columns([6.5, 3.5], gap="small")
                     with cg1:
                         st.plotly_chart(
-                            _clustered_bar(agg), use_container_width=True,
+                            _marimekko(buckets), use_container_width=True,
                             config={"displayModeBar": False},
+                            key=f"mk_{period}",
                         )
                     with cg2:
                         st.markdown(
