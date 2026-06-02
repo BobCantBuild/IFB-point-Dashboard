@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime as _dt
+from datetime import date, datetime as _dt, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 _APP_DIR     = Path(__file__).resolve().parent
@@ -990,15 +991,7 @@ st.markdown("""
 # Admin overview dashboard — aggregate visualisation across all IFB Points.
 # Shown after sign-in when there is no franchise code in the URL.
 # --------------------------------------------------------------------------- #
-@st.cache_data(ttl=60)
-def _load_overview_df() -> pd.DataFrame:
-    """Load all leads once (cached 60s) for the overview console."""
-    with sqlite3.connect(DB_PATH) as conn:
-        return pd.read_sql_query(
-            "SELECT ifb_point, status, final_status, interested, follow_up, lead_date "
-            "FROM api_leads",
-            conn,
-        )
+from overview_dashboard import render_overview_dashboard as _render_overview_dashboard_ext
 
 
 _STAGE_COLORS  = {"Post-Purchase": "#2563EB", "1st 30 days call": "#0891B2",
@@ -1007,303 +1000,6 @@ _STATUS_COLORS = {"Contacted": "#16A34A", "Not Contacted": "#DC2626",
                   "RnR": "#D97706", "Pending": "#CBD5E1"}
 
 
-# label → (accent color, tinted background, icon)
-_KPI_STYLE = {
-    "IFB Points":    ("#4F46E5", "#EEF2FF", "🏪"),
-    "Total Leads":   ("#0EA5E9", "#F0F9FF", "👥"),
-    "Contacted":     ("#16A34A", "#F0FDF4", "✅"),
-    "Not Contacted": ("#DC2626", "#FEF2F2", "🚫"),
-    "RnR":           ("#D97706", "#FFFBEB", "🔁"),
-    "WIN":           ("#059669", "#ECFDF5", "🏆"),
-    "LOST":          ("#E11D48", "#FFF1F2", "💔"),
-    "Pending":       ("#64748B", "#F8FAFC", "⏳"),
-}
-
-
-def _kpi_card(col, label, value):
-    color, tint, icon = _KPI_STYLE.get(label, ("#0F172A", "#F8FAFC", "•"))
-    col.markdown(
-        f"<div style='background:{tint};border:1px solid {color}33;border-radius:14px;"
-        f"padding:11px 13px;height:76px;display:flex;flex-direction:column;"
-        f"justify-content:space-between;box-shadow:0 1px 2px rgba(15,23,42,.04);'>"
-        f"<div style='display:flex;align-items:center;justify-content:space-between;'>"
-        f"<span style='font-size:9px;font-weight:800;color:{color};text-transform:uppercase;"
-        f"letter-spacing:0.5px;line-height:1.1;'>{label}</span>"
-        f"<span style='font-size:14px;line-height:1;'>{icon}</span></div>"
-        f"<div style='font-size:24px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _donut(df_col, title, color_map, height=215):
-    counts = df_col.value_counts().reset_index()
-    counts.columns = ["k", "v"]
-    total = int(counts["v"].sum())
-    fig = px.pie(counts, names="k", values="v", hole=0.66,
-                 color="k", color_discrete_map=color_map)
-    fig.update_traces(textposition="inside", textinfo="percent",
-                      textfont_size=10, sort=False,
-                      hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
-                      marker=dict(line=dict(color="#FFFFFF", width=1.5)))
-    # Total count in the centre hole — fills the donut and adds context
-    fig.add_annotation(
-        text=f"<b>{total:,}</b><br><span style='font-size:9px;color:#94A3B8;'>leads</span>",
-        x=0.5, y=0.5, showarrow=False, xanchor="center", yanchor="middle",
-        font=dict(size=17, color="#0F172A"),
-    )
-    fig.update_layout(
-        height=height, title=title,
-        margin=dict(l=8, r=8, t=34, b=40),
-        title_font=dict(size=13, color="#0F172A"),
-        font=dict(size=10),
-        legend=dict(orientation="h", yanchor="top", y=-0.04,
-                    xanchor="center", x=0.5, font=dict(size=9)),
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    return fig
-
-
-def _render_overview_dashboard() -> None:
-    # Neutralise the global table/header CSS that bleeds into this screen
-    # (the single-point operational dashboard never renders here, so it's safe
-    # to reset gap / margin / padding back to comfortable analytics defaults).
-    st.markdown(
-        """<style>
-          /* ── Modern analytics console theme ───────────────────────────── */
-          .stApp { background:linear-gradient(180deg,#F4F6FB 0%,#EEF1F8 100%) !important; }
-          .block-container { padding:14px 26px 10px !important; max-width:100% !important; }
-          [data-testid="stHeader"], #MainMenu, footer { display:none !important; }
-
-          section.main [data-testid="stVerticalBlock"] { gap:0.95rem !important; }
-          section.main [data-testid="stHorizontalBlock"] { margin:0 !important; }
-
-          /* ── Left rail point list ─────────────────────────────────────── */
-          div[data-testid="stRadio"] > div { gap:2px !important; }
-          div[data-testid="stRadio"] label {
-            font-size:12.5px !important; padding:6px 10px !important;
-            margin:0 !important; border-radius:9px !important; width:100%;
-            transition:all .12s ease; cursor:pointer; color:#334155 !important;
-          }
-          div[data-testid="stRadio"] label:hover { background:#EEF2FF !important; }
-          /* highlight the selected point */
-          div[data-testid="stRadio"] label:has(input:checked) {
-            background:#4F46E5 !important;
-          }
-          div[data-testid="stRadio"] label:has(input:checked) p { color:#FFFFFF !important; font-weight:700 !important; }
-          div[data-testid="stRadio"] label:has(input:checked) div[data-baseweb="radio"] > div:first-child { display:none; }
-
-          /* ── Chart cards ──────────────────────────────────────────────── */
-          [data-testid="stPlotlyChart"] {
-            background:#FFFFFF; border:1px solid #E8ECF4; border-radius:16px;
-            padding:6px 10px; box-shadow:0 2px 8px rgba(15,23,42,.05);
-          }
-          /* ── Search box ───────────────────────────────────────────────── */
-          [data-testid="stTextInput"] input {
-            border-radius:10px !important; border:1px solid #E2E8F0 !important;
-            background:#FFFFFF !important; font-size:12.5px !important;
-            box-shadow:0 1px 2px rgba(15,23,42,.04) !important;
-          }
-          /* ── Rail container ───────────────────────────────────────────── */
-          .st-key-rail_box {
-            background:#FFFFFF !important; border:1px solid #E8ECF4 !important;
-            border-radius:16px !important; box-shadow:0 2px 8px rgba(15,23,42,.05) !important;
-          }
-          /* ── Buttons ──────────────────────────────────────────────────── */
-          .stButton > button, [data-testid="stLinkButton"] a {
-            border-radius:10px !important; font-weight:600 !important;
-            border:1px solid #E2E8F0 !important;
-          }
-        </style>""",
-        unsafe_allow_html=True,
-    )
-
-    df = _load_overview_df().copy()
-    if df.empty:
-        st.info("No data available yet.")
-        return
-
-    df["status"]       = df["status"].fillna("").replace("", "Pending")
-    df["final_status"] = df["final_status"].fillna("").replace("", "—")
-    df["interested"]   = df["interested"].fillna("").replace("", "—")
-    df["stage"]        = df["follow_up"].map(_BUCKET_TO_STAGE).fillna("Other")
-    df["point_name"]   = df["ifb_point"].map(_CHANNEL_NAMES).fillna(df["ifb_point"])
-    df["lead_dt"]      = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
-
-    _codes = sorted(df["ifb_point"].unique(),
-                    key=lambda c: _CHANNEL_NAMES.get(c, c).lower())
-
-    _INT_COLORS = {"Interested": "#16A34A", "Not Interested": "#DC2626", "—": "#E2E8F0"}
-
-    # ── Top bar ───────────────────────────────────────────────────────────────
-    tb1, tb2 = st.columns([8, 1.1])
-    with tb1:
-        st.markdown(
-            "<div style='font-size:23px;font-weight:800;color:#0F172A;line-height:1.1;'>"
-            "📊 IFB Points — Analytics Console</div>"
-            "<div style='font-size:12.5px;color:#94A3B8;font-weight:500;"
-            "margin-top:3px;padding-bottom:6px;'>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    with tb2:
-        if st.button("Sign Out", use_container_width=True):
-            st.session_state["_authed"] = False
-            st.query_params.clear()
-            st.rerun()
-
-    st.divider()
-
-    # ── Two-pane: left rail | main ─────────────────────────────────────────────
-    rail, main = st.columns([1.85, 8.15], gap="medium")
-
-    with rail:
-        _q = st.text_input("search", placeholder="🔍 Search IFB Point…",
-                           label_visibility="collapsed", key="_ov_search").strip().lower()
-        _filtered = [c for c in _codes
-                     if (not _q) or _q in _CHANNEL_NAMES.get(c, c).lower() or _q in c]
-        _options = ["__ALL__"] + _filtered
-
-        def _fmt(c):
-            return "📊  All Points" if c == "__ALL__" else _CHANNEL_NAMES.get(c, c)
-
-        with st.container(height=496, border=True, key="rail_box"):
-            sel = st.radio("points", options=_options, format_func=_fmt,
-                           label_visibility="collapsed", key="_ov_sel")
-
-    with main:
-        is_all = (sel == "__ALL__")
-        view_df = df if is_all else df[df["ifb_point"] == sel]
-
-        # Scope header — rendered in BOTH views so the two layouts align
-        # vertically (same header height → rail ends at the same line).
-        sh1, sh2 = st.columns([7, 1.4])
-        with sh1:
-            if is_all:
-                st.markdown(
-                    f"<div style='font-size:17px;font-weight:800;color:#0F172A;'>"
-                    f"📊 All IFB Points &nbsp;<span style='font-size:12px;"
-                    f"font-weight:500;color:#94A3B8;'>&middot; {df['ifb_point'].nunique()} franchises</span></div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"<div style='font-size:17px;font-weight:800;color:#0F172A;'>"
-                    f"🏪 {_CHANNEL_NAMES.get(sel, sel)}</div>"
-                    f"<div style='font-size:11.5px;color:#94A3B8;'>Code: {sel}</div>",
-                    unsafe_allow_html=True,
-                )
-        with sh2:
-            if not is_all:
-                st.link_button("Open ↗", url=f"?id={sel}", use_container_width=True)
-
-        # KPI strip
-        total_leads = len(view_df)
-        contacted   = int((view_df["status"] == "Contacted").sum())
-        not_cont    = int((view_df["status"] == "Not Contacted").sum())
-        rnr         = int((view_df["status"] == "RnR").sum())
-        pending     = int((view_df["status"] == "Pending").sum())
-        win         = int((view_df["final_status"] == "WIN").sum())
-        lost        = int((view_df["final_status"] == "LOST").sum())
-
-        _kpi = []
-        if is_all:
-            _kpi.append(("IFB Points", df["ifb_point"].nunique()))
-        _kpi += [("Total Leads", total_leads),
-                 ("Contacted", contacted),
-                 ("Not Contacted", not_cont),
-                 ("RnR", rnr),
-                 ("WIN", win),
-                 ("LOST", lost),
-                 ("Pending", pending)]
-        for _c, (lbl, val) in zip(st.columns(len(_kpi), gap="small"), _kpi):
-            _kpi_card(_c, lbl, val)
-
-        # Guaranteed separation so every chart sits clearly BELOW the KPI row
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-        # ── Charts ────────────────────────────────────────────────────────────
-        if is_all:
-            # Row 1: top points bar  +  daily trend
-            r1a, r1b = st.columns([5.2, 4.8], gap="medium")
-            with r1a:
-                top = (view_df.groupby("point_name").size()
-                       .sort_values(ascending=False).head(11)
-                       .reset_index(name="Leads"))
-                figb = px.bar(top, x="Leads", y="point_name", orientation="h",
-                              color="Leads",
-                              color_continuous_scale=["#C7D2FE", "#6366F1", "#4338CA"],
-                              text="Leads")
-                figb.update_traces(textposition="outside", textfont_size=9,
-                                   cliponaxis=False)
-                figb.update_layout(
-                    height=232, title="Top Points by Lead Volume",
-                    yaxis={"categoryorder": "total ascending", "title": "",
-                           "tickfont": dict(size=9.5)},
-                    xaxis={"title": "", "showgrid": False, "showticklabels": False},
-                    coloraxis_showscale=False,
-                    margin=dict(l=8, r=28, t=30, b=6), plot_bgcolor="#FFFFFF",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    title_font=dict(size=13, color="#0F172A"), font=dict(size=10),
-                )
-                st.plotly_chart(figb, use_container_width=True, config={"displayModeBar": False})
-            with r1b:
-                trend = (view_df.dropna(subset=["lead_dt"])
-                         .groupby("lead_dt").size().reset_index(name="Leads")
-                         .sort_values("lead_dt"))
-                trend["day"] = trend["lead_dt"].dt.strftime("%d %b")
-                figl = px.area(trend, x="day", y="Leads", markers=True)
-                figl.update_traces(line_color="#4F46E5", fillcolor="rgba(79,70,229,0.10)",
-                                   line_width=2.5, marker=dict(size=7, color="#4F46E5"))
-                figl.update_layout(
-                    height=232, title="Daily Leads Generated",
-                    xaxis={"title": "", "tickfont": dict(size=9.5), "type": "category"},
-                    yaxis={"title": "", "tickfont": dict(size=9.5),
-                           "gridcolor": "#EEF2F7"},
-                    margin=dict(l=8, r=14, t=30, b=6), plot_bgcolor="#FFFFFF",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    title_font=dict(size=13, color="#0F172A"), font=dict(size=10),
-                )
-                st.plotly_chart(figl, use_container_width=True, config={"displayModeBar": False})
-
-            # Row 2: three donuts
-            d1, d2, d3 = st.columns(3, gap="medium")
-            d1.plotly_chart(_donut(view_df["stage"], "By Follow-Up Stage", _STAGE_COLORS),
-                            use_container_width=True, config={"displayModeBar": False})
-            d2.plotly_chart(_donut(view_df["status"], "By Call Status", _STATUS_COLORS),
-                            use_container_width=True, config={"displayModeBar": False})
-            d3.plotly_chart(_donut(view_df["interested"], "By Interest", _INT_COLORS),
-                            use_container_width=True, config={"displayModeBar": False})
-        else:
-            # Single point — Row 1: three donuts (match All-Points donut height)
-            d1, d2, d3 = st.columns(3, gap="medium")
-            d1.plotly_chart(_donut(view_df["stage"], "Follow-Up Stage", _STAGE_COLORS, height=215),
-                            use_container_width=True, config={"displayModeBar": False})
-            d2.plotly_chart(_donut(view_df["status"], "Call Status", _STATUS_COLORS, height=215),
-                            use_container_width=True, config={"displayModeBar": False})
-            d3.plotly_chart(_donut(view_df["interested"], "Interest", _INT_COLORS, height=215),
-                            use_container_width=True, config={"displayModeBar": False})
-
-            # Row 2: daily-leads AREA chart (identical format to the All-Points view)
-            trend = (view_df.dropna(subset=["lead_dt"])
-                     .groupby("lead_dt").size().reset_index(name="Leads")
-                     .sort_values("lead_dt"))
-            trend["day"] = trend["lead_dt"].dt.strftime("%d %b")
-            figl = px.area(trend, x="day", y="Leads", markers=True)
-            figl.update_traces(line_color="#4F46E5", fillcolor="rgba(79,70,229,0.10)",
-                               line_width=2.5, marker=dict(size=7, color="#4F46E5"))
-            figl.update_layout(
-                height=232, title="Daily Leads Generated",
-                xaxis={"title": "", "tickfont": dict(size=9.5), "type": "category"},
-                yaxis={"title": "", "tickfont": dict(size=9.5), "gridcolor": "#EEF2F7"},
-                margin=dict(l=8, r=14, t=30, b=6), plot_bgcolor="#FFFFFF",
-                paper_bgcolor="rgba(0,0,0,0)",
-                title_font=dict(size=13, color="#0F172A"), font=dict(size=10),
-            )
-            st.plotly_chart(figl, use_container_width=True, config={"displayModeBar": False})
-
-
-# --------------------------------------------------------------------------- #
 # Login gate — when there is NO IFB code in the URL:
 #   • not signed in  → show ONLY the sign-in screen
 #   • signed in      → show the all-points overview dashboard
@@ -1313,7 +1009,7 @@ if not _resolve_point_code():
     # Persisted login: a ?auth=ok query param keeps the session across reloads
     if st.session_state.get("_authed") or st.query_params.get("auth") == "ok":
         st.session_state["_authed"] = True
-        _render_overview_dashboard()
+        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE)
         st.stop()
 
     # Strip the fixed-header top padding + restore normal vertical spacing
@@ -1765,13 +1461,10 @@ def edit_lead_dialog(row: dict):
                 cur_a = raw_a if isinstance(raw_a, date) else pd.to_datetime(raw_a, errors="coerce").date()
         except (TypeError, ValueError):
             cur_a = None
-    if isinstance(cur_a, date) and cur_a < today:
-        cur_a = today
-
-    # ── Final-status session key ─────────────────────────────────────────────
-    _fs_key = f"_dlg_fs_val_{cid}"
-    if _fs_key not in st.session_state:
-        st.session_state[_fs_key] = cur_fs if cur_fs in ("WIN", "LOST") else None
+    _tomorrow = today + timedelta(days=1)
+    # Clamp any past/today date to tomorrow (min allowed)
+    if isinstance(cur_a, date) and cur_a < _tomorrow:
+        cur_a = _tomorrow
 
     s_opts = ["—"] + STATUS_OPTIONS
     i_opts = ["—"] + INTEREST_OPTIONS
@@ -1794,38 +1487,26 @@ def edit_lead_dialog(row: dict):
                           index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
                           key=f"dlg_i_{cid}")
 
-        # Q3: Next Appointment (optional)
-        na = st.date_input("Next Appointment",
-                           value=cur_a, min_value=today, key=f"dlg_a_{cid}")
+        # Q3: Next Appointment — only shown when Interested (skip if Not Interested)
+        if ni == "Interested":
+            na = st.date_input("Next Appointment",
+                               value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q4: Final Status toggle
-        nfs = st.session_state[_fs_key]
-        st.markdown("<div class='fs-label'>Final Status</div>", unsafe_allow_html=True)
-        _fc1, _fc2, _fc3 = st.columns(3, gap="small")
-        with _fc1:
-            st.button("WIN",  key=f"dlg_fs_win_{cid}",  use_container_width=True,
-                      type="primary" if nfs == "WIN"  else "secondary",
-                      on_click=lambda: st.session_state.update({_fs_key: "WIN"}))
-        with _fc2:
-            st.button("Null", key=f"dlg_fs_null_{cid}", use_container_width=True,
-                      type="primary" if nfs is None   else "secondary",
-                      on_click=lambda: st.session_state.update({_fs_key: None}))
-        with _fc3:
-            st.button("LOST", key=f"dlg_fs_lose_{cid}", use_container_width=True,
-                      type="primary" if nfs == "LOST" else "secondary",
-                      on_click=lambda: st.session_state.update({_fs_key: "LOST"}))
-        nfs = st.session_state[_fs_key]
-
-        # Q5: Remarks
+        # Q4: Remarks
         nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
+
+        # Final Status — auto-derived:
+        #   Interested     → None ("—")
+        #   Not Interested → "LOST"
+        nfs = "LOST" if ni == "Not Interested" else None
 
         # Save enabled when: Interested answered + Remarks filled
         _can_save = (ni != "—") and (nr.strip() != "")
 
     elif ns in ("Not Contacted", "RnR"):
-        # Q2: Next Appointment
+        # Q2: Next Appointment (mandatory, starts from tomorrow)
         na = st.date_input("Next Appointment",
-                           value=cur_a, min_value=today, key=f"dlg_a_{cid}")
+                           value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
         # Q3: Remarks
         nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
