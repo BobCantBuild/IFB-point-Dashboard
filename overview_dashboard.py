@@ -386,22 +386,34 @@ def _marimekko(buckets: list[tuple], height: int = 158,
     # Only draw segments that are checked; default = all visible
     active = visible_segs if visible_segs is not None else {s for s, _ in _MK_SEGMENTS}
 
+    # Build the full column tooltip once per column — same content for every segment trace,
+    # so hovering ANY bar in a column always shows the complete breakdown with circles.
+    col_customs = []
+    for i, t in enumerate(totals):
+        circle_rows = "".join(
+            f"<span style='color:{c};'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>{s}</b>"
+            f"<span style='color:#94A3B8;'>"
+            f"  {breakdown[i][s]:,}  ({(breakdown[i][s]/t*100) if t else 0:.1f}%)"
+            f"</span><br>"
+            for s, c in _MK_SEGMENTS if s in active
+        )
+        col_customs.append([labels[i].replace("<br>", " "), t, circle_rows])
+
     for seg, color in _MK_SEGMENTS:
         if seg not in active:
             continue
-        ys, customs = [], []
-        for i, t in enumerate(totals):
-            cnt = breakdown[i][seg]
-            pct = (cnt / t * 100) if t else 0
-            ys.append(pct)
-            customs.append([labels[i].replace("<br>", " "), cnt, t])
+        ys = [(breakdown[i][seg] / totals[i] * 100) if totals[i] else 0
+              for i in range(len(totals))]
         fig.add_trace(go.Bar(
             name=seg, x=x_labels, y=ys,
             marker_color=color, marker_line=dict(color="#FFFFFF", width=1),
-            customdata=customs,
-            # No extra ● — Plotly unified hover already shows its own colored square
+            customdata=col_customs,
             hovertemplate=(
-                f"<b>{seg}</b>: %{{customdata[1]:,}} (%{{y:.1f}}%)"
+                "<b style='color:#E2E8F0;font-size:12px;'>%{customdata[0]}</b>"
+                "<span style='color:#64748B;'>  ·  %{customdata[1]:,} leads</span>"
+                "<br><br>"
+                "%{customdata[2]}"
                 "<extra></extra>"
             ),
         ))
@@ -410,18 +422,17 @@ def _marimekko(buckets: list[tuple], height: int = 158,
         barmode="stack", height=height, bargap=0.18,
         margin=dict(l=8, r=8, t=26, b=22),
         plot_bgcolor="#FFFFFF", paper_bgcolor="rgba(0,0,0,0)",
-        # Unified tooltip: one box shows all visible segments for the hovered column
-        hovermode="x unified",
+        hovermode="closest",
+        hoverdistance=50,
         hoverlabel=dict(
             bgcolor="#1E293B",
             bordercolor="#4F46E5",
-            namelength=-1,
+            namelength=0,
             font=dict(size=11, color="#F1F5F9", family="Inter, sans-serif"),
         ),
         xaxis=dict(
             type="category", tickfont=dict(size=8, color="#475569"),
             showgrid=False, zeroline=False,
-            # Spike line traces the column edge when hovering
             showspikes=True,
             spikesnap="cursor",
             spikemode="across",
@@ -516,6 +527,46 @@ def render_overview_dashboard(
         bucket_to_stage: {api_bucket_key: stage_label} mapping
     """
     st.markdown(_OVERVIEW_CSS, unsafe_allow_html=True)
+
+    # ── JS: rounded tooltip corners + column highlight on hover ──────────────
+    st.html("""
+    <script>
+    (function() {
+      const obs = new MutationObserver(() => {
+        // 1. Rounded corners on hoverlabel rects
+        document.querySelectorAll('.hoverlabel rect').forEach(r => {
+          r.setAttribute('rx', '8'); r.setAttribute('ry', '8');
+        });
+        // 2. Column highlight: add animated indigo border around hovered bar column
+        document.querySelectorAll('.plot-container').forEach(pc => {
+          if (pc._hoverInit) return;
+          pc._hoverInit = true;
+          pc.addEventListener('mousemove', e => {
+            const bars = pc.querySelectorAll('.bars .point path');
+            bars.forEach(b => {
+              const bb = b.getBoundingClientRect();
+              const inCol = e.clientX >= bb.left - 2 && e.clientX <= bb.right + 2;
+              b.style.transition = 'stroke-width .15s ease, stroke .15s ease';
+              if (inCol) {
+                b.style.stroke = '#6366F1';
+                b.style.strokeWidth = '2.5px';
+              } else {
+                b.style.stroke = '#FFFFFF';
+                b.style.strokeWidth = '1px';
+              }
+            });
+          });
+          pc.addEventListener('mouseleave', () => {
+            pc.querySelectorAll('.bars .point path').forEach(b => {
+              b.style.stroke = '#FFFFFF'; b.style.strokeWidth = '1px';
+            });
+          });
+        });
+      });
+      obs.observe(document.body, {childList: true, subtree: true});
+    })();
+    </script>
+    """)
 
     df = _load_df(str(db_path)).copy()
     if df.empty:
