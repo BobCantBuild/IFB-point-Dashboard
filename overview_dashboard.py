@@ -53,10 +53,55 @@ _OVERVIEW_CSS = """
   }
 
   /* ── Plotly charts ── */
+  /* Inner chart card — single clean card */
   [data-testid="stPlotlyChart"] {
     background:#FFFFFF !important; border:1px solid #E0E7FF !important;
     border-radius:14px !important; padding:3px 5px !important;
     box-shadow:0 2px 12px rgba(79,70,229,0.08) !important;
+  }
+  /* Outer wrapper boxes (KPI row + the 3 sections): keep their SPACE so
+     nothing shifts, but hide the border line → no double-border. */
+  .st-key-kpi_row, .st-key-sec_day, .st-key-sec_week, .st-key-sec_month {
+    border-color:transparent !important;
+    box-shadow:none !important;
+    background:transparent !important;
+  }
+
+  /* ── Segment toggle checkboxes ── */
+  /* Bold BLACK label — must win over all other rules */
+  .st-key-sec_day   [data-testid="stCheckbox"] label p,
+  .st-key-sec_week  [data-testid="stCheckbox"] label p,
+  .st-key-sec_month [data-testid="stCheckbox"] label p {
+    font-size:11px !important; font-weight:900 !important;
+    color:#000000 !important; white-space:nowrap !important;
+    display:inline !important; visibility:visible !important;
+    opacity:1 !important;
+  }
+  /* Compact row — no extra vertical space */
+  .st-key-sec_day   [data-testid="stCheckbox"],
+  .st-key-sec_week  [data-testid="stCheckbox"],
+  .st-key-sec_month [data-testid="stCheckbox"] {
+    padding:1px 2px !important; margin:0 !important;
+  }
+  /* Checkbox box itself — make it square and visible */
+  .st-key-sec_day   [data-baseweb="checkbox"] > div:first-child,
+  .st-key-sec_week  [data-baseweb="checkbox"] > div:first-child,
+  .st-key-sec_month [data-baseweb="checkbox"] > div:first-child {
+    width:13px !important; height:13px !important;
+    border-radius:3px !important; border:2px solid #6B7280 !important;
+  }
+  /* Checked state — indigo fill with tick */
+  .st-key-sec_day   [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child,
+  .st-key-sec_week  [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child,
+  .st-key-sec_month [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child {
+    background:#4F46E5 !important; border-color:#4F46E5 !important;
+  }
+  /* Un-checked label — clearly muted so you can see what's off */
+  .st-key-sec_day   [data-testid="stCheckbox"]:not(:has(input:checked)) label p,
+  .st-key-sec_week  [data-testid="stCheckbox"]:not(:has(input:checked)) label p,
+  .st-key-sec_month [data-testid="stCheckbox"]:not(:has(input:checked)) label p {
+    color:#9CA3AF !important; font-weight:500 !important;
+    text-decoration:line-through !important;
   }
 
   /* ── Buttons ── */
@@ -316,7 +361,8 @@ def _time_buckets(df: pd.DataFrame, period: str, n: int) -> list[tuple]:
     return buckets
 
 
-def _marimekko(buckets: list[tuple], height: int = 158) -> go.Figure:
+def _marimekko(buckets: list[tuple], height: int = 158,
+               visible_segs: set | None = None) -> go.Figure:
     """
     Time-based Marimekko: one column per time period (oldest → today),
     column WIDTH ∝ that period's lead volume, HEIGHT = status/interest mix.
@@ -343,7 +389,12 @@ def _marimekko(buckets: list[tuple], height: int = 158) -> go.Figure:
     # and all 7 / 4 / 6 fit cleanly, regardless of volume.
     x_labels = [f"{lbl}<br><b>{t:,}</b>" for lbl, t in zip(labels, totals)]
 
+    # Only draw segments that are checked; default = all visible
+    active = visible_segs if visible_segs is not None else {s for s, _ in _MK_SEGMENTS}
+
     for seg, color in _MK_SEGMENTS:
+        if seg not in active:
+            continue
         ys, customs = [], []
         for i, t in enumerate(totals):
             cnt = breakdown[i][seg]
@@ -375,9 +426,7 @@ def _marimekko(buckets: list[tuple], height: int = 158) -> go.Figure:
             gridcolor="#F1F5F9", zeroline=False,
         ),
         font=dict(size=9, color="#475569"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0,
-                    xanchor="center", x=0.5, font=dict(size=8, color="#475569"),
-                    bgcolor="rgba(255,255,255,0)"),
+        showlegend=False,   # legend replaced by custom checkboxes above the chart
     )
     return fig
 
@@ -498,7 +547,7 @@ def render_overview_dashboard(
             # ── C container: exact same height as right-side content ──
             # Right side = KPI(78) + 3×section(198 each) + gaps(≈30) ≈ 672px
             # This single scrollable container IS the C section.
-            _RAIL_H = 650
+            _RAIL_H = 710
 
             if "_ov_sel" not in st.session_state:
                 st.session_state["_ov_sel"] = set()
@@ -565,8 +614,8 @@ def render_overview_dashboard(
             def _pct(n: int) -> float:
                 return (n / total_leads * 100) if total_leads else 0.0
 
-            # F — KPI ROW
-            with st.container(border=True):
+            # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
+            with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
                 _kpi_card(kc1, "IFB Points",    len(scope_codes))
                 _kpi_card(kc2, "Total Leads",   total_leads)
@@ -596,11 +645,36 @@ def render_overview_dashboard(
                     unsafe_allow_html=True,
                 )
                 buckets = _time_buckets(scope_df, period, n)
-                with st.container(border=True):
+                # Pre-compute visible_segs before entering the container
+                visible_segs = set()
+                for seg, _ in _MK_SEGMENTS:
+                    _key = f"cb_{period}_{seg}"
+                    if _key not in st.session_state:
+                        st.session_state[_key] = True
+                    if st.session_state[_key]:
+                        visible_segs.add(seg)
+
+                with st.container(border=True, key=f"sec_{period}"):
+                    # Checkboxes constrained to chart-column width, above both columns
+                    cb_wrap, _ = st.columns([6.5, 3.5], gap="small")
+                    with cb_wrap:
+                        cb_cols = st.columns(len(_MK_SEGMENTS), gap="small")
+                        for (seg, color), cb_col in zip(_MK_SEGMENTS, cb_cols):
+                            _key = f"cb_{period}_{seg}"
+                            checked = cb_col.checkbox(
+                                seg, value=st.session_state.get(_key, True), key=_key
+                            )
+                            if checked:
+                                visible_segs.add(seg)
+                            else:
+                                visible_segs.discard(seg)
+
+                    # Chart and insights now start at the same vertical position
                     cg1, cg2 = st.columns([6.5, 3.5], gap="small")
                     with cg1:
                         st.plotly_chart(
-                            _marimekko(buckets), use_container_width=True,
+                            _marimekko(buckets, visible_segs=visible_segs),
+                            use_container_width=True,
                             config={"displayModeBar": False},
                             key=f"mk_{period}",
                         )
