@@ -83,18 +83,12 @@ _OVERVIEW_CSS = """
   .st-key-sec_month [data-testid="stCheckbox"] {
     padding:1px 2px !important; margin:0 !important;
   }
-  /* Checkbox box itself — make it square and visible */
-  .st-key-sec_day   [data-baseweb="checkbox"] > div:first-child,
-  .st-key-sec_week  [data-baseweb="checkbox"] > div:first-child,
-  .st-key-sec_month [data-baseweb="checkbox"] > div:first-child {
+  /* Circle shape base — colored per-segment via dynamic CSS injected at render time */
+  .st-key-sec_day   [data-baseweb="checkbox"] > span:first-child,
+  .st-key-sec_week  [data-baseweb="checkbox"] > span:first-child,
+  .st-key-sec_month [data-baseweb="checkbox"] > span:first-child {
+    border-radius:50% !important;
     width:13px !important; height:13px !important;
-    border-radius:3px !important; border:2px solid #6B7280 !important;
-  }
-  /* Checked state — indigo fill with tick */
-  .st-key-sec_day   [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child,
-  .st-key-sec_week  [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child,
-  .st-key-sec_month [data-testid="stCheckbox"]:has(input:checked) [data-baseweb="checkbox"] > div:first-child {
-    background:#4F46E5 !important; border-color:#4F46E5 !important;
   }
   /* Un-checked label — clearly muted so you can see what's off */
   .st-key-sec_day   [data-testid="stCheckbox"]:not(:has(input:checked)) label p,
@@ -631,6 +625,28 @@ def render_overview_dashboard(
                 "month": ("#7C3AED", "#F5F3FF"),   # violet
             }
             _freq = {"day": "D", "week": "W", "month": "M"}
+
+            # Inject per-segment circle CSS (once, before the loop)
+            def _seg_css_key(period: str, seg: str) -> str:
+                return f"cb_{period}_{seg.lower().replace(' ', '_')}"
+
+            _circle_css = "<style>"
+            for period_name in ("day", "week", "month"):
+                for seg, color in _MK_SEGMENTS:
+                    k = _seg_css_key(period_name, seg)
+                    _circle_css += f"""
+  .st-key-{k} [data-baseweb="checkbox"] > span:first-child {{
+    border-radius:50% !important;
+    border-color:{color} !important;
+    width:13px !important; height:13px !important;
+  }}
+  .st-key-{k}:has(input:checked) [data-baseweb="checkbox"] > span:first-child {{
+    background:{color} !important;
+    border-color:{color} !important;
+  }}"""
+            _circle_css += "</style>"
+            st.markdown(_circle_css, unsafe_allow_html=True)
+
             for title, period, n in [
                 ("📅  Day Wise — Last 7 Days",    "day",   7),
                 ("📆  Week Wise — Last 4 Weeks",  "week",  4),
@@ -648,7 +664,7 @@ def render_overview_dashboard(
                 # Pre-compute visible_segs before entering the container
                 visible_segs = set()
                 for seg, _ in _MK_SEGMENTS:
-                    _key = f"cb_{period}_{seg}"
+                    _key = _seg_css_key(period, seg)
                     if _key not in st.session_state:
                         st.session_state[_key] = True
                     if st.session_state[_key]:
@@ -660,7 +676,7 @@ def render_overview_dashboard(
                     with cb_wrap:
                         cb_cols = st.columns(len(_MK_SEGMENTS), gap="small")
                         for (seg, color), cb_col in zip(_MK_SEGMENTS, cb_cols):
-                            _key = f"cb_{period}_{seg}"
+                            _key = _seg_css_key(period, seg)
                             checked = cb_col.checkbox(
                                 seg, value=st.session_state.get(_key, True), key=_key
                             )
