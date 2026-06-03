@@ -229,7 +229,7 @@ def _bucket_aggregate(df: pd.DataFrame, freq: str, n_buckets: int = 7) -> pd.Dat
     elif freq == "W":
         ws  = today_ts - pd.Timedelta(days=today_ts.weekday())
         idx = pd.date_range(ws - pd.Timedelta(weeks=n_buckets - 1), ws, freq="W-MON")
-        labels = [f"W{d.strftime('%V')}  ·  {d.strftime('%d %b')}" for d in idx]
+        labels = [f"{d.strftime('%d')}-{(d + pd.Timedelta(days=6)).strftime('%d %b')}" for d in idx]
         keys   = ((df["lead_dt"] - pd.to_timedelta(df["lead_dt"].dt.weekday, unit="D"))
                   .dt.normalize() if not df.empty else idx)
     else:  # "M"
@@ -339,7 +339,7 @@ def _time_buckets(df: pd.DataFrame, period: str, n: int) -> list[tuple]:
     elif period == "week":
         ws     = today_ts.normalize() - pd.Timedelta(days=today_ts.weekday())
         idx    = pd.date_range(ws - pd.Timedelta(weeks=n - 1), ws, freq="W-MON")
-        labels = [f"W{d.strftime('%V')}<br>{d.strftime('%d %b')}" for d in idx]
+        labels = [f"{d.strftime('%d')}-{(d + pd.Timedelta(days=6)).strftime('%d %b')}" for d in idx]
         keys   = ((df["lead_dt"] - pd.to_timedelta(df["lead_dt"].dt.weekday, unit="D"))
                   .dt.normalize() if not df.empty else None)
     else:  # month
@@ -399,10 +399,10 @@ def _marimekko(buckets: list[tuple], height: int = 158,
             name=seg, x=x_labels, y=ys,
             marker_color=color, marker_line=dict(color="#FFFFFF", width=1),
             customdata=customs,
+            # No extra ● — Plotly unified hover already shows its own colored square
             hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                + seg + ": %{customdata[1]:,} (%{y:.1f}%)"
-                + "<br>Period total: %{customdata[2]:,}<extra></extra>"
+                f"<b>{seg}</b>: %{{customdata[1]:,}} (%{{y:.1f}}%)"
+                "<extra></extra>"
             ),
         ))
 
@@ -410,9 +410,24 @@ def _marimekko(buckets: list[tuple], height: int = 158,
         barmode="stack", height=height, bargap=0.18,
         margin=dict(l=8, r=8, t=26, b=22),
         plot_bgcolor="#FFFFFF", paper_bgcolor="rgba(0,0,0,0)",
+        # Unified tooltip: one box shows all visible segments for the hovered column
+        hovermode="x unified",
+        hoverlabel=dict(
+            bgcolor="#1E293B",
+            bordercolor="#4F46E5",
+            namelength=-1,
+            font=dict(size=11, color="#F1F5F9", family="Inter, sans-serif"),
+        ),
         xaxis=dict(
             type="category", tickfont=dict(size=8, color="#475569"),
             showgrid=False, zeroline=False,
+            # Spike line traces the column edge when hovering
+            showspikes=True,
+            spikesnap="cursor",
+            spikemode="across",
+            spikedash="dot",
+            spikethickness=1.5,
+            spikecolor="#6366F1",
         ),
         yaxis=dict(
             range=[0, 100], ticksuffix="%",
@@ -420,7 +435,7 @@ def _marimekko(buckets: list[tuple], height: int = 158,
             gridcolor="#F1F5F9", zeroline=False,
         ),
         font=dict(size=9, color="#475569"),
-        showlegend=False,   # legend replaced by custom checkboxes above the chart
+        showlegend=False,
     )
     return fig
 
@@ -692,7 +707,7 @@ def render_overview_dashboard(
                             _marimekko(buckets, visible_segs=visible_segs),
                             use_container_width=True,
                             config={"displayModeBar": False},
-                            key=f"mk_{period}",
+                            key=f"mk3_{period}",
                         )
                     with cg2:
                         st.markdown(
