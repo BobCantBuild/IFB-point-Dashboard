@@ -1509,13 +1509,13 @@ def edit_lead_dialog(row: dict):
     if isinstance(cur_a, date) and cur_a < _tomorrow:
         cur_a = _tomorrow
 
-    s_opts = ["—"] + STATUS_OPTIONS
-    i_opts = ["—"] + INTEREST_OPTIONS
-
     # ── Q1: Status (always shown) ────────────────────────────────────────────
-    ns = st.selectbox("Call Status", s_opts,
-                      index=s_opts.index(cur_s) if cur_s in STATUS_OPTIONS else 0,
-                      key=f"dlg_s_{cid}")
+    ns = st.selectbox(
+        "Call Status", STATUS_OPTIONS,
+        index=STATUS_OPTIONS.index(cur_s) if cur_s in STATUS_OPTIONS else None,
+        placeholder="Contacted / Not Contacted / RnR",
+        key=f"dlg_s_{cid}",
+    )
 
     # defaults for fields that may not render
     ni  = None
@@ -1526,51 +1526,96 @@ def edit_lead_dialog(row: dict):
     # ── Conditional flow ─────────────────────────────────────────────────────
     if ns == "Contacted":
         # Q2: Interested?
-        ni = st.selectbox("Interested?", i_opts,
-                          index=i_opts.index(cur_i) if cur_i in INTEREST_OPTIONS else 0,
-                          key=f"dlg_i_{cid}")
+        ni = st.selectbox(
+            "Interested?", INTEREST_OPTIONS,
+            index=INTEREST_OPTIONS.index(cur_i) if cur_i in INTEREST_OPTIONS else None,
+            placeholder="Interested / Not Interested",
+            key=f"dlg_i_{cid}",
+        )
 
         # Q3: Next Appointment — only shown when Interested (skip if Not Interested)
         if ni == "Interested":
             na = st.date_input("Next Appointment",
                                value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q4: Remarks (60 char limit + live counter)
+        # Q4: Remarks (60 char limit + live JS counter)
         nr = st.text_area("Remarks", value=cur_r, height=90,
                           max_chars=60, key=f"dlg_r_{cid}")
         _left = 60 - len(nr)
         _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
-        st.markdown(
-            f"<div style='text-align:right;font-size:11px;font-weight:600;"
-            f"color:{_clr};margin-top:-10px;'>{_left} / 60 left</div>",
-            unsafe_allow_html=True,
-        )
+        st.html(f"""
+<div id="rc_{cid}" style="text-align:right;font-size:11px;font-weight:600;
+     color:{_clr};margin-top:-10px;">{_left} / 60 left</div>
+<script>
+(function(){{
+  var counter = document.getElementById('rc_{cid}');
+  function init(){{
+    var dlg = document.querySelector('[data-testid="stDialog"]');
+    if(!dlg || !counter) return false;
+    var ta = dlg.querySelector('textarea');
+    if(!ta) return false;
+    function upd(){{
+      var left = 60 - ta.value.length;
+      counter.textContent = left + ' / 60 left';
+      counter.style.color = left > 20 ? '#16A34A' : left > 5 ? '#D97706' : '#DC2626';
+    }}
+    ta.addEventListener('input', upd);
+    upd();
+    return true;
+  }}
+  var t = setInterval(function(){{ if(init()) clearInterval(t); }}, 50);
+}})();
+</script>""")
 
         # Final Status — auto-derived:
-        #   Interested     → None ("—")
+        #   Interested     → None
         #   Not Interested → "LOST"
         nfs = "LOST" if ni == "Not Interested" else None
 
-        # Save enabled when: Interested answered + Remarks filled
-        _can_save = (ni != "—") and (nr.strip() != "")
+        # Save enabled when all visible fields are filled:
+        # · Interested? must be answered
+        # · If Interested → Next Appointment must be set
+        # · Remarks must not be empty
+        _appt_ok  = (isinstance(na, date)) if ni == "Interested" else True
+        _can_save = (ni is not None) and _appt_ok and (nr.strip() != "")
 
     elif ns in ("Not Contacted", "RnR"):
         # Q2: Next Appointment (mandatory, starts from tomorrow)
         na = st.date_input("Next Appointment",
                            value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q3: Remarks (60 char limit + live counter)
+        # Q3: Remarks (60 char limit + live JS counter)
         nr = st.text_area("Remarks", value=cur_r, height=90,
                           max_chars=60, key=f"dlg_r_{cid}")
         _left = 60 - len(nr)
         _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
-        st.markdown(
-            f"<div style='text-align:right;font-size:11px;font-weight:600;"
-            f"color:{_clr};margin-top:-10px;'>{_left} / 60 left</div>",
-            unsafe_allow_html=True,
-        )
+        st.html(f"""
+<div id="rc_{cid}" style="text-align:right;font-size:11px;font-weight:600;
+     color:{_clr};margin-top:-10px;">{_left} / 60 left</div>
+<script>
+(function(){{
+  var counter = document.getElementById('rc_{cid}');
+  function init(){{
+    var dlg = document.querySelector('[data-testid="stDialog"]');
+    if(!dlg || !counter) return false;
+    var ta = dlg.querySelector('textarea');
+    if(!ta) return false;
+    function upd(){{
+      var left = 60 - ta.value.length;
+      counter.textContent = left + ' / 60 left';
+      counter.style.color = left > 20 ? '#16A34A' : left > 5 ? '#D97706' : '#DC2626';
+    }}
+    ta.addEventListener('input', upd);
+    upd();
+    return true;
+  }}
+  var t = setInterval(function(){{ if(init()) clearInterval(t); }}, 50);
+}})();
+</script>""")
 
-        # Save enabled when: Next Appointment set + Remarks filled
+        # Save enabled when all visible fields are filled:
+        # · Next Appointment must be a valid date
+        # · Remarks must not be empty
         _can_save = (isinstance(na, date)) and (nr.strip() != "")
 
     else:
