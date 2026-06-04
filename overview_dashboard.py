@@ -22,14 +22,14 @@ import streamlit as st
 
 _KPI_STYLE = {
     "IFB Points":    ("#4F46E5", "#EEF2FF", "🏪"),
-    "Total Leads":   ("#0EA5E9", "#F0F9FF", "👥"),
+    "Total Follow Up":   ("#0EA5E9", "#F0F9FF", "👥"),
     "Contacted":     ("#16A34A", "#F0FDF4", "✅"),
     "Not Contacted": ("#DC2626", "#FEF2F2", "🚫"),
     "RnR":           ("#D97706", "#FFFBEB", "🔁"),
 }
 
 _BAR_SERIES = {
-    "Total Leads":   "#4F46E5",
+    "Total Follow Up":   "#4F46E5",
     "Contacted":     "#16A34A",
     "Not Contacted": "#DC2626",
     "RnR":           "#D97706",
@@ -274,7 +274,7 @@ def _bucket_aggregate(df: pd.DataFrame, freq: str, n_buckets: int = 7) -> pd.Dat
     tmp = df.copy()
     tmp["_bk"] = keys
     counts = pd.DataFrame({
-        "Total Leads":   tmp.groupby("_bk").size(),
+        "Total Follow Up":   tmp.groupby("_bk").size(),
         "Contacted":     (tmp["status"] == "Contacted").groupby(tmp["_bk"]).sum(),
         "Not Contacted": (tmp["status"] == "Not Contacted").groupby(tmp["_bk"]).sum(),
         "RnR":           (tmp["status"] == "RnR").groupby(tmp["_bk"]).sum(),
@@ -399,7 +399,7 @@ def _marimekko(buckets: list[tuple], height: int = 158,
             height=height, margin=dict(l=8, r=8, t=8, b=8),
             plot_bgcolor="#FFFFFF", paper_bgcolor="rgba(0,0,0,0)",
             xaxis=dict(visible=False), yaxis=dict(visible=False),
-            annotations=[dict(text="No leads in this window", showarrow=False,
+            annotations=[dict(text="No follow ups in this window", showarrow=False,
                               font=dict(size=12, color="#94A3B8"), x=0.5, y=0.5,
                               xref="paper", yref="paper")],
         )
@@ -437,7 +437,7 @@ def _marimekko(buckets: list[tuple], height: int = 158,
             customdata=col_customs,
             hovertemplate=(
                 "<b style='color:#E2E8F0;font-size:12px;'>%{customdata[0]}</b>"
-                "<span style='color:#64748B;'>  ·  %{customdata[1]:,} leads</span>"
+                "<span style='color:#64748B;'>  ·  %{customdata[1]:,} follow ups</span>"
                 "<br><br>"
                 "%{customdata[2]}"
                 "<extra></extra>"
@@ -538,69 +538,69 @@ def _insights(buckets: list[tuple], period: str) -> str:
         return f"<span style='font-weight:700;color:{color};'>{txt}</span>"
 
     def lead_word(n: int) -> str:
-        return "lead" if n == 1 else "leads"
+        return "follow up" if n == 1 else "follow ups"
 
     sentences = []
 
     # 0. Total across the full window
     window_desc = {"day": "last 7 days", "week": "last 4 weeks", "month": "last 6 months"}
     sentences.append(
-        f"{hi(f'{grand_total:,}', '#4F46E5')} leads across the "
+        f"{hi(f'{grand_total:,}', '#4F46E5')} follow ups across the "
         f"{window_desc.get(period, 'window')}."
     )
 
     # 1. Current period vs average (skip if today has 0 and avg > 0 — data not in yet)
     if cur_total == 0 and avg_val > 0:
         sentences.append(
-            f"{hi(cur_noun, '#4F46E5')} has no leads yet "
+            f"{hi(cur_noun, '#4F46E5')} has no follow ups yet "
             f"(avg is {hi(f'{avg_val:.0f}', '#475569')} per {unit})."
         )
     elif avg_val > 0:
         delta_pct = (cur_total - avg_val) / avg_val * 100
         if delta_pct >= 15:
             sentences.append(
-                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#16A34A')} leads — "
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#16A34A')} follow ups — "
                 f"{hi(f'+{delta_pct:.0f}%', '#16A34A')} above the avg of "
                 f"{hi(f'{avg_val:.0f}', '#475569')}."
             )
         elif delta_pct <= -15:
             sentences.append(
-                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#DC2626')} leads — "
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#DC2626')} follow ups — "
                 f"{hi(f'{abs(delta_pct):.0f}%', '#DC2626')} below the avg of "
                 f"{hi(f'{avg_val:.0f}', '#475569')}."
             )
         else:
             sentences.append(
-                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#475569')} leads — "
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#475569')} follow ups — "
                 f"on par with avg of {hi(f'{avg_val:.0f}', '#475569')}."
             )
     else:
         sentences.append(
-            f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#4F46E5')} leads."
+            f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#4F46E5')} follow ups."
         )
 
     # 2. Peak and low (only when they differ and both are > 0)
     if peak_val > 0 and peak_i != low_i:
         if peak_i == len(buckets) - 1:
             sentences.append(
-                f"Highest {unit} in the window with {hi(f'{peak_val:,}', '#16A34A')} leads; "
+                f"Highest {unit} in the window with {hi(f'{peak_val:,}', '#16A34A')} follow ups; "
                 f"lowest prior was {hi(low_lbl, '#0F172A')} ({hi(f'{low_val:,}', '#DC2626')})."
             )
         elif low_i == len(buckets) - 1:
             sentences.append(
                 f"Lowest {unit} in the window; "
-                f"peak was {hi(peak_lbl, '#16A34A')} at {hi(f'{peak_val:,}', '#16A34A')} leads."
+                f"peak was {hi(peak_lbl, '#16A34A')} at {hi(f'{peak_val:,}', '#16A34A')} follow ups."
             )
         else:
             sentences.append(
-                f"Peak: {hi(peak_lbl, '#16A34A')} ({hi(f'{peak_val:,}', '#16A34A')} leads) · "
+                f"Peak: {hi(peak_lbl, '#16A34A')} ({hi(f'{peak_val:,}', '#16A34A')} follow ups) · "
                 f"Low: {hi(low_lbl, '#DC2626')} ({hi(f'{low_val:,}', '#DC2626')})."
             )
 
     # 3. Dominant actioned outcome
     if dominant_seg:
         sentences.append(
-            f"{hi(dominant_seg, _SEG_CLR[dominant_seg])} leads the outcomes "
+            f"{hi(dominant_seg, _SEG_CLR[dominant_seg])} is the leading outcome "
             f"at {hi(f'{dom_pct:.0f}%', _SEG_CLR[dominant_seg])} of total."
         )
 
@@ -614,13 +614,13 @@ def _insights(buckets: list[tuple], period: str) -> str:
     # 5. Untouched — contextual wording based on actual percentage
     if untouched_pct > 0:
         if untouched_pct >= 80:
-            severity = "nearly all leads are sitting untouched"
+            severity = "nearly all follow ups are sitting untouched"
         elif untouched_pct >= 50:
-            severity = "more than half the leads are untouched"
+            severity = "more than half the follow ups are untouched"
         elif untouched_pct >= 30:
-            severity = "over a third of leads are untouched"
+            severity = "over a third of follow ups are untouched"
         else:
-            severity = f"{untouched_pct:.0f}% of leads remain untouched"
+            severity = f"{untouched_pct:.0f}% of follow ups remain untouched"
         sentences.append(
             f"{hi(f'{untouched_pct:.0f}%', '#94A3B8')} untouched — {severity}."
         )
@@ -846,7 +846,7 @@ def render_overview_dashboard(
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
                 _kpi_card(kc1, "IFB Points",    len(scope_codes))
-                _kpi_card(kc2, "Total Leads",   total_leads)
+                _kpi_card(kc2, "Total Follow Up",   total_leads)
                 _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted))
                 _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont))
                 _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr))
