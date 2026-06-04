@@ -751,10 +751,21 @@ def render_overview_dashboard(
                 qa1, qa2 = st.columns(2, gap="small")
                 with qa1:
                     if st.button("✅ All", use_container_width=True, key="_ov_selall"):
-                        st.session_state["_ov_sel"]    = set()
-                        st.session_state["_ov_prev_q"] = ""
-                        for _c in _codes:
-                            st.session_state[f"cb_{_c}"] = False
+                        _visible_now = [c for c in _codes
+                                        if not _q
+                                        or _q in channel_names.get(c, str(c)).lower()
+                                        or _q in str(c).lower()]
+                        if _q:
+                            # Search active → select only the filtered results
+                            st.session_state["_ov_sel"] = set(_visible_now)
+                            for _c in _codes:
+                                st.session_state[f"cb_{_c}"] = _c in st.session_state["_ov_sel"]
+                        else:
+                            # No search → All means show everything (default state, no ticks)
+                            st.session_state["_ov_sel"]    = set()
+                            st.session_state["_ov_prev_q"] = ""
+                            for _c in _codes:
+                                st.session_state[f"cb_{_c}"] = False
                         st.rerun()
                 with qa2:
                     if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
