@@ -1535,8 +1535,16 @@ def edit_lead_dialog(row: dict):
             na = st.date_input("Next Appointment",
                                value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q4: Remarks
-        nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
+        # Q4: Remarks (60 char limit + live counter)
+        nr = st.text_area("Remarks", value=cur_r, height=90,
+                          max_chars=60, key=f"dlg_r_{cid}")
+        _left = 60 - len(nr)
+        _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
+        st.markdown(
+            f"<div style='text-align:right;font-size:11px;font-weight:600;"
+            f"color:{_clr};margin-top:-10px;'>{_left} / 60 left</div>",
+            unsafe_allow_html=True,
+        )
 
         # Final Status — auto-derived:
         #   Interested     → None ("—")
@@ -1551,8 +1559,16 @@ def edit_lead_dialog(row: dict):
         na = st.date_input("Next Appointment",
                            value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q3: Remarks
-        nr = st.text_area("Remarks", value=cur_r, height=90, key=f"dlg_r_{cid}")
+        # Q3: Remarks (60 char limit + live counter)
+        nr = st.text_area("Remarks", value=cur_r, height=90,
+                          max_chars=60, key=f"dlg_r_{cid}")
+        _left = 60 - len(nr)
+        _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
+        st.markdown(
+            f"<div style='text-align:right;font-size:11px;font-weight:600;"
+            f"color:{_clr};margin-top:-10px;'>{_left} / 60 left</div>",
+            unsafe_allow_html=True,
+        )
 
         # Save enabled when: Next Appointment set + Remarks filled
         _can_save = (isinstance(na, date)) and (nr.strip() != "")
