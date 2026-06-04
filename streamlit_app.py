@@ -686,11 +686,16 @@ st.markdown("""
   }
   .stDateInput > div > div { background:#F8FAFC !important; border-radius:6px !important; }
 
+  /* Remove outer BaseWeb wrapper border on date input — inner div already has one */
+  .stDateInput [data-baseweb="input"] {
+    border:none !important; background:transparent !important; box-shadow:none !important;
+  }
+
   /* ── Filter-bar control polish: 34px height to match toggle buttons ── */
   .stDateInput > div > div,
   div[data-baseweb="input"] > div,
   div[data-baseweb="select"] > div {
-    min-height:34px !important; height:34px !important;
+    min-height:34px !important;
     border-radius:10px !important;
     border:1px solid var(--line) !important;
     background:#FFFFFF !important;
@@ -704,7 +709,9 @@ st.markdown("""
     color:var(--ink) !important;
     text-align:center !important;
     font-weight:500 !important;
-    line-height:34px !important;
+    line-height:1.4 !important;
+    padding-top:8px !important;
+    padding-bottom:8px !important;
   }
   .st-key-filter_row_bottom div[data-baseweb="select"] [data-testid="stMarkdownContainer"],
   .st-key-filter_row_bottom div[data-baseweb="input"] input {
@@ -838,6 +845,15 @@ st.markdown("""
   .stButton > button[kind="primary"]:hover {
     background:linear-gradient(135deg,#1a1f35 0%,#242c45 100%) !important;
     box-shadow:0 4px 12px rgba(15,23,42,0.45) !important;
+  }
+
+  /* Center icon buttons vertically inside their column cell.
+     stVerticalBlock is display:flex column, height ~48px, button ~38px.
+     Note: Streamlit uses data-testid="stColumn" (not "column"). */
+  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"],
+  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"] {
+    justify-content:flex-end !important;
+    flex-direction:column !important;
   }
 
   /* Pencil edit button — circular icon, ONLY inside table rows */
@@ -1311,7 +1327,7 @@ if _ifb_code:
                 with r2c4:
                     search_q = st.text_input(
                         "Search",
-                        placeholder="🔍  Name · Phone · Email · ID",
+                        placeholder="🔍  Name ",
                         label_visibility="collapsed",
                     )
 
