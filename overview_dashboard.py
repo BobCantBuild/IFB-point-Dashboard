@@ -67,6 +67,27 @@ _OVERVIEW_CSS = """
     background:transparent !important;
   }
 
+  /* Push the entire rail (search + buttons + list) down to sit flush
+     with the KPI row content rather than the container top edge. */
+  .st-key-two_pane > div:first-child > div:first-child {
+    margin-top:14px !important;
+  }
+
+  /* Align the main column's top with the rail so KPIs sit horizontally
+     parallel to search + All/Clear. The rail's first child has margin-top:14px;
+     mirror the same on the main column's first child. Strip kpi_row wrapper
+     padding so KPI cards fill the height cleanly. */
+  .st-key-two_pane > div:nth-child(2) > div:first-child {
+    margin-top:14px !important;
+  }
+  .st-key-kpi_row {
+    padding:0 !important;
+    margin-bottom:14px !important;
+  }
+  .st-key-kpi_row > div > div {
+    padding:0 !important;
+  }
+
   /* ── Segment toggle checkboxes ── */
   /* Bold BLACK label — must win over all other rules */
   .st-key-sec_day   [data-testid="stCheckbox"] label p,
@@ -114,6 +135,11 @@ _OVERVIEW_CSS = """
   }
 
   /* ── Search / multiselect ── */
+  /* Outer BaseWeb wrapper — remove its own border so only the inner input shows one */
+  [data-testid="stTextInput"] [data-baseweb="input"] {
+    border:none !important; background:transparent !important;
+    box-shadow:none !important;
+  }
   [data-testid="stTextInput"] input,
   div[data-testid="stMultiSelect"] [data-baseweb="select"] > div {
     background:#FFFFFF !important; border:1.5px solid #C7D2FE !important;
@@ -203,7 +229,7 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None) -> None:
     col.markdown(
         f"<div style='background:{tint};border:1px solid {color}30;"
         f"border-left:4px solid {color};border-radius:12px;"
-        f"padding:9px 12px;height:62px;display:flex;flex-direction:column;"
+        f"padding:9px 12px;height:76px;display:flex;flex-direction:column;"
         f"justify-content:space-between;"
         f"box-shadow:0 2px 10px {color}18;'>"
         f"<div style='display:flex;align-items:center;justify-content:space-between;'>"
@@ -717,70 +743,68 @@ def render_overview_dashboard(
         rail, main = st.columns([1.85, 8.15], gap="medium")
 
         with rail:
-            # ── C container: exact same height as right-side content ──
-            # Right side = KPI(78) + 3×section(198 each) + gaps(≈30) ≈ 672px
-            # This single scrollable container IS the C section.
-            _RAIL_H = 710
+            # ── Search + buttons sit OUTSIDE the scroll area so they align
+            # horizontally with the KPI row in the main column.
+            # Scroll list height = total right-side height minus the header area.
+            # Right side: KPI(≈78) + 3×section(198) + gaps(≈30) ≈ 672px
+            # Rail header (search + buttons): ≈78px → list height ≈ 634px
+            _LIST_H = 634
 
             if "_ov_sel" not in st.session_state:
                 st.session_state["_ov_sel"] = set()
-
-            _q = st.session_state.get("_ov_q", "")
 
             # Clear flag must be applied before the widget is instantiated
             if st.session_state.pop("_ov_search_clear", False):
                 st.session_state["_ov_search"] = ""
 
-            # When the search text changes, reset all selections so the user
-            # starts fresh — prevents "All" selections from carrying into search.
             _prev_q = st.session_state.get("_ov_prev_q", "")
 
-            with st.container(height=_RAIL_H, border=False, key="c_container"):
-                # Sticky header inside the scrollable container
-                _q = st.text_input(
-                    "s", placeholder="🔍 Search…",
-                    label_visibility="collapsed", key="_ov_search",
-                ).strip().lower()
+            # ── Search box (aligns with KPI row) ──────────────────────────────
+            _q = st.text_input(
+                "s", placeholder="🔍 Search IFB Point or Code…",
+                label_visibility="collapsed", key="_ov_search",
+            ).strip().lower()
 
-                if _q != _prev_q:
-                    st.session_state["_ov_prev_q"] = _q
+            if _q != _prev_q:
+                st.session_state["_ov_prev_q"] = _q
+                st.session_state["_ov_sel"] = set()
+                for _c in _codes:
+                    st.session_state[f"cb_{_c}"] = False
+
+            # ── All / Clear buttons (aligns with KPI row) ─────────────────────
+            qa1, qa2 = st.columns(2, gap="small")
+            with qa1:
+                if st.button("✅ All", use_container_width=True, key="_ov_selall"):
+                    _visible_now = [c for c in _codes
+                                    if not _q
+                                    or _q in channel_names.get(c, str(c)).lower()
+                                    or _q in str(c).lower()]
+                    if _q:
+                        st.session_state["_ov_sel"] = set(_visible_now)
+                        for _c in _codes:
+                            st.session_state[f"cb_{_c}"] = _c in st.session_state["_ov_sel"]
+                    else:
+                        st.session_state["_ov_sel"]    = set()
+                        st.session_state["_ov_prev_q"] = ""
+                        for _c in _codes:
+                            st.session_state[f"cb_{_c}"] = False
+                    st.rerun()
+            with qa2:
+                if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
+                    st.session_state["_ov_search_clear"] = True
+                    st.session_state["_ov_prev_q"] = ""
                     st.session_state["_ov_sel"] = set()
                     for _c in _codes:
                         st.session_state[f"cb_{_c}"] = False
+                    st.rerun()
 
-                qa1, qa2 = st.columns(2, gap="small")
-                with qa1:
-                    if st.button("✅ All", use_container_width=True, key="_ov_selall"):
-                        _visible_now = [c for c in _codes
-                                        if not _q
-                                        or _q in channel_names.get(c, str(c)).lower()
-                                        or _q in str(c).lower()]
-                        if _q:
-                            # Search active → select only the filtered results
-                            st.session_state["_ov_sel"] = set(_visible_now)
-                            for _c in _codes:
-                                st.session_state[f"cb_{_c}"] = _c in st.session_state["_ov_sel"]
-                        else:
-                            # No search → All means show everything (default state, no ticks)
-                            st.session_state["_ov_sel"]    = set()
-                            st.session_state["_ov_prev_q"] = ""
-                            for _c in _codes:
-                                st.session_state[f"cb_{_c}"] = False
-                        st.rerun()
-                with qa2:
-                    if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
-                        st.session_state["_ov_search_clear"] = True
-                        st.session_state["_ov_prev_q"] = ""
-                        st.session_state["_ov_sel"] = set()
-                        for _c in _codes:
-                            st.session_state[f"cb_{_c}"] = False
-                        st.rerun()
+            # ── Scrollable checkbox list ───────────────────────────────────────
+            _visible = [c for c in _codes
+                        if not _q
+                        or _q in channel_names.get(c, str(c)).lower()
+                        or _q in str(c).lower()]
 
-                _visible = [c for c in _codes
-                            if not _q
-                            or _q in channel_names.get(c, str(c)).lower()
-                            or _q in str(c).lower()]
-
+            with st.container(height=_LIST_H, border=False, key="c_container"):
                 for code in _visible:
                     name = channel_names.get(code, code)
                     was = code in st.session_state["_ov_sel"]
