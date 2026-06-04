@@ -458,57 +458,175 @@ def _b(text: str, color: str = "#0F172A") -> str:
     return f"<b style='color:{color};'>{text}</b>"
 
 
-def _insights(agg: pd.DataFrame, period: str) -> str:
-    """One compact line per metric — numbers first, minimal words."""
-    total = int(agg["Total Leads"].sum())
-    if agg.empty or total == 0:
-        return "<div style='font-size:11px;color:#94A3B8;font-style:italic;'>No data for this period.</div>"
+def _insights(buckets: list[tuple], period: str) -> str:
+    """
+    Written narrative insights derived from bucket data.
+    Tells the story: total, current vs avg, peak, low, dominant outcome, untouched, RnR.
+    buckets = list of (label, total, {seg: count}) from _time_buckets().
+    """
+    _CUR_NOUN = {"day": "Today",     "week": "This week",  "month": "This month"}
+    _UNIT     = {"day": "day",       "week": "week",       "month": "month"}
 
-    contacted = int(agg["Contacted"].sum())
-    not_cont  = int(agg["Not Contacted"].sum())
-    rnr       = int(agg["RnR"].sum())
-    attempted = contacted + not_cont + rnr
-    untouched = total - attempted
-    cont_pct  = (contacted / total * 100) if total else 0
-    miss_pct  = (untouched / total * 100) if total else 0
+    grand_total = sum(b[1] for b in buckets)
+    if grand_total == 0:
+        return (
+            "<div style='font-size:11px;color:#94A3B8;font-style:italic;"
+            "padding-top:8px;'>No data for this period.</div>"
+        )
 
-    peak_idx  = agg["Total Leads"].idxmax()
-    peak_lbl  = agg.loc[peak_idx, "label"]
-    peak_val  = int(agg.loc[peak_idx, "Total Leads"])
+    totals = [b[1] for b in buckets]
+    labels = [b[0] for b in buckets]
 
-    cur_val   = int(agg["Total Leads"].iloc[-1])
-    prev_avg  = float(agg["Total Leads"].iloc[:-1].mean()) if len(agg) > 1 else 0.0
+    cur_lbl, cur_total, cur_segs = buckets[-1]
+    prior   = totals[:-1]
+    # Only include non-zero prior periods in avg so empty slots don't drag it down
+    prior_nonzero = [v for v in prior if v > 0]
+    avg_val = sum(prior_nonzero) / len(prior_nonzero) if prior_nonzero else 0.0
 
-    # Trend vs prior average
-    if prev_avg > 0 and cur_val > prev_avg * 1.15:
-        trend = _b(f"+{int((cur_val-prev_avg)/prev_avg*100)}% vs avg", "#16A34A")
-    elif prev_avg > 0 and cur_val < prev_avg * 0.85:
-        trend = _b(f"−{int((prev_avg-cur_val)/prev_avg*100)}% vs avg", "#DC2626")
+    # Peak and low among non-zero buckets only (zero = no data, not a real low)
+    nonzero_buckets = [(i, labels[i], totals[i]) for i in range(len(totals)) if totals[i] > 0]
+    if nonzero_buckets:
+        peak_i, peak_lbl, peak_val = max(nonzero_buckets, key=lambda x: x[2])
+        low_i,  low_lbl,  low_val  = min(nonzero_buckets, key=lambda x: x[2])
     else:
-        trend = _b("steady vs avg", "#64748B")
+        peak_i = low_i = len(buckets) - 1
+        peak_lbl = low_lbl = cur_lbl
+        peak_val = low_val = cur_total
 
-    rows = [
-        ("📥 Total",    _b(f"{total:,}",      "#4F46E5"), "leads this period"),
-        ("🔝 Peak",     _b(peak_lbl,           "#0F172A"), f"· {_b(f'{peak_val:,}', '#4F46E5')} leads"),
-        ("✅ Contacted",_b(f"{contacted:,}",   "#16A34A"), f"· {_b(f'{cont_pct:.1f}%', '#16A34A')}"),
-        ("🚫 Untouched",_b(f"{untouched:,}",  "#DC2626"), f"· {_b(f'{miss_pct:.1f}%', '#DC2626')}"),
-        ("🔁 RnR",      _b(f"{rnr:,}",        "#D97706"), "callbacks needed") if rnr > 0
-            else ("🔁 RnR", _b("0", "#94A3B8"), "none"),
-        ("📈 Trend",    trend,                  ""),
-    ]
+    # Aggregate segments across all buckets
+    seg_totals: dict[str, int] = {s: 0 for s, _ in _MK_SEGMENTS}
+    for _, _, segs in buckets:
+        for s in seg_totals:
+            seg_totals[s] += segs.get(s, 0)
 
-    lines_html = "".join(
-        f"<div style='display:flex;align-items:baseline;gap:4px;padding:2px 0;"
-        f"border-bottom:1px solid #F1F5F9;'>"
-        f"<span style='font-size:9.5px;color:#94A3B8;white-space:nowrap;width:76px;"
-        f"flex-shrink:0;'>{label}</span>"
-        f"<span style='font-size:12px;font-weight:700;'>{val}</span>"
-        f"<span style='font-size:10px;color:#94A3B8;'>{note}</span>"
-        f"</div>"
-        for label, val, note in rows
+    _SEG_CLR = {s: c for s, c in _MK_SEGMENTS}
+
+    # Dominant outcome: highest-count segment excluding Untouched, must be > 0
+    outcome_segs = {s: v for s, v in seg_totals.items() if s != "Untouched" and v > 0}
+    dominant_seg = max(outcome_segs, key=lambda s: outcome_segs[s]) if outcome_segs else None
+    dom_pct = (seg_totals[dominant_seg] / grand_total * 100) if dominant_seg else 0
+
+    untouched_pct  = seg_totals["Untouched"]  / grand_total * 100 if grand_total else 0
+    interested_pct = seg_totals["Interested"] / grand_total * 100 if grand_total else 0
+    not_cont_pct   = seg_totals["Not Contacted"] / grand_total * 100 if grand_total else 0
+    rnr_count      = seg_totals["RnR"]
+    unit           = _UNIT.get(period, "period")
+    cur_noun       = _CUR_NOUN.get(period, "Current")
+
+    def hi(txt: str, color: str) -> str:
+        return f"<span style='font-weight:700;color:{color};'>{txt}</span>"
+
+    def lead_word(n: int) -> str:
+        return "lead" if n == 1 else "leads"
+
+    sentences = []
+
+    # 0. Total across the full window
+    window_desc = {"day": "last 7 days", "week": "last 4 weeks", "month": "last 6 months"}
+    sentences.append(
+        f"{hi(f'{grand_total:,}', '#4F46E5')} leads across the "
+        f"{window_desc.get(period, 'window')}."
     )
 
-    return f"<div style='font-size:11px;line-height:1.5;'>{lines_html}</div>"
+    # 1. Current period vs average (skip if today has 0 and avg > 0 — data not in yet)
+    if cur_total == 0 and avg_val > 0:
+        sentences.append(
+            f"{hi(cur_noun, '#4F46E5')} has no leads yet "
+            f"(avg is {hi(f'{avg_val:.0f}', '#475569')} per {unit})."
+        )
+    elif avg_val > 0:
+        delta_pct = (cur_total - avg_val) / avg_val * 100
+        if delta_pct >= 15:
+            sentences.append(
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#16A34A')} leads — "
+                f"{hi(f'+{delta_pct:.0f}%', '#16A34A')} above the avg of "
+                f"{hi(f'{avg_val:.0f}', '#475569')}."
+            )
+        elif delta_pct <= -15:
+            sentences.append(
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#DC2626')} leads — "
+                f"{hi(f'{abs(delta_pct):.0f}%', '#DC2626')} below the avg of "
+                f"{hi(f'{avg_val:.0f}', '#475569')}."
+            )
+        else:
+            sentences.append(
+                f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#475569')} leads — "
+                f"on par with avg of {hi(f'{avg_val:.0f}', '#475569')}."
+            )
+    else:
+        sentences.append(
+            f"{hi(cur_noun, '#4F46E5')}: {hi(f'{cur_total:,}', '#4F46E5')} leads."
+        )
+
+    # 2. Peak and low (only when they differ and both are > 0)
+    if peak_val > 0 and peak_i != low_i:
+        if peak_i == len(buckets) - 1:
+            sentences.append(
+                f"Highest {unit} in the window with {hi(f'{peak_val:,}', '#16A34A')} leads; "
+                f"lowest prior was {hi(low_lbl, '#0F172A')} ({hi(f'{low_val:,}', '#DC2626')})."
+            )
+        elif low_i == len(buckets) - 1:
+            sentences.append(
+                f"Lowest {unit} in the window; "
+                f"peak was {hi(peak_lbl, '#16A34A')} at {hi(f'{peak_val:,}', '#16A34A')} leads."
+            )
+        else:
+            sentences.append(
+                f"Peak: {hi(peak_lbl, '#16A34A')} ({hi(f'{peak_val:,}', '#16A34A')} leads) · "
+                f"Low: {hi(low_lbl, '#DC2626')} ({hi(f'{low_val:,}', '#DC2626')})."
+            )
+
+    # 3. Dominant actioned outcome
+    if dominant_seg:
+        sentences.append(
+            f"{hi(dominant_seg, _SEG_CLR[dominant_seg])} leads the outcomes "
+            f"at {hi(f'{dom_pct:.0f}%', _SEG_CLR[dominant_seg])} of total."
+        )
+
+    # 4. Not Contacted — if significant
+    if not_cont_pct >= 20:
+        sentences.append(
+            f"{hi(f'{not_cont_pct:.0f}%', '#DC2626')} were "
+            f"{hi('not contacted', '#DC2626')} — needs follow-up."
+        )
+
+    # 5. Untouched — contextual wording based on actual percentage
+    if untouched_pct > 0:
+        if untouched_pct >= 80:
+            severity = "nearly all leads are sitting untouched"
+        elif untouched_pct >= 50:
+            severity = "more than half the leads are untouched"
+        elif untouched_pct >= 30:
+            severity = "over a third of leads are untouched"
+        else:
+            severity = f"{untouched_pct:.0f}% of leads remain untouched"
+        sentences.append(
+            f"{hi(f'{untouched_pct:.0f}%', '#94A3B8')} untouched — {severity}."
+        )
+
+    # 6. Interested rate — positive signal
+    if interested_pct >= 10:
+        sentences.append(
+            f"{hi(f'{interested_pct:.0f}%', '#16A34A')} showed "
+            f"{hi('interest', '#16A34A')} — a strong conversion signal."
+        )
+
+    # 7. RnR — grammar-correct
+    if rnr_count > 0:
+        sentences.append(
+            f"{hi(f'{rnr_count:,}', '#D97706')} {lead_word(rnr_count)} pending "
+            f"{hi('callback', '#D97706')} (RnR)."
+        )
+
+    # ── Render ────────────────────────────────────────────────────────────────
+    items_html = "".join(
+        f"<div style='padding:3px 0 3px 8px;border-left:2px solid #E2E8F0;"
+        f"margin-bottom:4px;font-size:10px;color:#334155;line-height:1.45;'>"
+        f"{s}</div>"
+        for s in sentences
+    )
+
+    return f"<div style='font-size:10px;line-height:1.5;'>{items_html}</div>"
 
 
 # ── Main render function ───────────────────────────────────────────────────────
@@ -765,6 +883,6 @@ def render_overview_dashboard(
                             f"<div style='background:#FFFFFF;border-left:4px solid {accent};"
                             f"border-radius:8px;padding:8px 11px;"
                             f"height:158px;overflow-y:auto;box-sizing:border-box;'>"
-                            f"{_insights(agg, period)}</div>",
+                            f"{_insights(buckets, period)}</div>",
                             unsafe_allow_html=True,
                         )
