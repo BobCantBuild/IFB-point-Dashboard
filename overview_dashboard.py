@@ -433,12 +433,7 @@ def _marimekko(buckets: list[tuple], height: int = 158,
         xaxis=dict(
             type="category", tickfont=dict(size=8, color="#475569"),
             showgrid=False, zeroline=False,
-            showspikes=True,
-            spikesnap="cursor",
-            spikemode="across",
-            spikedash="dot",
-            spikethickness=1.5,
-            spikecolor="#6366F1",
+            showspikes=False,
         ),
         yaxis=dict(
             range=[0, 100], ticksuffix="%",
