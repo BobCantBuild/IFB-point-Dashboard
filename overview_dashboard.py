@@ -905,8 +905,7 @@ def render_overview_dashboard(
                         visible_segs.add(seg)
 
                 with st.container(border=True, key=f"sec_{period}"):
-                    # Checkboxes constrained to chart-column width, above both columns
-                    cb_wrap, _ = st.columns([6.5, 3.5], gap="small")
+                    cb_wrap, cb_hint = st.columns([6.5, 3.5], gap="small")
                     with cb_wrap:
                         cb_cols = st.columns(len(_MK_SEGMENTS), gap="small")
                         for (seg, color), cb_col in zip(_MK_SEGMENTS, cb_cols):
@@ -918,6 +917,17 @@ def render_overview_dashboard(
                                 visible_segs.add(seg)
                             else:
                                 visible_segs.discard(seg)
+
+                    with cb_hint:
+                        st.markdown(
+                            "<div style='display:flex;align-items:center;height:100%;"
+                            "padding-top:2px;'>"
+                            "<span style='font-size:9.5px;color:#94A3B8;font-style:italic;"
+                            "line-height:1.4;'>"
+                            "👈 Click a circle to filter the chart view"
+                            "</span></div>",
+                            unsafe_allow_html=True,
+                        )
 
                     # Chart and insights now start at the same vertical position
                     cg1, cg2 = st.columns([6.5, 3.5], gap="small")
