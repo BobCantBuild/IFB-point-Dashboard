@@ -57,21 +57,48 @@ def _load_master_codes() -> set[str]:
     return {t.strip() for t in tokens if t.strip()}
 
 
+_EXCEL_MASTER = _APP_DIR.parent / "IFB Point Dashboard - notes" / "Unique_ChannelCode_ChannelName (1).xlsx"
+_NAME_PREFIXES = ("IFB Industries Limit- ", "IFB Industries Limited- ", "IFB Industries Ltd- ")
+
+
+def _clean_channel_name(name: str) -> str:
+    """Strip known corporate prefixes that clutter the display name."""
+    for prefix in _NAME_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
 def _load_channel_names() -> dict[str, str]:
     """
-    Load channel code to friendly name mapping from IFB_Point_Master.txt.
-    Returns {code: name, ...}. Works with tab-separated format only.
-    Returns empty dict if file is missing or not in correct format.
+    Load channel code → friendly name mapping.
+    Prefers the Excel master file; falls back to IFB_Point_Master.txt.
+    Strips corporate prefixes so names are short and readable.
     """
     mapping: dict[str, str] = {}
 
+    # Try Excel first (authoritative, clean names)
+    if _EXCEL_MASTER.exists():
+        try:
+            import pandas as pd
+            df = pd.read_excel(_EXCEL_MASTER, dtype=str)
+            code_col = df.columns[0]
+            name_col = df.columns[1]
+            for _, row in df.iterrows():
+                code = str(row[code_col]).strip()
+                name = str(row[name_col]).strip()
+                if code and name and code != "nan":
+                    mapping[code] = _clean_channel_name(name)
+            return mapping
+        except Exception:
+            pass  # fall through to txt
+
+    # Fallback: tab-separated txt file
     if not MASTER_FILE.exists():
         return mapping
 
-    raw = MASTER_FILE.read_text(encoding="utf-8")
-    lines = raw.split("\n")
-
-    for line in lines:
+    raw = MASTER_FILE.read_text(encoding="utf-8", errors="replace")
+    for line in raw.split("\n"):
         line = line.strip()
         if not line or "\t" not in line:
             continue
@@ -80,7 +107,7 @@ def _load_channel_names() -> dict[str, str]:
             code = parts[0].strip()
             name = parts[1].strip()
             if code and name:
-                mapping[code] = name
+                mapping[code] = _clean_channel_name(name)
 
     return mapping
 

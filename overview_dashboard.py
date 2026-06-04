@@ -727,6 +727,14 @@ def render_overview_dashboard(
 
             _q = st.session_state.get("_ov_q", "")
 
+            # Clear flag must be applied before the widget is instantiated
+            if st.session_state.pop("_ov_search_clear", False):
+                st.session_state["_ov_search"] = ""
+
+            # When the search text changes, reset all selections so the user
+            # starts fresh — prevents "All" selections from carrying into search.
+            _prev_q = st.session_state.get("_ov_prev_q", "")
+
             with st.container(height=_RAIL_H, border=False, key="c_container"):
                 # Sticky header inside the scrollable container
                 _q = st.text_input(
@@ -734,21 +742,33 @@ def render_overview_dashboard(
                     label_visibility="collapsed", key="_ov_search",
                 ).strip().lower()
 
+                if _q != _prev_q:
+                    st.session_state["_ov_prev_q"] = _q
+                    st.session_state["_ov_sel"] = set()
+                    for _c in _codes:
+                        st.session_state[f"cb_{_c}"] = False
+
                 qa1, qa2 = st.columns(2, gap="small")
                 with qa1:
                     if st.button("✅ All", use_container_width=True, key="_ov_selall"):
-                        st.session_state["_ov_sel"] = set(
-                            c for c in _codes
-                            if not _q or _q in channel_names.get(c, c).lower() or _q in c
-                        )
+                        st.session_state["_ov_sel"]    = set()
+                        st.session_state["_ov_prev_q"] = ""
+                        for _c in _codes:
+                            st.session_state[f"cb_{_c}"] = False
                         st.rerun()
                 with qa2:
                     if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
+                        st.session_state["_ov_search_clear"] = True
+                        st.session_state["_ov_prev_q"] = ""
                         st.session_state["_ov_sel"] = set()
+                        for _c in _codes:
+                            st.session_state[f"cb_{_c}"] = False
                         st.rerun()
 
                 _visible = [c for c in _codes
-                            if not _q or _q in channel_names.get(c, c).lower() or _q in c]
+                            if not _q
+                            or _q in channel_names.get(c, str(c)).lower()
+                            or _q in str(c).lower()]
 
                 for code in _visible:
                     name = channel_names.get(code, code)
