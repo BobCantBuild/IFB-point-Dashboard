@@ -656,6 +656,7 @@ def render_overview_dashboard(
     db_path: Path,
     channel_names: dict[str, str],
     bucket_to_stage: dict[str, str],
+    allowed_codes: set[str] | None = None,
 ) -> None:
     """
     Render the Analytics Console overview screen.
@@ -664,6 +665,8 @@ def render_overview_dashboard(
         db_path:        Path to ifb_point.db
         channel_names:  {code: friendly_name} mapping
         bucket_to_stage: {api_bucket_key: stage_label} mapping
+        allowed_codes:  IFB point codes this user is permitted to see;
+                        None or empty set means no restriction.
     """
     st.markdown(_OVERVIEW_CSS, unsafe_allow_html=True)
 
@@ -721,6 +724,11 @@ def render_overview_dashboard(
     _codes = sorted(df["ifb_point"].unique(),
                     key=lambda c: channel_names.get(c, c).lower())
 
+    # Restrict to only the IFB points this user is mapped to
+    if allowed_codes:
+        df     = df[df["ifb_point"].isin(allowed_codes)]
+        _codes = [c for c in _codes if c in allowed_codes]
+
     # ── A TOPBAR ──────────────────────────────────────────────────────────────
     tb1, tb2 = st.columns([8, 1.1])
     with tb1:
@@ -733,6 +741,7 @@ def render_overview_dashboard(
     with tb2:
         if st.button("Sign Out", use_container_width=True):
             st.session_state["_authed"] = False
+            st.session_state.pop("_authed_email", None)
             st.query_params.clear()
             st.rerun()
 

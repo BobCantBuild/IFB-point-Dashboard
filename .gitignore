@@ -1,7 +1,9 @@
-# SQLite — both db files committed intentionally
+# SQLite — db files committed intentionally
 *.db
 !ifb_point.db
 !ifb_counter.db
+!login.db
+!login_mapping.db
 *.db-journal
 *.db-wal
 *.db-shm

@@ -16,6 +16,8 @@ import streamlit as st
 _APP_DIR     = Path(__file__).resolve().parent
 DB_PATH      = _APP_DIR / "ifb_point.db"
 COUNTER_PATH = _APP_DIR / "ifb_counter.db"
+LOGIN_DB         = _APP_DIR / "login.db"
+LOGIN_MAPPING_DB = _APP_DIR / "login_mapping.db"
 MASTER_FILE  = _APP_DIR / "IFB_Point_Master.txt"
 
 
@@ -1043,16 +1045,28 @@ _STATUS_COLORS = {"Contacted": "#16A34A", "Not Contacted": "#DC2626",
                   "RnR": "#D97706", "Pending": "#CBD5E1"}
 
 
+def _get_allowed_codes(email: str) -> set[str]:
+    """Return IFBpoint_id values assigned to this email in login_mapping.db."""
+    try:
+        with sqlite3.connect(LOGIN_MAPPING_DB) as _mc:
+            rows = _mc.execute(
+                "SELECT IFBpoint_id FROM login_mapping WHERE LOWER(Email_ID)=?",
+                (email.strip().lower(),),
+            ).fetchall()
+        return {r[0] for r in rows if r[0]}
+    except Exception:
+        return set()
+
+
 # Login gate — when there is NO IFB code in the URL:
 #   • not signed in  → show ONLY the sign-in screen
 #   • signed in      → show the all-points overview dashboard
 # Everything else on the page is suppressed for the no-code case.
 # --------------------------------------------------------------------------- #
 if not _resolve_point_code():
-    # Persisted login: a ?auth=ok query param keeps the session across reloads
-    if st.session_state.get("_authed") or st.query_params.get("auth") == "ok":
-        st.session_state["_authed"] = True
-        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE)
+    if st.session_state.get("_authed"):
+        _allowed_codes = _get_allowed_codes(st.session_state.get("_authed_email", ""))
+        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes)
         st.stop()
 
     # Strip the fixed-header top padding + restore normal vertical spacing
@@ -1090,14 +1104,20 @@ if not _resolve_point_code():
                 "Sign In", use_container_width=True, type="primary"
             )
 
-        # Default credentials (temporary)
-        _AUTH_EMAIL = "s_aswin@ifbglobal.com"
-        _AUTH_PASS  = "rpi12345"
-
         if _submitted:
-            if _email.strip().lower() == _AUTH_EMAIL and _password == _AUTH_PASS:
+            _valid = False
+            try:
+                with sqlite3.connect(LOGIN_DB) as _lcon:
+                    _row = _lcon.execute(
+                        "SELECT 1 FROM users WHERE LOWER(email)=? AND password=?",
+                        (_email.strip().lower(), _password),
+                    ).fetchone()
+                    _valid = _row is not None
+            except Exception:
+                pass
+            if _valid:
                 st.session_state["_authed"] = True
-                st.query_params["auth"] = "ok"   # persist across reloads
+                st.session_state["_authed_email"] = _email.strip().lower()
                 st.rerun()
             else:
                 st.error("❌ Invalid email or password.")
