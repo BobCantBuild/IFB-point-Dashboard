@@ -734,8 +734,7 @@ def render_overview_dashboard(
     with tb1:
         st.markdown(
             "<div style='font-size:19px;font-weight:800;color:#0F172A;line-height:1.1;"
-            "letter-spacing:-0.3px;'>📊 IFB Points "
-            "<span style='color:#6366F1;'>·</span> Analytics Console</div>",
+            "letter-spacing:-0.3px;'>🎯 Follow Up Control Tower</div>",
             unsafe_allow_html=True,
         )
     with tb2:
