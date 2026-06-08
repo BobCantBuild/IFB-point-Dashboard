@@ -657,24 +657,106 @@ st.markdown("""
   /* ── Filter panel ── */
   .st-key-filter_panel {
     background:#fff; border:1px solid var(--line); border-radius:16px;
-    padding:10px 12px 4px; margin-bottom:18px;
+    padding:8px 12px 6px; margin-bottom:18px;
     box-shadow:var(--shadow-sm);
   }
 
-  .st-key-filter_panel > div {
-    gap:0.45rem !important;
+  /* Strip only left/right padding from row wrappers (keeps width clean).
+     The gap between rows comes from padding-top on row 2's wrapper. */
+  .st-key-filter_panel [data-testid="stVerticalBlockBorderWrapper"],
+  .st-key-filter_panel [data-testid="stVerticalBlockBorderWrapper"] > div,
+  .st-key-filter_panel [data-testid="stVerticalBlockBorderWrapper"] > div > div {
+    padding-left:0 !important;
+    padding-right:0 !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    padding-top:0 !important;
+    padding-bottom:0 !important;
+    margin-top:0 !important;
+    margin-bottom:0 !important;
+  }
+  /* Row 2 gets an explicit top gap */
+  .st-key-filter_panel .st-key-filter_row_bottom {
+    margin-top:4px !important;
+  }
+
+  /* ── Row 1: ALL controls at 34px ──
+     Prefix with .st-key-filter_panel to beat the later generic
+     [data-testid="stContainer"] rule which has the same specificity. */
+  .st-key-filter_panel .st-key-filter_row_top .stButton > button,
+  .st-key-filter_panel .st-key-filter_row_top .stButton > button[kind="primary"],
+  .st-key-filter_panel .st-key-filter_row_top .stButton > button[kind="secondary"] {
+    height:34px !important; min-height:34px !important; max-height:34px !important;
+    line-height:34px !important; font-size:12px !important;
+    border-radius:10px !important; padding:0 10px !important;
+  }
+  .st-key-filter_panel .st-key-filter_row_top .stDateInput > div > div,
+  .st-key-filter_panel .st-key-filter_row_top div[data-baseweb="input"] > div,
+  .st-key-filter_panel .st-key-filter_row_top div[data-baseweb="select"] > div {
+    height:34px !important; min-height:34px !important; max-height:34px !important;
+    border-radius:10px !important; padding:0 !important;
+    display:flex !important; align-items:center !important;
+  }
+  .st-key-filter_panel .st-key-filter_row_top .stDateInput input,
+  .st-key-filter_panel .st-key-filter_row_top div[data-baseweb="input"] input {
+    height:34px !important; line-height:34px !important;
+    padding:0 10px !important; font-size:12px !important;
+  }
+
+  /* ── Row 2: ALL controls at 34px (same as row 1 — avoids vertical misalignment) ── */
+  .st-key-filter_panel .st-key-filter_row_bottom .stButton > button,
+  .st-key-filter_panel .st-key-filter_row_bottom .stButton > button[kind="primary"],
+  .st-key-filter_panel .st-key-filter_row_bottom .stButton > button[kind="secondary"] {
+    height:34px !important; min-height:34px !important; max-height:34px !important;
+    line-height:34px !important; font-size:12px !important;
+    border-radius:10px !important; padding:0 10px !important;
+  }
+  /* Clamp the BaseWeb OUTER wrapper (40px default) down to 34px —
+     this is what was causing the 3px upward shift vs the buttons */
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="input"],
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="select"],
+  .st-key-filter_panel .st-key-filter_row_bottom .stTextInput,
+  .st-key-filter_panel .st-key-filter_row_bottom .stSelectbox {
+    height:34px !important; max-height:34px !important;
+    overflow:visible !important;
+  }
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="select"] > div,
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="input"] > div {
+    height:34px !important; min-height:34px !important; max-height:34px !important;
+    border-radius:10px !important; padding:0 !important;
+    display:flex !important; align-items:center !important;
+  }
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="select"] [role="combobox"],
+  .st-key-filter_panel .st-key-filter_row_bottom div[data-baseweb="input"] input {
+    height:34px !important; line-height:1.3 !important;
+    padding:0 10px !important; font-size:12px !important;
+  }
+
+  /* Kill hidden labels — Streamlit's label_visibility="collapsed" uses
+     visibility:hidden which still consumes height and offsets inputs
+     downward relative to neighbouring buttons. Force display:none instead. */
+  .st-key-filter_panel .st-key-filter_row_top [data-testid="stWidgetLabel"],
+  .st-key-filter_panel .st-key-filter_row_bottom [data-testid="stWidgetLabel"],
+  .st-key-filter_panel .st-key-filter_row_top label,
+  .st-key-filter_panel .st-key-filter_row_bottom label {
+    display:none !important;
+    height:0 !important; min-height:0 !important;
+    margin:0 !important; padding:0 !important;
   }
 
   /* Filter-bar row layout: keep each row as clean, even columns */
   .st-key-filter_row_top [data-testid="stHorizontalBlock"],
   .st-key-filter_row_bottom [data-testid="stHorizontalBlock"]{
-    align-items:stretch;
+    align-items:center;
     gap:8px !important;
     margin:0 !important;
   }
+  /* Each column itself is a flex column — center its single child vertically */
   .st-key-filter_row_top [data-testid="stHorizontalBlock"] > [data-testid="column"],
   .st-key-filter_row_bottom [data-testid="stHorizontalBlock"] > [data-testid="column"]{
     display:flex;
+    flex-direction:column;
+    justify-content:center;
     min-width:0;
   }
 
@@ -692,9 +774,10 @@ st.markdown("""
     margin:0 !important;
   }
 
-  .st-key-filter_row_top .stButton > button,
-  .st-key-filter_row_bottom .stButton > button {
-    border-radius:12px !important;
+  /* Also collapse the element-container inside each filter row column */
+  .st-key-filter_row_top .element-container,
+  .st-key-filter_row_bottom .element-container {
+    margin:0 !important; padding:0 !important;
   }
 
 
