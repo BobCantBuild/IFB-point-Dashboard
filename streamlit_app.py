@@ -20,6 +20,18 @@ LOGIN_DB         = _APP_DIR / "login.db"
 LOGIN_MAPPING_DB = _APP_DIR / "login_mapping.db"
 MASTER_FILE  = _APP_DIR / "IFB_Point_Master.txt"
 
+# Startup migration: ensure reason column exists in api_leads
+try:
+    import sqlite3 as _sqlite3_boot
+    if DB_PATH.exists():
+        with _sqlite3_boot.connect(DB_PATH) as _bc:
+            _cols = {r[1] for r in _bc.execute("PRAGMA table_info(api_leads)").fetchall()}
+            if "reason" not in _cols:
+                _bc.execute("ALTER TABLE api_leads ADD COLUMN reason TEXT")
+                _bc.commit()
+except Exception:
+    pass
+
 
 def _load_master_codes() -> set[str]:
     """
@@ -124,6 +136,7 @@ _EYE_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 
 STATUS_OPTIONS   = ["Contacted", "Not Contacted", "RnR"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
+REASON_OPTIONS   = ["Service issue", "Others"]
 
 
 def _get_api_token() -> str | None:
@@ -275,6 +288,7 @@ def _read_db(ifb_point_code: str) -> list[dict]:
             "interested":         r["interested"],
             "remarks":            r["remarks"],
             "final_status":       r["final_status"] if "final_status" in r.keys() else None,
+            "reason":             r["reason"]       if "reason"       in r.keys() else None,
         })
     return out
 
@@ -358,14 +372,16 @@ def _ensure_counter_db() -> None:
                 remarks          TEXT
             )
         """)
-        # Migration: add counter column if table existed before this change
+        # Migrations: add columns if table existed before this change
         existing = {r[1] for r in conn.execute("PRAGMA table_info(edit_log)").fetchall()}
         if "counter" not in existing:
             conn.execute("ALTER TABLE edit_log ADD COLUMN counter INTEGER")
+        if "reason" not in existing:
+            conn.execute("ALTER TABLE edit_log ADD COLUMN reason TEXT")
         conn.commit()
 
 
-def _append_counter_db(key: str, status, appt_str, interested, final_status, remarks) -> None:
+def _append_counter_db(key: str, status, appt_str, interested, final_status, remarks, reason=None) -> None:
     """Append one immutable history row to ifb_counter.db — never overwrites.
     counter = how many times this composite key has been saved (1-based).
     """
@@ -382,16 +398,16 @@ def _append_counter_db(key: str, status, appt_str, interested, final_status, rem
             conn.execute(
                 """INSERT INTO edit_log
                        (key, counter, saved_at, call_status, next_appointment,
-                        interested, final_status, remarks)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (key, counter, saved_at, status, appt_str, interested, final_status, remarks),
+                        interested, final_status, remarks, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (key, counter, saved_at, status, appt_str, interested, final_status, remarks, reason),
             )
             conn.commit()
     except Exception:
         pass  # counter DB is non-critical — never block the main save
 
 
-def update_row(cid: str, status, next_appt, interested, remarks, final_status=None) -> dict:
+def update_row(cid: str, status, next_appt, interested, remarks, final_status=None, reason=None) -> dict:
     """Save user edits directly to SQLite api_leads — single source of truth.
     Simultaneously appends an immutable history row to ifb_counter.db.
     """
@@ -431,15 +447,15 @@ def update_row(cid: str, status, next_appt, interested, remarks, final_status=No
             cur = conn.execute(
                 """UPDATE api_leads
                       SET status = ?, next_appointment = ?, interested = ?,
-                          remarks = ?, final_status = ?
+                          remarks = ?, final_status = ?, reason = ?
                     WHERE customer_id = ? AND ifb_point = ?""",
-                (status, appt_str, interested, remarks, final_status, cid, point_code),
+                (status, appt_str, interested, remarks, final_status, reason, cid, point_code),
             )
             conn.commit()
             result["rows_updated"] = cur.rowcount
 
         # ── 4. Append to ifb_counter.db (with the possibly-forced LOST) ──────
-        _append_counter_db(composite_key, status, appt_str, interested, final_status, remarks)
+        _append_counter_db(composite_key, status, appt_str, interested, final_status, remarks, reason)
 
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -1515,6 +1531,7 @@ def edit_lead_dialog(row: dict):
     cur_i  = row.get("interested")  if pd.notna(row.get("interested")  or "") else None
     cur_r  = str(row.get("remarks") or "") if pd.notna(row.get("remarks") or "") else ""
     cur_fs = row.get("final_status") if pd.notna(row.get("final_status") or "") else None
+    cur_reason = row.get("reason") if pd.notna(row.get("reason") or "") else None
 
     raw_a = row.get("next_appointment")
     cur_a = None
@@ -1538,10 +1555,11 @@ def edit_lead_dialog(row: dict):
     )
 
     # defaults for fields that may not render
-    ni  = None
-    na  = None
-    nfs = None
-    nr  = ""
+    ni       = None
+    na       = None
+    nfs      = None
+    nr       = ""
+    n_reason = None
 
     # ── Conditional flow ─────────────────────────────────────────────────────
     if ns == "Contacted":
@@ -1553,7 +1571,16 @@ def edit_lead_dialog(row: dict):
             key=f"dlg_i_{cid}",
         )
 
-        # Q3: Next Appointment — only shown when Interested (skip if Not Interested)
+        # Q3: Reason — only shown when Not Interested
+        if ni == "Not Interested":
+            n_reason = st.selectbox(
+                "Reason", REASON_OPTIONS,
+                index=REASON_OPTIONS.index(cur_reason) if cur_reason in REASON_OPTIONS else None,
+                placeholder="Select a reason",
+                key=f"dlg_reason_{cid}",
+            )
+
+        # Q3b: Next Appointment — only shown when Interested (skip if Not Interested)
         if ni == "Interested":
             na = st.date_input("Next Appointment",
                                value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
@@ -1595,9 +1622,11 @@ def edit_lead_dialog(row: dict):
         # Save enabled when all visible fields are filled:
         # · Interested? must be answered
         # · If Interested → Next Appointment must be set
+        # · If Not Interested → Reason must be selected
         # · Remarks must not be empty
-        _appt_ok  = (isinstance(na, date)) if ni == "Interested" else True
-        _can_save = (ni is not None) and _appt_ok and (nr.strip() != "")
+        _appt_ok   = (isinstance(na, date)) if ni == "Interested" else True
+        _reason_ok = (n_reason is not None) if ni == "Not Interested" else True
+        _can_save  = (ni is not None) and _appt_ok and _reason_ok and (nr.strip() != "")
 
     elif ns in ("Not Contacted", "RnR"):
         # Q2: Next Appointment (mandatory, starts from tomorrow)
@@ -1656,6 +1685,7 @@ def edit_lead_dialog(row: dict):
                     ni if ni and ni != "—" else None,
                     nr.strip() or None,
                     nfs,
+                    n_reason,
                 )
                 _rows = result.get("rows_updated", 0)
                 _err  = result.get("error")
