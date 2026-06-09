@@ -1,7 +1,5 @@
-# SQLite — db files committed intentionally
+# SQLite — runtime DBs are excluded; only login DBs are tracked
 *.db
-!ifb_point.db
-!ifb_counter.db
 !login.db
 !login_mapping.db
 *.db-journal
