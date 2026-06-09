@@ -1544,7 +1544,7 @@ else:
     # 2. section filter on status (only when NOT in NextAppt mode)
     #    "Attempted" → any call attempt made (Contacted / Not Contacted / RnR)
     #    "Open"      → all leads (no status restriction)
-    if section == "Attempted":
+    if section == "Attempted" and "status" in filtered.columns:
         attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted", "RnR"])
         filtered = filtered[attempted_mask].copy()
 
@@ -1812,8 +1812,7 @@ if len(filtered) == 0:
     elif "no-data" in _src:
         _no_rec_html = (
             f"<b style='color:#475569;font-size:16px;'>No records for IFB Point {_ifb_code}</b><br>"
-            "<span style='font-size:13px;'>Code is valid but the local database has no data for it yet. "
-            "Run <code>sync_api.py</code> from the IFB office network to fetch this franchise's records.</span>"
+            "<span style='font-size:13px;'>"
         )
     else:
         _no_rec_html = "No records match the current filters."
