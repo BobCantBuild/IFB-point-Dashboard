@@ -1770,32 +1770,35 @@ def edit_lead_dialog(row: dict):
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💾  Save", type="primary", use_container_width=True,
-                     key=f"dlg_save_{cid}", disabled=not _can_save):
-            try:
-                result = update_row(
-                    cid,
-                    ns,
-                    na if isinstance(na, date) else None,
-                    ni if ni and ni != "—" else None,
-                    nr.strip() or None,
-                    nfs,
-                    n_reason,
-                )
-                _rows = result.get("rows_updated", 0)
-                _err  = result.get("error")
-                if _err:
-                    st.warning(f"⚠️ SQLite write failed — {_err}")
-                else:
-                    if result.get("auto_lose"):
-                        st.toast("🔴 3 RnR attempts reached — Final Status auto-set to LOST", icon="❌")
+                     key=f"dlg_save_{cid}"):
+            if not _can_save:
+                st.warning("⚠️ Please fill all required fields before saving.")
+            else:
+                try:
+                    result = update_row(
+                        cid,
+                        ns,
+                        na if isinstance(na, date) else None,
+                        ni if ni and ni != "—" else None,
+                        nr.strip() or None,
+                        nfs,
+                        n_reason,
+                    )
+                    _rows = result.get("rows_updated", 0)
+                    _err  = result.get("error")
+                    if _err:
+                        st.warning(f"⚠️ SQLite write failed — {_err}")
                     else:
-                        st.toast(
-                            f"✅ Saved — {_rows} row{'s' if _rows != 1 else ''} updated",
-                            icon="💾",
-                        )
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Save failed — {type(e).__name__}: {e}")
+                        if result.get("auto_lose"):
+                            st.toast("🔴 3 RnR attempts reached — Final Status auto-set to LOST", icon="❌")
+                        else:
+                            st.toast(
+                                f"✅ Saved — {_rows} row{'s' if _rows != 1 else ''} updated",
+                                icon="💾",
+                            )
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Save failed — {type(e).__name__}: {e}")
     with c2:
         if st.button("Cancel", use_container_width=True, key=f"dlg_cancel_{cid}"):
             st.rerun()
