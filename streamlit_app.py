@@ -1772,7 +1772,58 @@ def edit_lead_dialog(row: dict):
         if st.button("💾  Save", type="primary", use_container_width=True,
                      key=f"dlg_save_{cid}"):
             if not _can_save:
-                st.warning("⚠️ Please fill all required fields before saving.")
+                # Build per-field error list + red-border CSS
+                _err_fields = []
+                _err_css    = []
+
+                def _sel_border(key):
+                    return (f'.st-key-{key} [data-baseweb="select"] > div:first-child'
+                            f'{{border:1.5px solid #DC2626 !important;'
+                            f'box-shadow:0 0 0 1px #DC2626 !important;border-radius:6px !important;}}')
+
+                def _inp_border(key):
+                    return (f'.st-key-{key} [data-baseweb="input"]'
+                            f'{{border:1.5px solid #DC2626 !important;'
+                            f'box-shadow:0 0 0 1px #DC2626 !important;}}')
+
+                def _ta_border(key):
+                    return (f'.st-key-{key} textarea'
+                            f'{{border:1.5px solid #DC2626 !important;'
+                            f'box-shadow:0 0 0 1px #DC2626 !important;border-radius:6px !important;}}')
+
+                if ns is None:
+                    _err_fields.append("Call Status")
+                    _err_css.append(_sel_border(f"dlg_s_{cid}"))
+
+                if ns == "Contacted":
+                    if ni is None:
+                        _err_fields.append("Interested?")
+                        _err_css.append(_sel_border(f"dlg_i_{cid}"))
+                    if ni == "Not Interested" and n_reason is None:
+                        _err_fields.append("Reason")
+                        _err_css.append(_sel_border(f"dlg_reason_{cid}"))
+                    if ni == "Interested" and not isinstance(na, date):
+                        _err_fields.append("Next Appointment")
+                        _err_css.append(_inp_border(f"dlg_a_{cid}"))
+                    if nr.strip() == "":
+                        _err_fields.append("Remarks")
+                        _err_css.append(_ta_border(f"dlg_r_{cid}"))
+
+                elif ns in ("Not Contacted", "RnR"):
+                    if not isinstance(na, date):
+                        _err_fields.append("Next Appointment")
+                        _err_css.append(_inp_border(f"dlg_a_{cid}"))
+                    if nr.strip() == "":
+                        _err_fields.append("Remarks")
+                        _err_css.append(_ta_border(f"dlg_r_{cid}"))
+
+                st.markdown(
+                    f"<style>{''.join(_err_css)}</style>"
+                    f"<div style='color:#DC2626;font-size:12px;font-weight:500;"
+                    f"margin-top:4px;line-height:1.6;'>"
+                    f"Required: {' &nbsp;·&nbsp; '.join(_err_fields)}</div>",
+                    unsafe_allow_html=True,
+                )
             else:
                 try:
                     result = update_row(
