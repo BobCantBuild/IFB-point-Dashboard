@@ -1263,7 +1263,6 @@ total        = len(df_all)
 contacted    = int((df_all["status"]     == "Contacted").sum())
 not_cont     = int((df_all["status"]     == "Not Contacted").sum())
 rnr_count    = int((df_all["status"]     == "RnR").sum())
-s_empty      = total - contacted - not_cont - rnr_count
 interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
@@ -1317,7 +1316,6 @@ st.markdown(f"""<div class="fixed-header">
         {sub("ss-green", contacted,    "Contacted")}
         {sub("ss-red",   not_cont,     "Not Contacted")}
         {sub("ss-warn",  rnr_count,    "RnR")}
-        {sub("ss-grey",  s_empty,      "Empty")}
       </div>
     </div>
     <div class="stat-group">
