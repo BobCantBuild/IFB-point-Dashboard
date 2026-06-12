@@ -1261,8 +1261,8 @@ today = date.today()
 # --------------------------------------------------------------------------- #
 total        = len(df_all)
 contacted    = int((df_all["status"]     == "Contacted").sum())
-not_cont     = int((df_all["status"]     == "Not Contacted").sum())
 rnr_count    = int((df_all["status"]     == "RnR").sum())
+not_cont     = total - contacted - rnr_count
 interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
 i_empty      = total - interested - not_interest
