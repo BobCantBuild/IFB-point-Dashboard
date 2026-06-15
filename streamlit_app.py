@@ -1265,7 +1265,6 @@ rnr_count    = int((df_all["status"]     == "RnR").sum())
 not_cont     = total - contacted - rnr_count
 interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
-i_empty      = total - interested - not_interest
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
 
 def sub(cls, val, lbl):
@@ -1323,7 +1322,6 @@ st.markdown(f"""<div class="fixed-header">
       <div class="g-inner">
         {sub("ss-green", interested,   "Interested")}
         {sub("ss-red",   not_interest, "Not Interested")}
-        {sub("ss-grey",  i_empty,      "Empty")}
       </div>
     </div>
     <div class="stat-group">
