@@ -654,6 +654,23 @@ st.markdown("""
   .ss-teal  .ss-val { color:#0D9488; }       .ss-indigo .ss-val { color:#4F46E5; }
   .ss-slate .ss-val { color:#334155; }
 
+  /* Dual total|today layout in stat-solo */
+  .stat-solo-dual { min-width:160px; }
+  .s-dual-row { display:flex; align-items:baseline; justify-content:center; gap:8px; margin-top:5px; }
+  .s-dual-col { text-align:center; }
+  .s-dual-sep { font-size:22px; font-weight:300; color:#CBD5E1; line-height:1; }
+  .s-today { color:var(--brand) !important; -webkit-background-clip:unset !important; background-clip:unset !important; background:none !important; }
+  .s-sub-lbl { font-size:9px; font-weight:600; color:#64748B; text-transform:uppercase; margin-top:2px; }
+  .s-sub-today { color:var(--brand); }
+
+  /* Dual total|today layout in sub-stat cards */
+  .ss-dual { display:flex; align-items:baseline; justify-content:center; gap:4px; }
+  .ss-sep  { font-size:14px; font-weight:300; color:#CBD5E1; line-height:1; }
+  .ss-today { color:var(--brand) !important; font-size:14px; }
+  .ss-dual-lbl { display:flex; justify-content:center; gap:4px; margin-top:3px; }
+  .ss-dual-lbl .ss-lbl { font-size:8px; }
+  .ss-lbl-today { color:var(--brand) !important; }
+
   /* ── Filter panel ── */
   .st-key-filter_panel {
     background:#fff; border:1px solid var(--line); border-radius:16px;
@@ -1267,8 +1284,24 @@ interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
 
+# Today's counts — leads whose lead_date == today
+_df_today      = df_all[df_all["lead_date"] == today] if "lead_date" in df_all.columns else pd.DataFrame()
+today_total    = len(_df_today)
+today_contacted = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
+today_rnr       = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
+today_not_cont  = today_total - today_contacted - today_rnr
+
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
+
+def sub2(cls, val, tval, lbl):
+    return (f'<div class="sub-stat {cls}">'
+            f'<div class="ss-dual"><span class="ss-val">{val}</span>'
+            f'<span class="ss-sep">|</span>'
+            f'<span class="ss-val ss-today">{tval}</span></div>'
+            f'<div class="ss-dual-lbl"><span class="ss-lbl">{lbl}</span>'
+            f'<span class="ss-lbl ss-lbl-today">Today</span></div>'
+            f'</div>')
 
 _sync_ok  = st.session_state.get("_api_sync_ok",  False)
 _sync_msg = st.session_state.get("_api_sync_msg", "Syncing…")
@@ -1305,16 +1338,20 @@ st.markdown(f"""<div class="fixed-header">
       <div class="s-label">🏪 {_ifb_display}</div>
       <div class="s-value" style="font-size:22px;letter-spacing:1px;">Code: {_ifb_code or "—"}</div>
     </div>
-    <div class="stat-solo">
-      <div class="s-label">👥 Total Follow Up's</div>
-      <div class="s-value">{total}</div>
+    <div class="stat-solo stat-solo-dual">
+      <div class="s-label">👥 Total Follow Up</div>
+      <div class="s-dual-row">
+        <div class="s-dual-col"><div class="s-value">{total}</div><div class="s-sub-lbl">All</div></div>
+        <div class="s-dual-sep">|</div>
+        <div class="s-dual-col"><div class="s-value s-today">{today_total}</div><div class="s-sub-lbl s-sub-today">Today</div></div>
+      </div>
     </div>
     <div class="stat-group">
       <div class="g-label">📞 Contact Status</div>
       <div class="g-inner">
-        {sub("ss-green", contacted,    "Contacted")}
-        {sub("ss-red",   not_cont,     "Not Contacted")}
-        {sub("ss-warn",  rnr_count,    "RnR")}
+        {sub2("ss-green", contacted,    today_contacted, "Contacted")}
+        {sub2("ss-red",   not_cont,     today_not_cont,  "Not Contacted")}
+        {sub2("ss-warn",  rnr_count,    today_rnr,       "RnR")}
       </div>
     </div>
     <div class="stat-group">

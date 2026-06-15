@@ -218,7 +218,8 @@ def _load_df(db_path: str) -> pd.DataFrame:
 
 # ── KPI card ───────────────────────────────────────────────────────────────────
 
-def _kpi_card(col, label: str, value: int, pct: float | None = None) -> None:
+def _kpi_card(col, label: str, value: int, pct: float | None = None,
+              today_val: int | None = None) -> None:
     color, _, icon = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))
     pct_html = (
         f"<span style='font-size:10px;font-weight:700;color:{color};"
@@ -226,6 +227,25 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None) -> None:
         if pct is not None else ""
     )
     tint = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))[1]
+    if today_val is not None:
+        val_html = (
+            f"<div style='display:flex;align-items:baseline;gap:6px;'>"
+            f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</span>"
+            f"<span style='font-size:16px;font-weight:300;color:#CBD5E1;line-height:1;'>|</span>"
+            f"<span style='font-size:18px;font-weight:800;color:{color};line-height:1;'>{today_val:,}</span>"
+            f"{pct_html}</div>"
+            f"<div style='display:flex;gap:6px;margin-top:1px;'>"
+            f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;'>All</span>"
+            f"<span style='font-size:7px;font-weight:700;color:transparent;'>|</span>"
+            f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;'>Today</span>"
+            f"</div>"
+        )
+    else:
+        val_html = (
+            f"<div style='display:flex;align-items:baseline;'>"
+            f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</span>"
+            f"{pct_html}</div>"
+        )
     col.markdown(
         f"<div style='background:{tint};border:1px solid {color}30;"
         f"border-left:4px solid {color};border-radius:12px;"
@@ -236,9 +256,7 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None) -> None:
         f"<span style='font-size:8.5px;font-weight:800;color:{color};text-transform:uppercase;"
         f"letter-spacing:0.6px;'>{label}</span>"
         f"<span style='font-size:13px;'>{icon}</span></div>"
-        f"<div style='display:flex;align-items:baseline;'>"
-        f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</span>"
-        f"{pct_html}</div>"
+        f"{val_html}"
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -847,6 +865,15 @@ def render_overview_dashboard(
             not_cont    = int((scope_df["status"] == "Not Contacted").sum())
             rnr         = int((scope_df["status"] == "RnR").sum())
 
+            _today = date.today()
+            _df_today = scope_df[scope_df["lead_dt"].apply(
+                lambda d: isinstance(d, date) and d == _today
+            )] if "lead_dt" in scope_df.columns else pd.DataFrame()
+            t_total     = len(_df_today)
+            t_contacted = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
+            t_rnr       = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
+            t_not_cont  = t_total - t_contacted - t_rnr
+
             def _pct(n: int) -> float:
                 return (n / total_leads * 100) if total_leads else 0.0
 
@@ -854,10 +881,10 @@ def render_overview_dashboard(
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
                 _kpi_card(kc1, "IFB Points",    len(scope_codes))
-                _kpi_card(kc2, "Total Follow Up",   total_leads)
-                _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted))
-                _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont))
-                _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr))
+                _kpi_card(kc2, "Total Follow Up",   total_leads, today_val=t_total)
+                _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted), today_val=t_contacted)
+                _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont),  today_val=t_not_cont)
+                _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr),       today_val=t_rnr)
 
             # G — CHART ROWS  (colour-coded per time bucket)
             #   Day  → last 7 days · Week → last 4 weeks · Month → last 6 months
