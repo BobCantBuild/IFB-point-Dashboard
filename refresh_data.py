@@ -62,6 +62,10 @@ def commit_and_push() -> None:
     """Stage api_data.json and push only if the file actually changed."""
     _section("Committing & pushing")
 
+    if not DATA_FILE.exists():
+        print("  · data/api_data.json is not present; SQLite refresh already completed, nothing to push.")
+        return
+
     # Check if api_data.json is dirty relative to HEAD
     diff = _git(["diff", "--quiet", "data/api_data.json"], "diff", check=False)
     if diff.returncode == 0:

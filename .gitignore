@@ -47,3 +47,6 @@ desktop.ini
 # Logs / temp
 *.log
 *.tmp
+run_app.sh*
+backup*
+
