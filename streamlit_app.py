@@ -134,7 +134,7 @@ _EYE_API_BASE = "https://bseapi.ifbsupport.com/api"
 _EYE_API_USER = "IFBFollowUPAPP"
 _EYE_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 
-STATUS_OPTIONS   = ["Contacted", "Not Contacted", "RnR"]
+STATUS_OPTIONS   = ["Contacted", "RnR"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 REASON_OPTIONS   = ["Service issue", "Others"]
 
@@ -656,19 +656,20 @@ st.markdown("""
 
   /* Dual total|today layout in stat-solo */
   .stat-solo-dual { min-width:160px; }
-  .s-dual-row { display:flex; align-items:baseline; justify-content:center; gap:8px; margin-top:5px; }
+  .s-dual-row { display:grid; grid-template-columns:1fr auto 1fr; align-items:baseline; margin-top:5px; }
   .s-dual-col { text-align:center; }
-  .s-dual-sep { font-size:22px; font-weight:300; color:#CBD5E1; line-height:1; }
+  .s-dual-sep { font-size:22px; font-weight:300; color:#CBD5E1; line-height:1; padding:0 6px; }
   .s-today { color:var(--brand) !important; -webkit-background-clip:unset !important; background-clip:unset !important; background:none !important; }
   .s-sub-lbl { font-size:9px; font-weight:600; color:#64748B; text-transform:uppercase; margin-top:2px; }
   .s-sub-today { color:var(--brand); }
 
   /* Dual total|today layout in sub-stat cards */
-  .ss-dual { display:flex; align-items:baseline; justify-content:center; gap:4px; }
-  .ss-sep  { font-size:14px; font-weight:300; color:#CBD5E1; line-height:1; }
+  .ss-dual { display:grid; grid-template-columns:1fr auto 1fr; align-items:baseline; }
+  .ss-sep  { font-size:14px; font-weight:300; color:#CBD5E1; line-height:1; text-align:center; }
+  .ss-sep-lbl { font-size:8px; font-weight:300; color:#CBD5E1; line-height:1; text-align:center; }
+  .ss-dual .ss-val { text-align:center; }
+  .ss-dual .ss-lbl { text-align:center; margin-top:3px; font-size:8px; }
   .ss-today { color:var(--brand) !important; font-size:14px; }
-  .ss-dual-lbl { display:flex; justify-content:center; gap:4px; margin-top:3px; }
-  .ss-dual-lbl .ss-lbl { font-size:8px; }
   .ss-lbl-today { color:var(--brand) !important; }
 
   /* ── Filter panel ── */
@@ -1296,10 +1297,13 @@ def sub(cls, val, lbl):
 
 def sub2(cls, val, tval, lbl):
     return (f'<div class="sub-stat {cls}">'
-            f'<div class="ss-dual"><span class="ss-val">{val}</span>'
+            f'<div class="ss-dual">'
+            f'<span class="ss-val">{val}</span>'
             f'<span class="ss-sep">|</span>'
             f'<span class="ss-val ss-today">{tval}</span></div>'
-            f'<div class="ss-dual-lbl"><span class="ss-lbl">{lbl}</span>'
+            f'<div class="ss-dual">'
+            f'<span class="ss-lbl">{lbl}</span>'
+            f'<span class="ss-sep-lbl">|</span>'
             f'<span class="ss-lbl ss-lbl-today">Today</span></div>'
             f'</div>')
 
@@ -1346,7 +1350,7 @@ st.markdown(f"""<div class="fixed-header">
         <div class="s-dual-col"><div class="s-value s-today">{today_total}</div><div class="s-sub-lbl s-sub-today">Today</div></div>
       </div>
     </div>
-    <div class="stat-group">
+    <div class="stat-group" style="flex:1.4 1 340px;min-width:340px;">
       <div class="g-label">📞 Contact Status</div>
       <div class="g-inner">
         {sub2("ss-green", contacted,    today_contacted, "Contacted")}
@@ -1354,7 +1358,7 @@ st.markdown(f"""<div class="fixed-header">
         {sub2("ss-warn",  rnr_count,    today_rnr,       "RnR")}
       </div>
     </div>
-    <div class="stat-group">
+    <div class="stat-group" style="flex:0.6 1 180px;min-width:180px;">
       <div class="g-label">💬 Interest</div>
       <div class="g-inner">
         {sub("ss-green", interested,   "Interested")}
@@ -1677,7 +1681,7 @@ def edit_lead_dialog(row: dict):
     ns = st.selectbox(
         "Call Status", STATUS_OPTIONS,
         index=STATUS_OPTIONS.index(cur_s) if cur_s in STATUS_OPTIONS else None,
-        placeholder="Contacted / Not Contacted / RnR",
+        placeholder="Contacted / RnR",
         key=f"dlg_s_{cid}",
     )
 

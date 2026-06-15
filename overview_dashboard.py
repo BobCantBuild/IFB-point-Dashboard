@@ -219,7 +219,7 @@ def _load_df(db_path: str) -> pd.DataFrame:
 # ── KPI card ───────────────────────────────────────────────────────────────────
 
 def _kpi_card(col, label: str, value: int, pct: float | None = None,
-              today_val: int | None = None) -> None:
+              today_val: int | None = None, today_pct: float | None = None) -> None:
     color, _, icon = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))
     pct_html = (
         f"<span style='font-size:10px;font-weight:700;color:{color};"
@@ -228,16 +228,21 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None,
     )
     tint = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))[1]
     if today_val is not None:
+        today_pct_html = (
+            f"<span style='font-size:9px;font-weight:700;color:{color};"
+            f"margin-left:3px;opacity:0.9;'>{today_pct:.1f}%</span>"
+            if today_pct is not None else ""
+        )
         val_html = (
-            f"<div style='display:flex;align-items:baseline;gap:6px;'>"
-            f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</span>"
-            f"<span style='font-size:16px;font-weight:300;color:#CBD5E1;line-height:1;'>|</span>"
-            f"<span style='font-size:18px;font-weight:800;color:{color};line-height:1;'>{today_val:,}</span>"
-            f"{pct_html}</div>"
-            f"<div style='display:flex;gap:6px;margin-top:1px;'>"
-            f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;'>All</span>"
-            f"<span style='font-size:7px;font-weight:700;color:transparent;'>|</span>"
-            f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;'>Today</span>"
+            f"<div style='display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;'>"
+            f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;text-align:center;'>{value:,}{pct_html}</span>"
+            f"<span style='font-size:16px;font-weight:300;color:#CBD5E1;line-height:1;padding:0 6px;'>|</span>"
+            f"<span style='font-size:18px;font-weight:800;color:{color};line-height:1;text-align:center;'>{today_val:,}{today_pct_html}</span>"
+            f"</div>"
+            f"<div style='display:grid;grid-template-columns:1fr auto 1fr;margin-top:1px;'>"
+            f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;text-align:center;'>All</span>"
+            f"<span style='font-size:7px;font-weight:700;color:#CBD5E1;padding:0 6px;'>|</span>"
+            f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;text-align:center;'>Today</span>"
             f"</div>"
         )
     else:
@@ -497,11 +502,12 @@ def _b(text: str, color: str = "#0F172A") -> str:
     return f"<b style='color:{color};'>{text}</b>"
 
 
-def _insights(buckets: list[tuple], period: str) -> str:
+def _insights(buckets: list[tuple], period: str, scope_df=None) -> str:
     """
     Written narrative insights derived from bucket data.
     Tells the story: total, current vs avg, peak, low, dominant outcome, untouched, RnR.
     buckets = list of (label, total, {seg: count}) from _time_buckets().
+    scope_df: optional DataFrame for per-IFB-point today breakdown.
     """
     _CUR_NOUN = {"day": "Today",     "week": "This week",  "month": "This month"}
     _UNIT     = {"day": "day",       "week": "week",       "month": "month"}
@@ -656,6 +662,38 @@ def _insights(buckets: list[tuple], period: str) -> str:
             f"{hi(f'{rnr_count:,}', '#D97706')} {lead_word(rnr_count)} pending "
             f"{hi('callback', '#D97706')} (RnR)."
         )
+
+    # 8. Per-IFB-Point action summary for the current period
+    if scope_df is not None and "lead_dt" in scope_df.columns:
+        _today_d  = date.today()
+        _today_ts = pd.Timestamp(_today_d)
+        _period_noun = {"day": "today", "week": "this week", "month": "this month"}
+        _pn = _period_noun.get(period, "this period")
+
+        if period == "day":
+            _pf = scope_df[scope_df["lead_dt"].dt.normalize() == _today_ts.normalize()]
+        elif period == "week":
+            _ws = _today_ts.normalize() - pd.Timedelta(days=_today_ts.weekday())
+            _pf = scope_df[(scope_df["lead_dt"] >= _ws) & (scope_df["lead_dt"] < _ws + pd.Timedelta(days=7))]
+        else:
+            _ms = _today_ts.normalize().replace(day=1)
+            _me = (_ms + pd.DateOffset(months=1))
+            _pf = scope_df[(scope_df["lead_dt"] >= _ms) & (scope_df["lead_dt"] < _me)]
+
+        _all_pts = len(scope_df["ifb_point"].unique()) if not scope_df.empty else 0
+        if not _pf.empty:
+            _live_pts = set(_pf[_pf["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique())
+            _n_live   = len(_live_pts)
+            _n_no_act = _all_pts - _n_live
+            sentences.append(
+                f"{hi(f'{_n_live}', '#16A34A')} IFB Points were on live and "
+                f"{hi(f'{_n_no_act}', '#DC2626')} IFB Points has taken no action {_pn}."
+            )
+        elif _all_pts:
+            sentences.append(
+                f"{hi('0', '#DC2626')} IFB Points were on live and "
+                f"{hi(f'{_all_pts}', '#DC2626')} IFB Points has taken no action {_pn}."
+            )
 
     # ── Render ────────────────────────────────────────────────────────────────
     items_html = "".join(
@@ -877,14 +915,17 @@ def render_overview_dashboard(
             def _pct(n: int) -> float:
                 return (n / total_leads * 100) if total_leads else 0.0
 
+            def _tpct(n: int) -> float:
+                return (n / t_total * 100) if t_total else 0.0
+
             # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
                 _kpi_card(kc1, "IFB Points",    len(scope_codes))
                 _kpi_card(kc2, "Total Follow Up",   total_leads, today_val=t_total)
-                _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted), today_val=t_contacted)
-                _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont),  today_val=t_not_cont)
-                _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr),       today_val=t_rnr)
+                _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted), today_val=t_contacted, today_pct=_tpct(t_contacted))
+                _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont),  today_val=t_not_cont,  today_pct=_tpct(t_not_cont))
+                _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr),       today_val=t_rnr,       today_pct=_tpct(t_rnr))
 
             # G — CHART ROWS  (colour-coded per time bucket)
             #   Day  → last 7 days · Week → last 4 weeks · Month → last 6 months
@@ -978,6 +1019,6 @@ def render_overview_dashboard(
                             f"<div style='background:#FFFFFF;border-left:4px solid {accent};"
                             f"border-radius:8px;padding:8px 11px;"
                             f"height:158px;overflow-y:auto;box-sizing:border-box;'>"
-                            f"{_insights(buckets, period)}</div>",
+                            f"{_insights(buckets, period, scope_df=scope_df)}</div>",
                             unsafe_allow_html=True,
                         )
