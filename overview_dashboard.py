@@ -441,15 +441,32 @@ def _marimekko(buckets: list[tuple], height: int = 158,
     # so hovering ANY bar in a column always shows the complete breakdown with circles.
     col_customs = []
     for i, t in enumerate(totals):
-        circle_rows = "".join(
-            f"<span style='color:{c};'>⬤</span>"
-            f" <b style='color:#F1F5F9;'>{s}</b>"
-            f"<span style='color:#94A3B8;'>"
-            f"  {breakdown[i][s]:,}  ({(breakdown[i][s]/t*100) if t else 0:.1f}%)"
-            f"</span><br>"
-            for s, c in _MK_SEGMENTS if s in active
+        b = breakdown[i]
+        # Aggregate to 3 KPI lines — Untouched absorbed into Not Contacted
+        contacted_sum = b["Interested"] + b["Not Interested"] + b["Contacted"]
+        not_cont_sum  = b["Not Contacted"] + b["Untouched"]
+        rnr_sum       = b["RnR"]
+
+        def _pct(n): return f"{n/t*100:.1f}%" if t else "0%"
+
+        kpi_rows = (
+            f"<span style='color:#86EFAC;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>Contacted</b>"
+            f"<span style='color:#94A3B8;'>  {contacted_sum:,}  ({_pct(contacted_sum)})</span><br>"
+            f"<span style='color:#16A34A;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>Interested</b>"
+            f"<span style='color:#94A3B8;'>  {b['Interested']:,}  ({_pct(b['Interested'])})</span><br>"
+            f"<span style='color:#9333EA;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>Not Interested</b>"
+            f"<span style='color:#94A3B8;'>  {b['Not Interested']:,}  ({_pct(b['Not Interested'])})</span><br>"
+            f"<span style='color:#DC2626;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>Not Contacted</b>"
+            f"<span style='color:#94A3B8;'>  {not_cont_sum:,}  ({_pct(not_cont_sum)})</span><br>"
+            f"<span style='color:#D97706;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>RnR</b>"
+            f"<span style='color:#94A3B8;'>  {rnr_sum:,}  ({_pct(rnr_sum)})</span><br>"
         )
-        col_customs.append([labels[i].replace("<br>", " "), t, circle_rows])
+        col_customs.append([labels[i].replace("<br>", " "), t, kpi_rows])
 
     for seg, color in _MK_SEGMENTS:
         if seg not in active:
