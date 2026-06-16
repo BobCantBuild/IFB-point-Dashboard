@@ -219,7 +219,8 @@ def _load_df(db_path: str) -> pd.DataFrame:
 # ── KPI card ───────────────────────────────────────────────────────────────────
 
 def _kpi_card(col, label: str, value: int, pct: float | None = None,
-              today_val: int | None = None, today_pct: float | None = None) -> None:
+              today_val: int | None = None, today_pct: float | None = None,
+              sub_label: str = "Today") -> None:
     color, _, icon = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))
     pct_html = (
         f"<span style='font-size:10px;font-weight:700;color:{color};"
@@ -242,22 +243,23 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None,
             f"<div style='display:grid;grid-template-columns:1fr auto 1fr;margin-top:1px;'>"
             f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;text-align:center;'>All</span>"
             f"<span style='font-size:7px;font-weight:700;color:#CBD5E1;padding:0 6px;'>|</span>"
-            f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;text-align:center;'>Today</span>"
+            f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;text-align:center;'>{sub_label}</span>"
             f"</div>"
         )
     else:
         val_html = (
-            f"<div style='display:flex;align-items:baseline;'>"
+            f"<div style='display:flex;align-items:baseline;justify-content:center;'>"
             f"<span style='font-size:22px;font-weight:800;color:#0F172A;line-height:1;'>{value:,}</span>"
             f"{pct_html}</div>"
         )
+    _align = "text-align:center;" if today_val is None else ""
     col.markdown(
         f"<div style='background:{tint};border:1px solid {color}30;"
         f"border-left:4px solid {color};border-radius:12px;"
         f"padding:9px 12px;height:76px;display:flex;flex-direction:column;"
-        f"justify-content:space-between;"
+        f"justify-content:space-between;{_align}"
         f"box-shadow:0 2px 10px {color}18;'>"
-        f"<div style='display:flex;align-items:center;justify-content:space-between;'>"
+        f"<div style='display:flex;align-items:center;justify-content:center;gap:6px;'>"
         f"<span style='font-size:8.5px;font-weight:800;color:{color};text-transform:uppercase;"
         f"letter-spacing:0.6px;'>{label}</span>"
         f"<span style='font-size:13px;'>{icon}</span></div>"
@@ -685,14 +687,17 @@ def _insights(buckets: list[tuple], period: str, scope_df=None) -> str:
             _live_pts = set(_pf[_pf["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique())
             _n_live   = len(_live_pts)
             _n_no_act = _all_pts - _n_live
+            _no_act_pct = round(_n_no_act / _all_pts * 100) if _all_pts else 0
             sentences.append(
-                f"{hi(f'{_n_live}', '#16A34A')} IFB Points were on live and "
-                f"{hi(f'{_n_no_act}', '#DC2626')} IFB Points has taken no action {_pn}."
+                f"Out of total {hi(f'{_all_pts}', '#334155')} IFB Points, "
+                f"{hi(f'{_n_no_act}', '#DC2626')} "
+                f"({hi(f'{_no_act_pct}%', '#DC2626')}) IFB Points have taken no action {_pn}."
             )
         elif _all_pts:
             sentences.append(
-                f"{hi('0', '#DC2626')} IFB Points were on live and "
-                f"{hi(f'{_all_pts}', '#DC2626')} IFB Points has taken no action {_pn}."
+                f"Out of total {hi(f'{_all_pts}', '#334155')} IFB Points, "
+                f"{hi(f'{_all_pts}', '#DC2626')} "
+                f"({hi('100%', '#DC2626')}) IFB Points have taken no action {_pn}."
             )
 
     # ── Render ────────────────────────────────────────────────────────────────
@@ -900,13 +905,12 @@ def render_overview_dashboard(
         with main:
             total_leads = len(scope_df)
             contacted   = int((scope_df["status"] == "Contacted").sum())
-            not_cont    = int((scope_df["status"] == "Not Contacted").sum())
             rnr         = int((scope_df["status"] == "RnR").sum())
+            not_cont    = total_leads - contacted - rnr
 
-            _today = date.today()
-            _df_today = scope_df[scope_df["lead_dt"].apply(
-                lambda d: isinstance(d, date) and d == _today
-            )] if "lead_dt" in scope_df.columns else pd.DataFrame()
+            _today_ts = pd.Timestamp(date.today())
+            _df_today = scope_df[scope_df["lead_dt"].dt.normalize() == _today_ts
+            ] if "lead_dt" in scope_df.columns else pd.DataFrame()
             t_total     = len(_df_today)
             t_contacted = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
             t_rnr       = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
@@ -921,7 +925,8 @@ def render_overview_dashboard(
             # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
-                _kpi_card(kc1, "IFB Points",    len(scope_codes))
+                _active_pts = int(scope_df[scope_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].nunique()) if not scope_df.empty else 0
+                _kpi_card(kc1, "IFB Points", len(scope_codes), today_val=_active_pts, sub_label="Active")
                 _kpi_card(kc2, "Total Follow Up",   total_leads, today_val=t_total)
                 _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted), today_val=t_contacted, today_pct=_tpct(t_contacted))
                 _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont),  today_val=t_not_cont,  today_pct=_tpct(t_not_cont))
