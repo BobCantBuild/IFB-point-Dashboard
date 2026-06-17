@@ -32,6 +32,8 @@ CENTRAL_RECIPIENTS = [
     "vibhash_kumar@ifbglobal.com",
     "s_aswin@ifbglobal.com",
     "prateek_bharadwaj@ifbglobal.com",
+    "nayana_bhati@ifbglobal.com",
+    "vijaykumar_khote@ifbglobal.com"
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -47,8 +49,8 @@ CENTRAL_RECIPIENTS = [
 #               Change this one line to switch over — no other code changes
 #               needed.
 # ─────────────────────────────────────────────────────────────────────────────
-TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
-# TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
+# TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
+TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 
