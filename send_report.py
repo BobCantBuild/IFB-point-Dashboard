@@ -1,5 +1,7 @@
 """
-IFB Follow-Up Daily Email Report — Central Login
+IFB Follow-Up Daily Email Report
+- Personal reports → each user in login.db mapped to their IFB Points via login_mapping.db
+- Central report   → all IFB Points → sent to fixed admin list
 Run via cron: 30 2 * * * cd /path/to/dashboard && python send_report.py
 """
 
@@ -19,8 +21,34 @@ MAIL_USERNAME  = "s_aswin@ifbglobal.com"
 MAIL_PASSWORD  = "#Ifb@2026"
 MAIL_FROM      = "s_aswin@ifbglobal.com"
 MAIL_FROM_NAME = "IFB Follow-Up Dashboard"
-RECIPIENTS     = ["vibhash_kumar@ifbglobal.com"]
-DB_PATH        = "ifb_point.db"
+
+DB_PATH          = "ifb_point.db"
+LOGIN_DB         = "login.db"
+LOGIN_MAPPING_DB = "login_mapping.db"
+
+# Central report recipients (all IFB Points scope)
+CENTRAL_RECIPIENTS = [
+    "rajat_paul@ifbglobal.com",
+    "vibhash_kumar@ifbglobal.com",
+    "s_aswin@ifbglobal.com",
+    "prateek_bharadwaj@ifbglobal.com",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTING MODE — single switch that controls who receives the mails
+# ─────────────────────────────────────────────────────────────────────────────
+#  TEST MODE  → TEST_REDIRECT_TO = "<your email>"
+#               ALL 41 mails land in this one inbox. Nobody else is disturbed.
+#               Use this while reviewing the content with your manager.
+#
+#  LIVE MODE  → TEST_REDIRECT_TO = None
+#               Each of the 40 users gets their OWN personal report
+#               and the 4 admins get the CENTRAL report.
+#               Change this one line to switch over — no other code changes
+#               needed.
+# ─────────────────────────────────────────────────────────────────────────────
+TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
+# TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 
@@ -28,9 +56,59 @@ def load_data() -> pd.DataFrame:
     conn = sqlite3.connect(DB_PATH)
     df   = pd.read_sql("SELECT ifb_point, lead_date, status FROM api_leads", conn)
     conn.close()
-    df["lead_dt"] = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
-    df["status"]  = df["status"].fillna("").replace("", "Pending")
+    df["lead_dt"]   = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
+    df["status"]    = df["status"].fillna("").replace("", "Pending")
+    df["ifb_point"] = df["ifb_point"].astype(str)
     return df
+
+
+def load_user_mappings() -> dict[str, dict]:
+    """Return {email: {"name": str, "points": set[str]}} for every login.db user
+    that has at least one IFB Point mapping.
+
+    Mirrors streamlit_app._get_allowed_codes: checks Retail Email_ID first
+    (per-point owner / store contact), falls back to Email_ID (territory manager).
+    Both columns are queried — overlapping points get deduplicated via set union.
+    centrallogin is excluded (not a real email)."""
+    conn = sqlite3.connect(LOGIN_DB)
+    emails = [r[0] for r in conn.execute("SELECT email FROM users").fetchall()
+              if r[0] and "@" in r[0]]
+    conn.close()
+
+    mapping: dict[str, dict] = {}
+    with sqlite3.connect(LOGIN_MAPPING_DB) as conn:
+        for email in emails:
+            e = email.strip().lower()
+
+            # Retail Email_ID match — per-point retail contact
+            retail_rows = conn.execute(
+                'SELECT IFBpoint_id, Name FROM login_mapping '
+                'WHERE LOWER("Retail Email_ID")=?',
+                (e,),
+            ).fetchall()
+
+            # Email_ID match — territory manager
+            mgr_rows = conn.execute(
+                "SELECT IFBpoint_id, Name FROM login_mapping "
+                "WHERE LOWER(Email_ID)=?",
+                (e,),
+            ).fetchall()
+
+            points = {str(r[0]) for r in retail_rows + mgr_rows if r[0]}
+            if not points:
+                continue
+
+            # Name column refers to the territory manager (Email_ID owner).
+            # Use it only when this email matches via Email_ID; otherwise derive
+            # a readable name from the email prefix.
+            name = next((r[1] for r in mgr_rows if r[1]), "")
+            if not name:
+                name = email.split("@")[0].replace("_", " ").replace(".", " ").title()
+
+            mapping[email] = {"name": name, "points": points}
+
+    return mapping
+
 
 # ── KPI helpers ───────────────────────────────────────────────────────────────
 
@@ -164,7 +242,12 @@ def section_header(icon_entity, title, date_range, color):
   </tr>
 </table>"""
 
-def build_html(df):
+
+def build_html(df: pd.DataFrame,
+               recipient_name: str,
+               scope_label: str,
+               scope_sub_label: str,
+               sub_header: str) -> str:
     today     = pd.Timestamp(date.today())
     today_str = date.today().strftime("%d %b %Y")
     today_day = date.today().strftime("%A")
@@ -190,6 +273,8 @@ def build_html(df):
     w_range = f"{(today - pd.Timedelta(weeks=4)).strftime('%d %b')} &ndash; {today_str}"
     m_range = f"{mo6_start.strftime('%b %Y')} &ndash; {today.strftime('%b %Y')}"
 
+    greet = f"Hi <strong style='color:#0D3567;'>{recipient_name}</strong>," if recipient_name else "Hi,"
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -203,7 +288,6 @@ def build_html(df):
   style="background:#F1F5F9;padding:24px 0;">
 <tr><td align="center">
 
-<!-- ── OUTER CARD ── -->
 <table width="600" cellpadding="0" cellspacing="0" border="0"
   style="background:#FFFFFF;border-radius:10px;border:1px solid #E2E8F0;
          font-family:Arial,Helvetica,sans-serif;">
@@ -217,9 +301,7 @@ def build_html(df):
             <div style="font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">
               IFB Follow-Up Daily Report
             </div>
-            <div style="font-size:11px;color:#7BADD8;margin-top:3px;">
-              Follow-Up Control Tower &mdash; Central Report
-            </div>
+            <div style="font-size:11px;color:#7BADD8;margin-top:3px;">{sub_header}</div>
           </td>
           <td align="right" style="vertical-align:middle;">
             <div style="font-size:13px;font-weight:700;color:#DCE8F7;">{today_day}, {today_str}</div>
@@ -236,9 +318,9 @@ def build_html(df):
       <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
         <td style="vertical-align:middle;">
           <span style="background:#0D3567;color:#FFFFFF;font-size:9px;font-weight:700;
-                       padding:3px 8px;border-radius:3px;letter-spacing:0.5px;">CENTRAL</span>
+                       padding:3px 8px;border-radius:3px;letter-spacing:0.5px;">{scope_label}</span>
           &nbsp;&nbsp;
-          <span style="font-size:13px;font-weight:700;color:#0D3567;">All IFB Points</span>
+          <span style="font-size:13px;font-weight:700;color:#0D3567;">{scope_sub_label}</span>
         </td>
         <td align="right" style="vertical-align:middle;font-size:11px;color:#5A7A9F;">
           {total_pts} Total &nbsp;&#124;&nbsp; {active_pts} Active Points
@@ -251,11 +333,10 @@ def build_html(df):
   <tr><td style="padding:22px 28px 6px;">
 
     <p style="margin:0 0 20px;font-size:13px;color:#475569;line-height:1.7;">
-      Hi, here is the central follow-up summary for
-      <strong style="color:#0D3567;">today, {today_str}</strong> across all IFB Points.
+      {greet} here is the follow-up summary for
+      <strong style="color:#0D3567;">today, {today_str}</strong>.
     </p>
 
-    <!-- TODAY SECTION TITLE -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0"
       style="margin-bottom:12px;border-left:4px solid #0D3567;">
       <tr><td style="padding-left:12px;font-size:10px;font-weight:700;color:#0D3567;
@@ -264,7 +345,6 @@ def build_html(df):
       </td></tr>
     </table>
 
-    <!-- KPI CARDS -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
       <tr>
         {kpi_card("Total Follow Up",  "&#x1F465;", t_total, "#0EA5E9", "#F0F9FF", "#BAE6FD")}
@@ -274,12 +354,10 @@ def build_html(df):
       </tr>
     </table>
 
-    <!-- DIVIDER -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:4px;">
       <tr><td style="height:1px;background:#E2E8F0;font-size:0;">&nbsp;</td></tr>
     </table>
 
-    <!-- DAY WISE -->
     {section_header("&#x1F4C5;", "Day Wise &mdash; Last 7 Days", d_range, "#0EA5E9")}
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:14px 16px;">
@@ -287,7 +365,6 @@ def build_html(df):
       </td></tr>
     </table>
 
-    <!-- WEEK WISE -->
     {section_header("&#x1F4C6;", "Week Wise &mdash; Last 4 Weeks", w_range, "#16A34A")}
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:14px 16px;">
@@ -295,7 +372,6 @@ def build_html(df):
       </td></tr>
     </table>
 
-    <!-- MONTH WISE -->
     {section_header("&#x1F5D3;", "Month Wise &mdash; Last 6 Months", m_range, "#D97706")}
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
       <tr><td style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:14px 16px;">
@@ -305,7 +381,6 @@ def build_html(df):
 
   </td></tr>
 
-  <!-- FOOTER -->
   <tr>
     <td style="background:#F8FAFC;border-top:1px solid #E2E8F0;
                border-radius:0 0 10px 10px;padding:16px 28px;text-align:center;">
@@ -321,32 +396,96 @@ def build_html(df):
   </tr>
 
 </table>
-<!-- /OUTER CARD -->
-
 </td></tr></table>
 </body>
 </html>"""
 
+
 # ── Send ──────────────────────────────────────────────────────────────────────
 
-def send_report():
-    df      = load_data()
-    html    = build_html(df)
-    subject = f"IFB Follow-Up Daily Report — {date.today().strftime('%d %b %Y')}"
-
+def _send(server: smtplib.SMTP, html: str, to_addrs: list[str]) -> None:
+    subject        = f"IFB Follow-Up Daily Report — {date.today().strftime('%d %b %Y')}"
     msg            = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
-    msg["To"]      = ", ".join(RECIPIENTS)
+    msg["To"]      = ", ".join(to_addrs)
     msg.attach(MIMEText(html, "html", "utf-8"))
+    server.sendmail(MAIL_FROM, to_addrs, msg.as_string())
+
+
+def send_report():
+    df       = load_data()                # 5,925 follow-up rows from ifb_point.db
+    mappings = load_user_mappings()       # 40 users  →  their assigned IFB Points
 
     with smtplib.SMTP(MAIL_SERVER, MAIL_PORT) as server:
         server.ehlo()
         server.starttls()
         server.login(MAIL_USERNAME, MAIL_PASSWORD)
-        server.sendmail(MAIL_FROM, RECIPIENTS, msg.as_string())
 
-    print(f"[OK] Report sent to {RECIPIENTS} — {date.today().strftime('%d %b %Y')}")
+        sent, skipped = 0, 0
+
+        # ═════════════════════════════════════════════════════════════════════
+        # 1. PERSONAL REPORTS  →  one mail per user (40 in total)
+        # ═════════════════════════════════════════════════════════════════════
+        for email, info in mappings.items():
+            points = info["points"]
+            if not points:
+                skipped += 1
+                print(f"[SKIP] {email} — no IFB Points mapped")
+                continue
+
+            # Filter the master dataset down to just THIS user's IFB Points
+            scoped = df[df["ifb_point"].isin(points)]
+
+            # Build a personalised HTML body — addressed by name, scoped data
+            html = build_html(
+                scoped,
+                recipient_name=info["name"] or email.split("@")[0].replace("_", " ").title(),
+                scope_label="YOUR POINTS",
+                scope_sub_label=f"{len(points)} IFB Point" + ("s" if len(points) != 1 else "") + " assigned to you",
+                sub_header="Follow-Up Control Tower &mdash; Personal Report",
+            )
+
+            # ─── RECIPIENT ROUTING ────────────────────────────────────────────
+            # In TEST mode  → redirect to TEST_REDIRECT_TO (s_aswin only)
+            # In LIVE mode  → send to the actual user's email
+            target = [TEST_REDIRECT_TO] if TEST_REDIRECT_TO else [email]
+            # ──────────────────────────────────────────────────────────────────
+
+            try:
+                _send(server, html, target)
+                sent += 1
+                print(f"[OK]   {email} → {target[0]}  ({len(points)} points, {len(scoped)} leads)")
+            except Exception as e:
+                print(f"[FAIL] {email}: {e}")
+
+        # ═════════════════════════════════════════════════════════════════════
+        # 2. CENTRAL REPORT  →  one mail with ALL IFB Points
+        #    Recipients in live mode: rajat_paul, vibhash_kumar, s_aswin,
+        #                             prateek_bharadwaj  (CENTRAL_RECIPIENTS)
+        # ═════════════════════════════════════════════════════════════════════
+        html = build_html(
+            df,
+            recipient_name="Team",
+            scope_label="CENTRAL",
+            scope_sub_label="All IFB Points",
+            sub_header="Follow-Up Control Tower &mdash; Central Report",
+        )
+
+        # ─── RECIPIENT ROUTING ────────────────────────────────────────────────
+        # In TEST mode  → redirect to TEST_REDIRECT_TO (s_aswin only)
+        # In LIVE mode  → broadcast to all 4 admins in CENTRAL_RECIPIENTS
+        target = [TEST_REDIRECT_TO] if TEST_REDIRECT_TO else CENTRAL_RECIPIENTS
+        # ──────────────────────────────────────────────────────────────────────
+
+        try:
+            _send(server, html, target)
+            sent += 1
+            print(f"[OK]   CENTRAL → {target}  ({df['ifb_point'].nunique()} points, {len(df)} leads)")
+        except Exception as e:
+            print(f"[FAIL] CENTRAL: {e}")
+
+    print(f"\nSummary: {sent} sent, {skipped} skipped — {date.today().strftime('%d %b %Y')}")
 
 
 if __name__ == "__main__":
