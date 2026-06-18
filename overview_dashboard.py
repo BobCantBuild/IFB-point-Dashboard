@@ -21,18 +21,19 @@ import streamlit as st
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 _KPI_STYLE = {
-    "IFB Points":    ("#4F46E5", "#EEF2FF", "🏪"),
-    "Total Follow Up":   ("#0EA5E9", "#F0F9FF", "👥"),
-    "Contacted":     ("#16A34A", "#F0FDF4", "✅"),
-    "Not Contacted": ("#DC2626", "#FEF2F2", "🚫"),
-    "RnR":           ("#D97706", "#FFFBEB", "🔁"),
+    "Total Stores":              ("#4F46E5", "#EEF2FF", "🏪"),
+    "Total Customers Allocated": ("#0EA5E9", "#F0F9FF", "👥"),
+    "Calls Attempted":           ("#16A34A", "#F0FDF4", "✅"),
+    "Interested Customers":      ("#7C3AED", "#F5F3FF", "⭐"),
+    "Not Contacted":             ("#DC2626", "#FEF2F2", "🚫"),
+    "Calls Connected":           ("#D97706", "#FFFBEB", "📞"),
 }
 
 _BAR_SERIES = {
-    "Total Follow Up":   "#4F46E5",
-    "Contacted":     "#16A34A",
-    "Not Contacted": "#DC2626",
-    "RnR":           "#D97706",
+    "Total Customers Allocated": "#4F46E5",
+    "Calls Attempted":           "#16A34A",
+    "Not Contacted":             "#DC2626",
+    "RnR":                       "#D97706",
 }
 
 _OVERVIEW_CSS = """
@@ -168,37 +169,25 @@ _OVERVIEW_CSS = """
     box-shadow:0 2px 8px rgba(99,102,241,0.35);
   }
 
-  /* ── C container: the whole left rail, same height as right content ── */
-  .st-key-c_container {
-    background:#FFFFFF !important;
-    border:1.5px solid #E0E7FF !important;
-    border-radius:14px !important;
-    box-shadow:0 2px 10px rgba(99,102,241,0.08) !important;
+  /* ── Rail multiselect styling ── */
+  .st-key-two_pane > div:first-child div[data-testid="stMultiSelect"] {
+    margin-bottom:6px !important;
   }
-  /* Force all checkbox labels visible — overrides global margin:0 rules */
-  .st-key-c_container * { visibility:visible !important; opacity:1 !important; }
-  .st-key-c_container p, .st-key-c_container span {
-    font-size:12px !important; color:#374151 !important;
-    line-height:1.3 !important; display:inline !important;
-    white-space:normal !important; word-break:break-word !important;
+  .st-key-two_pane > div:first-child [data-testid="stWidgetLabel"] {
+    font-size:11px !important; font-weight:700 !important;
+    color:#4F46E5 !important; letter-spacing:0.3px !important;
   }
-  .st-key-c_container [data-testid="stCheckbox"] {
-    padding:2px 6px !important; margin:1px 0 !important;
-    border-radius:7px !important; transition:background .12s !important;
+  .st-key-two_pane > div:first-child div[data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+    min-height:34px !important; font-size:12px !important;
   }
-  .st-key-c_container [data-testid="stCheckbox"]:hover { background:#EEF2FF !important; }
-  .st-key-c_container [data-testid="stCheckbox"]:hover p { color:#4F46E5 !important; }
-  .st-key-c_container [data-testid="stCheckbox"]:has(input:checked) {
-    background:#EEF2FF !important; border-left:3px solid #6366F1 !important;
+  .st-key-two_pane > div:first-child div[data-testid="stMultiSelect"] [data-baseweb="tag"] {
+    background:#EEF2FF !important; border:1px solid #C7D2FE !important;
+    border-radius:6px !important; color:#4F46E5 !important; font-weight:600 !important;
+    font-size:11px !important; max-width:140px !important;
   }
-  .st-key-c_container [data-testid="stCheckbox"]:has(input:checked) p {
-    color:#4F46E5 !important; font-weight:700 !important;
+  .st-key-two_pane > div:first-child div[data-testid="stMultiSelect"] [data-baseweb="tag"] span {
+    overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important;
   }
-  .st-key-c_container .element-container { margin:0 !important; padding:0 !important; }
-  /* Scrollbar for C container */
-  .st-key-c_container::-webkit-scrollbar { width:4px; }
-  .st-key-c_container::-webkit-scrollbar-thumb { background:#C7D2FE; border-radius:4px; }
-  .st-key-c_container::-webkit-scrollbar-track { background:transparent; }
 </style>
 """
 
@@ -220,7 +209,7 @@ def _load_df(db_path: str) -> pd.DataFrame:
 
 def _kpi_card(col, label: str, value: int, pct: float | None = None,
               today_val: int | None = None, today_pct: float | None = None,
-              sub_label: str = "Today") -> None:
+              sub_label: str = "Today", all_label: str = "All") -> None:
     color, _, icon = _KPI_STYLE.get(label, ("#6366F1", "#EEF2FF", "•"))
     pct_html = (
         f"<span style='font-size:10px;font-weight:700;color:{color};"
@@ -241,7 +230,7 @@ def _kpi_card(col, label: str, value: int, pct: float | None = None,
             f"<span style='font-size:18px;font-weight:800;color:{color};line-height:1;text-align:center;'>{today_val:,}{today_pct_html}</span>"
             f"</div>"
             f"<div style='display:grid;grid-template-columns:1fr auto 1fr;margin-top:1px;'>"
-            f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;text-align:center;'>All</span>"
+            f"<span style='font-size:7px;font-weight:700;color:#64748B;text-transform:uppercase;text-align:center;'>{all_label}</span>"
             f"<span style='font-size:7px;font-weight:700;color:#CBD5E1;padding:0 6px;'>|</span>"
             f"<span style='font-size:7px;font-weight:700;color:{color};text-transform:uppercase;text-align:center;'>{sub_label}</span>"
             f"</div>"
@@ -299,8 +288,8 @@ def _bucket_aggregate(df: pd.DataFrame, freq: str, n_buckets: int = 7) -> pd.Dat
     tmp = df.copy()
     tmp["_bk"] = keys
     counts = pd.DataFrame({
-        "Total Follow Up":   tmp.groupby("_bk").size(),
-        "Contacted":     (tmp["status"] == "Contacted").groupby(tmp["_bk"]).sum(),
+        "Total Customers Allocated": tmp.groupby("_bk").size(),
+        "Calls Attempted":           (tmp["status"] == "Contacted").groupby(tmp["_bk"]).sum(),
         "Not Contacted": (tmp["status"] == "Not Contacted").groupby(tmp["_bk"]).sum(),
         "RnR":           (tmp["status"] == "RnR").groupby(tmp["_bk"]).sum(),
     }).reset_index().rename(columns={"_bk": "bucket"})
@@ -713,11 +702,46 @@ def _insights(buckets: list[tuple], period: str, scope_df=None) -> str:
 
 # ── Main render function ───────────────────────────────────────────────────────
 
+def _load_hierarchy(mapping_db: str, email: str, allowed_codes: set[str] | None) -> dict:
+    """Load Region → Branch → IFB Point hierarchy for the logged-in user.
+
+    If allowed_codes is empty/None (admin), loads ALL mappings.
+    Otherwise restricts to the user's email rows + allowed codes.
+    """
+    result: dict[str, dict[str, list[str]]] = {}
+    try:
+        with sqlite3.connect(mapping_db) as conn:
+            if not allowed_codes:
+                rows = conn.execute(
+                    'SELECT Region, Branch, IFBpoint_id FROM login_mapping',
+                ).fetchall()
+            else:
+                _e = email.strip().lower()
+                rows = conn.execute(
+                    'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
+                    'WHERE LOWER("Retail Email_ID")=? OR LOWER(Email_ID)=?',
+                    (_e, _e),
+                ).fetchall()
+            for region, branch, code in rows:
+                if not region or not branch or not code:
+                    continue
+                if allowed_codes and code not in allowed_codes:
+                    continue
+                result.setdefault(region, {}).setdefault(branch, [])
+                if code not in result[region][branch]:
+                    result[region][branch].append(code)
+    except Exception:
+        pass
+    return result
+
+
 def render_overview_dashboard(
     db_path: Path,
     channel_names: dict[str, str],
     bucket_to_stage: dict[str, str],
     allowed_codes: set[str] | None = None,
+    login_mapping_db: Path | None = None,
+    user_email: str = "",
 ) -> None:
     """
     Render the Analytics Console overview screen.
@@ -728,6 +752,8 @@ def render_overview_dashboard(
         bucket_to_stage: {api_bucket_key: stage_label} mapping
         allowed_codes:  IFB point codes this user is permitted to see;
                         None or empty set means no restriction.
+        login_mapping_db: Path to login_mapping.db (for Region/Branch hierarchy)
+        user_email:     Logged-in user's email
     """
     st.markdown(_OVERVIEW_CSS, unsafe_allow_html=True)
 
@@ -809,26 +835,28 @@ def render_overview_dashboard(
 
     # ── Two-pane: C RAIL | main ────────────────────────────────────────────────
     with st.container(key="two_pane"):
-        rail, main = st.columns([1.85, 8.15], gap="medium")
+        rail, main = st.columns([1.3, 8.7], gap="medium")
 
         with rail:
-            # ── Search + buttons sit OUTSIDE the scroll area so they align
-            # horizontally with the KPI row in the main column.
-            # Scroll list height = total right-side height minus the header area.
-            # Right side: KPI(≈78) + 3×section(198) + gaps(≈30) ≈ 672px
-            # Rail header (search + buttons): ≈78px → list height ≈ 634px
             _LIST_H = 634
 
             if "_ov_sel" not in st.session_state:
                 st.session_state["_ov_sel"] = set()
 
-            # Clear flag must be applied before the widget is instantiated
+            # ── Load hierarchy ────────────────────────────────────────────────
+            _hierarchy: dict[str, dict[str, list[str]]] = {}
+            if login_mapping_db and user_email:
+                _hierarchy = _load_hierarchy(str(login_mapping_db), user_email, allowed_codes)
+            _all_regions  = sorted(_hierarchy.keys())
+            _has_hierarchy = len(_all_regions) > 0
+
+            # Clear flag must be applied before widgets are instantiated
             if st.session_state.pop("_ov_search_clear", False):
                 st.session_state["_ov_search"] = ""
 
             _prev_q = st.session_state.get("_ov_prev_q", "")
 
-            # ── Search box (aligns with KPI row) ──────────────────────────────
+            # ── Search box ────────────────────────────────────────────────────
             _q = st.text_input(
                 "s", placeholder="🔍 Search IFB Point or Code…",
                 label_visibility="collapsed", key="_ov_search",
@@ -837,56 +865,149 @@ def render_overview_dashboard(
             if _q != _prev_q:
                 st.session_state["_ov_prev_q"] = _q
                 st.session_state["_ov_sel"] = set()
-                for _c in _codes:
-                    st.session_state[f"cb_{_c}"] = False
 
-            # ── All / Clear buttons (aligns with KPI row) ─────────────────────
+            # ── All / Clear buttons ───────────────────────────────────────────
+            # Precompute all branches and all points for "All" button
+            _all_branches_list = sorted({
+                b for r_data in _hierarchy.values() for b in r_data.keys()
+            }) if _has_hierarchy else []
+            _all_points_list = sorted({
+                c for r_data in _hierarchy.values()
+                for pts in r_data.values() for c in pts
+            }) if _has_hierarchy else list(_codes)
+
             qa1, qa2 = st.columns(2, gap="small")
             with qa1:
                 if st.button("✅ All", use_container_width=True, key="_ov_selall"):
-                    _visible_now = [c for c in _codes
-                                    if not _q
-                                    or _q in channel_names.get(c, str(c)).lower()
-                                    or _q in str(c).lower()]
-                    if _q:
-                        st.session_state["_ov_sel"] = set(_visible_now)
-                        for _c in _codes:
-                            st.session_state[f"cb_{_c}"] = _c in st.session_state["_ov_sel"]
-                    else:
-                        st.session_state["_ov_sel"]    = set()
-                        st.session_state["_ov_prev_q"] = ""
-                        for _c in _codes:
-                            st.session_state[f"cb_{_c}"] = False
+                    st.session_state["_ov_sel_regions"]  = list(_all_regions)
+                    st.session_state["_ov_sel_branches"] = list(_all_branches_list)
+                    st.session_state["_ov_sel"]          = set(_all_points_list)
+                    # Set widget keys directly so multiselects reflect selection visually
+                    st.session_state["_ov_ms_region"]    = list(_all_regions)
+                    st.session_state["_ov_ms_branch"]    = list(_all_branches_list)
+                    st.session_state["_ov_ms_points"]    = list(_all_points_list)
                     st.rerun()
             with qa2:
                 if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
-                    st.session_state["_ov_search_clear"] = True
-                    st.session_state["_ov_prev_q"] = ""
-                    st.session_state["_ov_sel"] = set()
-                    for _c in _codes:
-                        st.session_state[f"cb_{_c}"] = False
+                    st.session_state["_ov_search_clear"]  = True
+                    st.session_state["_ov_prev_q"]        = ""
+                    st.session_state["_ov_sel"]            = set()
+                    st.session_state["_ov_sel_regions"]    = []
+                    st.session_state["_ov_sel_branches"]   = []
+                    # Clear the widget keys directly so multiselects reset visually
+                    st.session_state["_ov_ms_region"]      = []
+                    st.session_state["_ov_ms_branch"]      = []
+                    st.session_state["_ov_ms_points"]      = []
                     st.rerun()
 
-            # ── Scrollable checkbox list ───────────────────────────────────────
-            _visible = [c for c in _codes
-                        if not _q
-                        or _q in channel_names.get(c, str(c)).lower()
-                        or _q in str(c).lower()]
+            # ── Region / Branch / IFB Point cascade ───────────────────────────
+            if _has_hierarchy:
+                # Region multiselect
+                sel_regions = st.multiselect(
+                    "🌍 Region",
+                    options=_all_regions,
+                    default=st.session_state.get("_ov_sel_regions", []),
+                    key="_ov_ms_region",
+                    placeholder="All Regions",
+                )
+                st.session_state["_ov_sel_regions"] = sel_regions
 
-            with st.container(height=_LIST_H, border=False, key="c_container"):
-                for code in _visible:
-                    name = channel_names.get(code, code)
-                    was = code in st.session_state["_ov_sel"]
-                    now = st.checkbox(name, value=was, key=f"cb_{code}")
-                    if now != was:
-                        if now:
-                            st.session_state["_ov_sel"].add(code)
-                        else:
-                            st.session_state["_ov_sel"].discard(code)
+                # Derive available branches from selected regions
+                if sel_regions:
+                    _avail_branches = sorted({
+                        b for r in sel_regions
+                        for b in _hierarchy.get(r, {}).keys()
+                    })
+                else:
+                    _avail_branches = sorted({
+                        b for r_data in _hierarchy.values()
+                        for b in r_data.keys()
+                    })
+
+                # Clean stale branch selections
+                _prev_branches = st.session_state.get("_ov_sel_branches", [])
+                _valid_branches = [b for b in _prev_branches if b in _avail_branches]
+
+                sel_branches = st.multiselect(
+                    "🏢 Branch",
+                    options=_avail_branches,
+                    default=_valid_branches,
+                    key="_ov_ms_branch",
+                    placeholder="All Branches",
+                )
+                st.session_state["_ov_sel_branches"] = sel_branches
+
+                # Derive available IFB points from selected regions + branches
+                _avail_points: list[str] = []
+                _src_regions = sel_regions if sel_regions else list(_hierarchy.keys())
+                _src_branches_set = set(sel_branches) if sel_branches else None
+                for _r in _src_regions:
+                    for _b, _pts in _hierarchy.get(_r, {}).items():
+                        if _src_branches_set and _b not in _src_branches_set:
+                            continue
+                        _avail_points.extend(_pts)
+                _avail_points = sorted(set(_avail_points),
+                                       key=lambda c: channel_names.get(c, c).lower())
+
+                # Apply search filter
+                if _q:
+                    _avail_points = [c for c in _avail_points
+                                     if _q in channel_names.get(c, str(c)).lower()
+                                     or _q in str(c).lower()]
+
+                # IFB Points multiselect
+                _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
+                             if c in _avail_points]
+                sel_points = st.multiselect(
+                    "🏪 IFB Points",
+                    options=_avail_points,
+                    default=_prev_pts,
+                    format_func=lambda c: channel_names.get(c, c),
+                    key="_ov_ms_points",
+                    placeholder="All IFB Points",
+                )
+                st.session_state["_ov_sel"] = set(sel_points)
+            else:
+                # Fallback: no hierarchy data — show flat multiselect
+                _visible = [c for c in _codes
+                            if not _q
+                            or _q in channel_names.get(c, str(c)).lower()
+                            or _q in str(c).lower()]
+                _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
+                             if c in _visible]
+                sel_points = st.multiselect(
+                    "🏪 IFB Points",
+                    options=_visible,
+                    default=_prev_pts,
+                    format_func=lambda c: channel_names.get(c, c),
+                    key="_ov_ms_points_flat",
+                    placeholder="All IFB Points",
+                )
+                st.session_state["_ov_sel"] = set(sel_points)
 
             selected_set = st.session_state["_ov_sel"]
 
-            if selected_set:
+            # Determine scope based on hierarchy selections (not just IFB point picks)
+            if _has_hierarchy and not selected_set:
+                # No specific IFB points picked — scope from region/branch cascade
+                _cascade_pts: list[str] = []
+                _src_r = sel_regions if sel_regions else list(_hierarchy.keys())
+                _src_b = set(sel_branches) if sel_branches else None
+                for _r in _src_r:
+                    for _b, _pts in _hierarchy.get(_r, {}).items():
+                        if _src_b and _b not in _src_b:
+                            continue
+                        _cascade_pts.extend(_pts)
+                _cascade_set = set(_cascade_pts)
+                if sel_regions or sel_branches:
+                    scope_codes = _cascade_set
+                    scope_df    = df[df["ifb_point"].isin(scope_codes)]
+                    scope_label = f"{len(scope_codes)} point{'s' if len(scope_codes) != 1 else ''}"
+                else:
+                    scope_codes = set(_codes)
+                    scope_df    = df
+                    scope_label = f"All {len(_codes)} points"
+            elif selected_set:
                 scope_codes = selected_set
                 scope_df    = df[df["ifb_point"].isin(scope_codes)]
                 n = len(selected_set)
@@ -924,13 +1045,27 @@ def render_overview_dashboard(
 
             # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
             with st.container(border=True, key="kpi_row"):
-                kc1, kc2, kc3, kc4, kc5 = st.columns(5, gap="small")
+                kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6, gap="small")
                 _active_pts = int(scope_df[scope_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].nunique()) if not scope_df.empty else 0
-                _kpi_card(kc1, "IFB Points", len(scope_codes), today_val=_active_pts, sub_label="Active")
-                _kpi_card(kc2, "Total Follow Up",   total_leads, today_val=t_total)
-                _kpi_card(kc3, "Contacted",     contacted, pct=_pct(contacted), today_val=t_contacted, today_pct=_tpct(t_contacted))
-                _kpi_card(kc4, "Not Contacted", not_cont,  pct=_pct(not_cont),  today_val=t_not_cont,  today_pct=_tpct(t_not_cont))
-                _kpi_card(kc5, "RnR",           rnr,       pct=_pct(rnr),       today_val=t_rnr,       today_pct=_tpct(t_rnr))
+                _active_pct = (_active_pts / len(scope_codes) * 100) if len(scope_codes) else 0.0
+                _kpi_card(kc1, "Total Stores", len(scope_codes), today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
+                _kpi_card(kc2, "Total Customers Allocated", total_leads, today_val=t_total)
+                _kpi_card(kc3, "Calls Attempted", contacted, today_val=t_contacted, today_pct=_tpct(t_contacted), sub_label="Today Calls Attempted")
+
+                _calls_connected   = contacted + rnr
+                _t_calls_connected = t_contacted + t_rnr
+                _t_cc_pct = (_t_calls_connected / t_total * 100) if t_total else 0.0
+                _kpi_card(kc4, "Calls Connected", _calls_connected,
+                          today_val=_t_calls_connected, today_pct=_t_cc_pct,
+                          sub_label="Todays Calls Connected", all_label="Total Calls Connected")
+
+                _interested     = int((scope_df["interest"] == "Interested").sum()) if not scope_df.empty else 0
+                _t_interested   = int((_df_today["interested"] == "Interested").sum()) if not _df_today.empty else 0
+                _t_int_pct      = (_t_interested / t_total * 100) if t_total else 0.0
+                _kpi_card(kc5, "Interested Customers", _interested,
+                          today_val=_t_interested, today_pct=_t_int_pct)
+
+                _kpi_card(kc6, "Not Contacted", not_cont, today_val=t_not_cont, today_pct=_tpct(t_not_cont))
 
             # G — CHART ROWS  (colour-coded per time bucket)
             #   Day  → last 7 days · Week → last 4 weeks · Month → last 6 months

@@ -1194,7 +1194,9 @@ def _get_allowed_codes(email: str) -> set[str]:
 if not _resolve_point_code():
     if st.session_state.get("_authed"):
         _allowed_codes = _get_allowed_codes(st.session_state.get("_authed_email", ""))
-        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes)
+        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes,
+                                      login_mapping_db=LOGIN_MAPPING_DB,
+                                      user_email=st.session_state.get("_authed_email", ""))
         st.stop()
 
     # Strip the fixed-header top padding + restore normal vertical spacing
@@ -1937,7 +1939,7 @@ else:
         end   = min(start + PAGE_SIZE, total_rows)
         page_df = df_filt.iloc[start:end]
 
-        R   = [0.4, 1.7, 2.0, 1.1, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.3, 1.0, 0.4]
+        R   = [0.4, 1.7, 2.0, 1.3, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.1, 1.0, 0.4]
         HDR = ["", "Customer Follow-Up", "Customer Name", "Purchase Date",
                "Machine Type", "Phone", "Email",
                "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", ""]
