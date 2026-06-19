@@ -66,6 +66,8 @@ def _normalise_record(rec: dict, stage: str, point_code: str, point_name: str) -
         "email_id":          (rec.get("email_id") or "").strip(),
         "pin_code":          str(rec.get("pinCode") or "").strip(),
         "serial_no":         str(rec.get("serialNo") or "").strip(),
+        "machine_desc":      (rec.get("machine_Desc") or "").strip(),
+        "dealer_name":       (rec.get("dealerName") or "").strip(),
         "ifb_point_code":    point_code,
         "ifb_point_name":    point_name,
         "customer_follow_up": stage,
@@ -76,7 +78,7 @@ def _normalise_record(rec: dict, stage: str, point_code: str, point_name: str) -
 _API_COLS = (
     "customer_id", "customer_name", "purchase_date", "installationdate",
     "machine_type", "phone_number", "alt_number", "email_id",
-    "pinCode", "serialNo",
+    "pinCode", "serialNo", "machine_Desc", "dealerName",
 )
 
 
@@ -99,6 +101,8 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
             email_id        TEXT,
             "pinCode"       TEXT,
             "serialNo"      TEXT,
+            "machine_Desc"  TEXT,
+            "dealerName"    TEXT,
             status            TEXT,
             next_appointment  TEXT,
             interested        TEXT,
@@ -108,9 +112,10 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
     """)
     # Migration for DBs created before the 4 user-input columns existed
     existing = {r[1] for r in conn.execute("PRAGMA table_info(api_leads)").fetchall()}
-    for new_col in ("status", "next_appointment", "interested", "remarks", "final_status"):
+    for new_col in ("status", "next_appointment", "interested", "remarks", "final_status",
+                     "machine_Desc", "dealerName"):
         if new_col not in existing:
-            conn.execute(f"ALTER TABLE api_leads ADD COLUMN {new_col} TEXT")
+            conn.execute(f'ALTER TABLE api_leads ADD COLUMN "{new_col}" TEXT')
     conn.executescript(
         """
         CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_point_id
@@ -198,8 +203,8 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
                   (ifb_point, key, lead_date, follow_up,
                    customer_id, customer_name, purchase_date, installationdate,
                    machine_type, phone_number, alt_number, email_id,
-                   "pinCode", "serialNo")
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   "pinCode", "serialNo", "machine_Desc", "dealerName")
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows_to_insert,
             )

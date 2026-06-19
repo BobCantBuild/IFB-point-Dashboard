@@ -21,15 +21,16 @@ LOGIN_DB         = _APP_DIR / "login.db"
 LOGIN_MAPPING_DB = _APP_DIR / "login_mapping.db"
 MASTER_FILE  = _APP_DIR / "IFB_Point_Master.txt"
 
-# Startup migration: ensure reason column exists in api_leads
+# Startup migration: ensure reason/machine_Desc/dealerName columns exist in api_leads
 try:
     import sqlite3 as _sqlite3_boot
     if DB_PATH.exists():
         with _sqlite3_boot.connect(DB_PATH) as _bc:
             _cols = {r[1] for r in _bc.execute("PRAGMA table_info(api_leads)").fetchall()}
-            if "reason" not in _cols:
-                _bc.execute("ALTER TABLE api_leads ADD COLUMN reason TEXT")
-                _bc.commit()
+            for _new_col in ("reason", "machine_Desc", "dealerName"):
+                if _new_col not in _cols:
+                    _bc.execute(f'ALTER TABLE api_leads ADD COLUMN "{_new_col}" TEXT')
+            _bc.commit()
 except Exception:
     pass
 
@@ -321,7 +322,8 @@ def _read_db(ifb_point_code: str) -> list[dict]:
                 """
                 SELECT id, key, customer_id, customer_name, purchase_date,
                        installationdate, machine_type, phone_number, alt_number,
-                       email_id, "pinCode", "serialNo", ifb_point, lead_date,
+                       email_id, "pinCode", "serialNo", "machine_Desc", "dealerName",
+                       ifb_point, lead_date,
                        follow_up, status, next_appointment, interested, remarks,
                        final_status, reason
                   FROM api_leads
@@ -351,6 +353,8 @@ def _read_db(ifb_point_code: str) -> list[dict]:
             "email_id":           r["email_id"],
             "pin_code":           r["pinCode"],
             "serial_no":          r["serialNo"],
+            "machine_desc":       r["machine_Desc"],
+            "dealer_name":        r["dealerName"],
             "ifb_point_code":     r["ifb_point"],
             "lead_date":          r["lead_date"],
             "customer_follow_up": _BUCKET_TO_STAGE.get(r["follow_up"] or "", r["follow_up"] or ""),
@@ -406,7 +410,8 @@ def load_all() -> tuple[pd.DataFrame, str]:
         df["next_appointment"] = pd.to_datetime(df["next_appointment"], errors="coerce").dt.date
 
     for col in ("customer_name", "machine_type", "email_id",
-                "customer_follow_up", "status", "interested", "remarks"):
+                "customer_follow_up", "status", "interested", "remarks",
+                "machine_desc", "dealer_name", "reason"):
         if col not in df.columns:
             df[col] = None
 
@@ -968,38 +973,68 @@ st.markdown("""
     opacity:1 !important;
   }
 
-  /* ── Lead table (per-row st.columns) — clean minimal style ── */
+  /* ── Lead table — horizontally scrollable with sticky icon columns ── */
+
+  /* The tbl_area container scrolls horizontally */
+  .st-key-tbl_area {
+    overflow-x:auto; overflow-y:visible;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;
+    scrollbar-color:#CBD5E1 transparent;
+    padding-bottom:4px;
+  }
+  .st-key-tbl_area::-webkit-scrollbar { height:6px; }
+  .st-key-tbl_area::-webkit-scrollbar-track { background:transparent; }
+  .st-key-tbl_area::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:3px; }
+
+  /* Force each row (stHorizontalBlock) to a fixed wide width so columns don't squish */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"] {
+    min-width:2200px !important;
+    flex-wrap:nowrap !important;
+  }
+
+  /* Sticky edit column (first) */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+    position:sticky !important;
+    left:0 !important;
+    z-index:3 !important;
+    background:#FFFFFF !important;
+  }
+  /* Sticky eye column (last) */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {
+    position:sticky !important;
+    right:0 !important;
+    z-index:3 !important;
+    background:#FFFFFF !important;
+  }
+
   .th {
     background:#FFFFFF;
-    padding:16px 14px;
+    padding:14px 14px;
     font-size:12.5px; font-weight:600;
     color:#334155; letter-spacing:0.2px;
-    border-bottom:1px solid #E2E8F0;
+    border-bottom:2px solid #E2E8F0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    min-height:50px; display:flex; align-items:center;
+    min-height:48px; display:flex; align-items:center;
   }
-  .th.th-first { border-top-left-radius:14px; justify-content:center; }
-  .th.th-last  { border-top-right-radius:14px; }
 
   .td {
-    background:#FFFFFF; padding:20px 14px;
+    background:transparent; padding:16px 14px;
     font-size:13.5px; color:#1E293B; font-weight:400;
     border-bottom:1px solid #F1F5F9;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    min-height:64px; display:flex; align-items:center;
+    min-height:56px; display:flex; align-items:center;
   }
-  .td.alt     { background:#FFFFFF; }     /* no alternating — all white */
+  /* Row hover */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td):hover .td { background:#F8FAFC; }
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td):hover > [data-testid="stColumn"]:first-child,
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td):hover > [data-testid="stColumn"]:last-child {
+    background:#F8FAFC !important;
+  }
   .td.wrap    { white-space:normal; word-break:break-word; line-height:1.4; }
-  /* Row hover: lift the whole row in light blue so eye can track left-to-right */
-  [data-testid="stHorizontalBlock"]:has(.td):hover .td { background:#F8FAFC; }
   .td.muted   { color:#CBD5E1; justify-content:center; }
   .td.icon    { justify-content:center; padding:14px 0; }
   .td.center  { justify-content:center; }
-  /* Right-edge breathing room so Remarks doesn't touch grey container */
-  .td.td-last { padding-right:52px !important; }
-  /* Eye-icon header is the last column now — keep it snug to the icon,
-     not elongated. Small even padding mirrors the narrow icon column. */
-  .th.th-last { padding-right:14px !important; }
 
   /* Status/Interested chips with colored dots */
   .chip {
@@ -1045,17 +1080,16 @@ st.markdown("""
     box-shadow:0 4px 12px rgba(15,23,42,0.45) !important;
   }
 
-  /* Center icon buttons vertically inside their column cell.
-     stVerticalBlock is display:flex column, height ~48px, button ~38px.
-     Note: Streamlit uses data-testid="stColumn" (not "column"). */
-  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"],
-  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"] {
-    justify-content:flex-end !important;
+  /* Center icon buttons vertically inside their column cell. */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"],
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"] {
+    justify-content:center !important;
     flex-direction:column !important;
+    min-height:56px;
   }
 
-  /* Pencil edit button — circular icon, ONLY inside table rows */
-  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
+  /* Pencil / eye button — circular icon, inside table data rows */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
     background:#FFFFFF !important; color:#94A3B8 !important;
     border:1.5px solid #E2E8F0 !important;
     height:38px !important; min-height:38px !important;
@@ -1066,20 +1100,14 @@ st.markdown("""
     line-height:1 !important;
     transition:all .15s ease;
   }
-  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:hover {
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:hover {
     background:var(--brand-l) !important; color:var(--brand) !important;
     border-color:var(--brand) !important;
     transform:scale(1.12) rotate(-8deg);
     box-shadow:0 4px 12px rgba(37,99,235,0.25) !important;
   }
-  [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:active {
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) .stButton > button:active {
     transform:scale(0.95) rotate(0deg);
-  }
-
-  /* Eye view button — push to the far right edge of the row (corner),
-     mirroring how the edit pencil sits at the left edge. */
-  [data-testid="stHorizontalBlock"]:has(.td) [data-testid="column"]:last-child .stButton > button {
-    margin:0 0 0 auto !important;
   }
 
   /* Kill row gaps so cell + button line up perfectly */
@@ -1266,8 +1294,9 @@ st.markdown("""
     .stButton, header[data-testid="stHeader"] { display:none !important; }
     .th, .td { padding:8px 10px !important; min-height:auto !important;
                border-bottom:1px solid #94A3B8 !important; font-size:11px !important; }
+    .tbl-scroll { overflow-x:visible !important; }
     .stats-row, .sec { page-break-inside:avoid; }
-    .td.wrap, .td.td-last { white-space:normal !important; }
+    .td.wrap { white-space:normal !important; }
   }
 </style>
 """, unsafe_allow_html=True)
@@ -1676,6 +1705,7 @@ st.html("""
     }).observe(window.parent.document.body, {childList:true, subtree:false});
   }catch(e){}
 })();
+
 </script>
 """)
 
@@ -2069,17 +2099,11 @@ else:
         end   = min(start + PAGE_SIZE, total_rows)
         page_df = df_filt.iloc[start:end]
 
-        R   = [0.4, 1.7, 2.0, 1.3, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.1, 1.0, 0.4]
-        HDR = ["", "Customer Follow-Up", "Customer Name", "Purchase Date",
-               "Machine Type", "Phone", "Email",
-               "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", ""]
-
-        hdr = st.columns(R)
-        last_i = len(HDR) - 1
-        for i, (c, lbl) in enumerate(zip(hdr, HDR)):
-            extra = (" th-first" if i == 0 else "") + (" th-last" if i == last_i else "")
-            style = " style='padding-right:56px;margin-right:6px;'" if i == last_i else ""
-            c.markdown(f"<div class='th{extra}'{style}>{lbl}</div>", unsafe_allow_html=True)
+        # Column ratios: edit, 14 data cols, eye
+        R = [0.35, 1.2, 1.6, 1.1, 1.3, 1.8, 1.6, 1.2, 1.5, 1.1, 1.0, 1.2, 1.0, 1.0, 1.0, 0.35]
+        HDR = ["", "Follow-Up", "Customer Name", "Purchase Date",
+               "Machine Type", "Machine Desc", "Dealer Name", "Phone", "Email",
+               "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", "Reason", ""]
 
         def _status_chip(v):
             s = _safe(v)
@@ -2119,71 +2143,90 @@ else:
         if st.session_state.pop("_eye_error", False):
             st.toast("Could not fetch customer details — API error", icon="⚠️")
 
-        for ri, (_, row) in enumerate(page_df.iterrows()):
-            cid = str(row["customer_id"])
-            cols = st.columns(R)
+        with st.container(key="tbl_area"):
+            # Header row
+            hdr = st.columns(R)
+            last_i = len(HDR) - 1
+            for i, (c, lbl) in enumerate(zip(hdr, HDR)):
+                c.markdown(f"<div class='th'>{lbl}</div>", unsafe_allow_html=True)
 
-            with cols[0]:
-                if st.button("✏️", key=f"edit_{ri}_{cid}", help=f"Edit lead {cid}"):
-                    edit_lead_dialog(row.to_dict())
+            for ri, (_, row) in enumerate(page_df.iterrows()):
+                cid = str(row["customer_id"])
+                cols = st.columns(R)
 
-            cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
-            _name_raw = (str(row.get('customer_name') or '')).strip()
-            if _name_raw:
-                _name_html = f"<b>{_safe(_name_raw)}</b>"
-            else:
-                _mt = str(row.get('machine_type') or '').strip() or 'Customer'
-                _name_html = f"<span style='color:#94A3B8;font-style:italic;'>(unnamed {_mt.lower()})</span>"
-            cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
-            cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>", unsafe_allow_html=True)
-            cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>", unsafe_allow_html=True)
+                with cols[0]:
+                    if st.button("✏️", key=f"edit_{ri}_{cid}", help=f"Edit lead {cid}"):
+                        edit_lead_dialog(row.to_dict())
 
-            _revealed = st.session_state.get("_revealed", {})
-            _rev = _revealed.get(cid)
-            if _rev:
-                _phone_display = _rev.get("mobileNo") or "N/A"
-                _email_display = _rev.get("emailID")  or "N/A"
-                _ph_style = "color:#16A34A;font-weight:600;" if _phone_display != "N/A" else "color:#94A3B8;"
-                _em_style = "color:#16A34A;font-weight:600;" if _email_display != "N/A" else "color:#94A3B8;"
-            else:
-                _phone_display = _safe(row.get('phone_number'))
-                _email_display = _safe(row.get('email_id'))
-                _ph_style = ""
-                _em_style = ""
-            cols[5].markdown(f"<div class='td' style='{_ph_style}'>{_phone_display}</div>", unsafe_allow_html=True)
-            cols[6].markdown(f"<div class='td' style='{_em_style}'>{_email_display}</div>", unsafe_allow_html=True)
-            cols[7].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>", unsafe_allow_html=True)
-            cols[8].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
-            cols[9].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
-            _rem_full = _safe(row.get('remarks'))
-            _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
-            cols[10].markdown(
-                f"<div class='td' title='{_rem_tip}'>"
-                f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                f"min-width:0;flex:1;display:block;'>{_rem_full}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+                _name_raw = (str(row.get('customer_name') or '')).strip()
+                if _name_raw:
+                    _name_html = f"<b>{_safe(_name_raw)}</b>"
+                else:
+                    _mt = str(row.get('machine_type') or '').strip() or 'Customer'
+                    _name_html = f"<span style='color:#94A3B8;font-style:italic;'>(unnamed {_mt.lower()})</span>"
 
-            # Final Status chip
-            _fs = _safe(row.get('final_status'))
-            if _fs == "WIN":
-                _fs_html = "<span class='chip nodot'>🏆 WIN</span>"
-            elif _fs == "LOST":
-                _fs_html = "<span class='chip nodot'>❌ LOST</span>"
-            else:
-                _fs_html = "<span class='chip'>—</span>"
-            cols[11].markdown(f"<div class='td center'>{_fs_html}</div>", unsafe_allow_html=True)
+                _revealed = st.session_state.get("_revealed", {})
+                _rev = _revealed.get(cid)
+                if _rev:
+                    _phone_display = _rev.get("mobileNo") or "N/A"
+                    _email_display = _rev.get("emailID")  or "N/A"
+                    _ph_style = "color:#16A34A;font-weight:600;" if _phone_display != "N/A" else "color:#94A3B8;"
+                    _em_style = "color:#16A34A;font-weight:600;" if _email_display != "N/A" else "color:#94A3B8;"
+                else:
+                    _phone_display = _safe(row.get('phone_number'))
+                    _email_display = _safe(row.get('email_id'))
+                    _ph_style = ""
+                    _em_style = ""
 
-            with cols[12]:  # eye icon — last column
-                _already_revealed = cid in st.session_state.get("_revealed", {})
-                st.button(
-                    "🔓" if _already_revealed else "👁️",
-                    key=f"view_{ri}_{cid}",
-                    help=f"View lead {cid}",
-                    on_click=_on_eye_click,
-                    args=(cid,),
+                cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
+                cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
+                cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>", unsafe_allow_html=True)
+                cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>", unsafe_allow_html=True)
+                cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_desc'))}</div>", unsafe_allow_html=True)
+                cols[6].markdown(f"<div class='td'>{_safe(row.get('dealer_name'))}</div>", unsafe_allow_html=True)
+                cols[7].markdown(f"<div class='td' style='{_ph_style}'>{_phone_display}</div>", unsafe_allow_html=True)
+                cols[8].markdown(f"<div class='td' style='{_em_style}'>{_email_display}</div>", unsafe_allow_html=True)
+                cols[9].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>", unsafe_allow_html=True)
+                cols[10].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
+                cols[11].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
+
+                _rem_full = _safe(row.get('remarks'))
+                _rem_tip  = _rem_full.replace("'", "&#39;").replace('"', "&quot;")
+                cols[12].markdown(
+                    f"<div class='td' title='{_rem_tip}'>"
+                    f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    f"min-width:0;flex:1;display:block;'>{_rem_full}</span></div>",
+                    unsafe_allow_html=True,
                 )
+
+                _fs = _safe(row.get('final_status'))
+                if _fs == "WIN":
+                    _fs_html = "<span class='chip nodot'>🏆 WIN</span>"
+                elif _fs == "LOST":
+                    _fs_html = "<span class='chip nodot'>❌ LOST</span>"
+                else:
+                    _fs_html = "<span class='chip'>—</span>"
+                cols[13].markdown(f"<div class='td center'>{_fs_html}</div>", unsafe_allow_html=True)
+
+                _reason_full = _safe(row.get('reason'))
+                _reason_tip  = _reason_full.replace("'", "&#39;").replace('"', "&quot;")
+                cols[14].markdown(
+                    f"<div class='td' title='{_reason_tip}'>"
+                    f"<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    f"min-width:0;flex:1;display:block;'>{_reason_full}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+                with cols[15]:
+                    _already_revealed = cid in st.session_state.get("_revealed", {})
+                    st.button(
+                        "🔓" if _already_revealed else "👁️",
+                        key=f"view_{ri}_{cid}",
+                        help=f"View lead {cid}",
+                        on_click=_on_eye_click,
+                        args=(cid,),
+                    )
+
 
         st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
         pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
