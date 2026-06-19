@@ -626,14 +626,29 @@ st.markdown("""
     overflow:hidden !important;
   }
 
-  /* ── Header band (hero + stats) — flows with content for consistent layout
-     at all screen widths. Previously position:fixed, but that required fragile
-     JS to set block-container padding and broke at intermediate resolutions. */
-  .fixed-header {
-    position:static;
+  /* ── Header band (hero + stats) — sticky to the top of the scrolling
+     viewport so it stays pinned while the rest of the page scrolls underneath.
+     Unlike position:fixed, sticky needs no JS-measured height/padding sync,
+     so it holds up across every breakpoint (desktop/tablet/mobile).
+     The sticky position must be set on Streamlit's own stElementContainer
+     wrapper (position:relative), not on .fixed-header itself — that wrapper
+     becomes the sticky containing block and, being only as tall as its
+     content, would otherwise confine the stick to a few px and neutralize it. */
+  .element-container:has(.fixed-header) {
+    position:sticky !important;
+    top:0;
+    z-index:40;
     background:var(--bg);
-    padding:0.7rem 1rem 0.3rem;
-    margin-bottom:6px;
+    padding-bottom:14px !important;
+  }
+  .fixed-header {
+    background:var(--bg);
+    padding:0.7rem 1rem 0.5rem;
+    margin-bottom:14px;
+    border:1px solid #E2E8F0;
+    border-top:none;
+    border-radius:0 0 8px 8px;
+    box-shadow:0 4px 10px -3px rgba(15,23,42,0.08);
   }
 
   /* ── Filter panel anchor — collapse it ── */
@@ -972,11 +987,14 @@ st.markdown("""
 
   /* The tbl_area container scrolls horizontally */
   .st-key-tbl_area {
-    overflow-x:auto; overflow-y:visible;
+    overflow-x:auto; overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:thin;
     scrollbar-color:#CBD5E1 transparent;
     padding-bottom:4px;
+    border:1px solid #E2E8F0;
+    border-radius:14px;
+    box-shadow:0 1px 3px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.03);
   }
   .st-key-tbl_area::-webkit-scrollbar { height:6px; }
   .st-key-tbl_area::-webkit-scrollbar-track { background:transparent; }
@@ -1016,13 +1034,19 @@ st.markdown("""
   }
 
   .th {
-    background:#FFFFFF;
+    background:#F8FAFC;
     padding:14px 14px;
     font-size:12.5px; font-weight:600;
     color:#334155; letter-spacing:0.2px;
     border-bottom:2px solid #E2E8F0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     min-height:48px; display:flex; align-items:center;
+  }
+  /* Sticky columns in the header row — match .th background and remove shadow lines */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.th) > [data-testid="stColumn"]:first-child,
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.th) > [data-testid="stColumn"]:last-child {
+    background:#F8FAFC !important;
+    box-shadow:none !important;
   }
 
   .td {
@@ -1031,6 +1055,10 @@ st.markdown("""
     border-bottom:1px solid #F1F5F9;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     min-height:56px; display:flex; align-items:center;
+  }
+  /* Last data row — no bottom border (the container border is enough) */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td):last-child .td {
+    border-bottom:none;
   }
   /* Row hover */
   .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td):hover .td { background:#F8FAFC; }
