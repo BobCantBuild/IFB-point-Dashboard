@@ -197,7 +197,7 @@ _EYE_API_BASE = "https://bseapi.ifbsupport.com/api"
 _EYE_API_USER = "IFBFollowUPAPP"
 _EYE_API_PASS = "U29tZVJhbmRvbUJhc2U2NA=="
 
-STATUS_OPTIONS   = ["Contacted", "RnR"]
+STATUS_OPTIONS   = ["Contacted", "RnR", "Not Reachable"]
 INTEREST_OPTIONS = ["Interested", "Not Interested"]
 REASON_OPTIONS   = ["Service issue", "Others"]
 
@@ -1509,7 +1509,8 @@ today = date.today()
 total        = len(df_all)
 contacted    = int((df_all["status"]     == "Contacted").sum())
 rnr_count    = int((df_all["status"]     == "RnR").sum())
-not_cont     = total - contacted - rnr_count
+not_reach    = int((df_all["status"]     == "Not Reachable").sum())
+not_cont     = total - contacted - rnr_count - not_reach
 interested   = int((df_all["interested"] == "Interested").sum())
 not_interest = int((df_all["interested"] == "Not Interested").sum())
 fu           = df_all["customer_follow_up"].value_counts().to_dict()
@@ -1519,7 +1520,8 @@ _df_today      = df_all[df_all["lead_date"] == today] if "lead_date" in df_all.c
 today_total    = len(_df_today)
 today_contacted = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
 today_rnr       = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
-today_not_cont  = today_total - today_contacted - today_rnr
+today_not_reach = int((_df_today["status"] == "Not Reachable").sum()) if not _df_today.empty else 0
+today_not_cont  = today_total - today_contacted - today_rnr - today_not_reach
 
 def sub(cls, val, lbl):
     return f'<div class="sub-stat {cls}"><div class="ss-val">{val}</div><div class="ss-lbl">{lbl}</div></div>'
@@ -1579,12 +1581,13 @@ st.markdown(f"""<div class="fixed-header">
         <div class="s-dual-col"><div class="s-value s-today">{today_total}</div><div class="s-sub-lbl s-sub-today">Today</div></div>
       </div>
     </div>
-    <div class="stat-group" style="flex:1.4 1 340px;min-width:340px;">
+    <div class="stat-group" style="flex:1.8 1 440px;min-width:440px;">
       <div class="g-label">📞 Contact Status</div>
       <div class="g-inner">
         {sub2("ss-green", contacted,    today_contacted, "Contacted")}
         {sub2("ss-red",   not_cont,     today_not_cont,  "Not Contacted")}
         {sub2("ss-warn",  rnr_count,    today_rnr,       "RnR")}
+        {sub2("ss-slate", not_reach,    today_not_reach, "Not Reachable")}
       </div>
     </div>
     <div class="stat-group" style="flex:0.6 1 180px;min-width:180px;">
@@ -1777,10 +1780,10 @@ else:
             ]
 
     # 2. section filter on status (only when NOT in NextAppt mode)
-    #    "Attempted" → any call attempt made (Contacted / Not Contacted / RnR)
+    #    "Attempted" → any call attempt made (Contacted / Not Contacted / RnR / Not Reachable)
     #    "Open"      → all leads (no status restriction)
     if section == "Attempted" and "status" in filtered.columns:
-        attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted", "RnR"])
+        attempted_mask = filtered["status"].fillna("").isin(["Contacted", "Not Contacted", "RnR", "Not Reachable"])
         filtered = filtered[attempted_mask].copy()
 
 # follow-up stage filter
@@ -1844,14 +1847,15 @@ def _fmt_date(d):
 def edit_lead_dialog(row: dict):
     cid     = str(row["customer_id"])
     name    = row.get("customer_name") or "—"
-    machine = row.get("machine_type")  or "—"
+    machine = row.get("machine_desc")  or "—"
+    pincode = str(row.get("pin_code") or "").strip() or "—"
 
     st.markdown(
         f"<div style='font-size:12px;color:#94A3B8;text-transform:uppercase;"
         f"letter-spacing:0.7px;margin-bottom:2px;'>Customer</div>"
         f"<div style='font-size:20px;font-weight:700;color:#0F172A;line-height:1.2;'>{name}</div>"
         f"<div style='font-size:12px;color:#94A3B8;margin:4px 0 16px;'>"
-        f"ID {cid} &nbsp;·&nbsp; {machine}</div>",
+        f"ID {cid} &nbsp;·&nbsp; 📍 {pincode} &nbsp;·&nbsp; ⚙️ {machine}</div>",
         unsafe_allow_html=True,
     )
 
@@ -1879,7 +1883,7 @@ def edit_lead_dialog(row: dict):
     ns = st.selectbox(
         "Call Status", STATUS_OPTIONS,
         index=STATUS_OPTIONS.index(cur_s) if cur_s in STATUS_OPTIONS else None,
-        placeholder="Contacted / RnR",
+        placeholder="Contacted / RnR / Not Reachable",
         key=f"dlg_s_{cid}",
     )
 
@@ -1914,14 +1918,14 @@ def edit_lead_dialog(row: dict):
             na = st.date_input("Next Appointment",
                                value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q4: Remarks (60 char limit + live JS counter)
+        # Q4: Remarks (150 char limit + live JS counter)
         nr = st.text_area("Remarks", value=cur_r, height=90,
-                          max_chars=60, key=f"dlg_r_{cid}")
-        _left = 60 - len(nr)
-        _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
+                          max_chars=150, key=f"dlg_r_{cid}")
+        _left = 150 - len(nr)
+        _clr  = "#16A34A" if _left > 50 else "#D97706" if _left > 15 else "#DC2626"
         st.html(f"""
 <div id="rc_{cid}" style="text-align:right;font-size:11px;font-weight:600;
-     color:{_clr};margin-top:-10px;">{_left} / 60 left</div>
+     color:{_clr};margin-top:-10px;">{_left} / 150 left</div>
 <script>
 (function(){{
   var counter = document.getElementById('rc_{cid}');
@@ -1931,9 +1935,9 @@ def edit_lead_dialog(row: dict):
     var ta = dlg.querySelector('textarea');
     if(!ta) return false;
     function upd(){{
-      var left = 60 - ta.value.length;
-      counter.textContent = left + ' / 60 left';
-      counter.style.color = left > 20 ? '#16A34A' : left > 5 ? '#D97706' : '#DC2626';
+      var left = 150 - ta.value.length;
+      counter.textContent = left + ' / 150 left';
+      counter.style.color = left > 50 ? '#16A34A' : left > 15 ? '#D97706' : '#DC2626';
     }}
     ta.addEventListener('input', upd);
     upd();
@@ -1962,14 +1966,14 @@ def edit_lead_dialog(row: dict):
         na = st.date_input("Next Appointment",
                            value=cur_a, min_value=_tomorrow, key=f"dlg_a_{cid}")
 
-        # Q3: Remarks (60 char limit + live JS counter)
+        # Q3: Remarks (150 char limit + live JS counter)
         nr = st.text_area("Remarks", value=cur_r, height=90,
-                          max_chars=60, key=f"dlg_r_{cid}")
-        _left = 60 - len(nr)
-        _clr  = "#16A34A" if _left > 20 else "#D97706" if _left > 5 else "#DC2626"
+                          max_chars=150, key=f"dlg_r_{cid}")
+        _left = 150 - len(nr)
+        _clr  = "#16A34A" if _left > 50 else "#D97706" if _left > 15 else "#DC2626"
         st.html(f"""
 <div id="rc_{cid}" style="text-align:right;font-size:11px;font-weight:600;
-     color:{_clr};margin-top:-10px;">{_left} / 60 left</div>
+     color:{_clr};margin-top:-10px;">{_left} / 150 left</div>
 <script>
 (function(){{
   var counter = document.getElementById('rc_{cid}');
@@ -1979,9 +1983,9 @@ def edit_lead_dialog(row: dict):
     var ta = dlg.querySelector('textarea');
     if(!ta) return false;
     function upd(){{
-      var left = 60 - ta.value.length;
-      counter.textContent = left + ' / 60 left';
-      counter.style.color = left > 20 ? '#16A34A' : left > 5 ? '#D97706' : '#DC2626';
+      var left = 150 - ta.value.length;
+      counter.textContent = left + ' / 150 left';
+      counter.style.color = left > 50 ? '#16A34A' : left > 15 ? '#D97706' : '#DC2626';
     }}
     ta.addEventListener('input', upd);
     upd();
@@ -1995,6 +1999,39 @@ def edit_lead_dialog(row: dict):
         # · Next Appointment must be a valid date
         # · Remarks must not be empty
         _can_save = (isinstance(na, date)) and (nr.strip() != "")
+
+    elif ns == "Not Reachable":
+        # Q2: Remarks only (150 char limit + live JS counter)
+        nr = st.text_area("Remarks", value=cur_r, height=90,
+                          max_chars=150, key=f"dlg_r_{cid}")
+        _left = 150 - len(nr)
+        _clr  = "#16A34A" if _left > 50 else "#D97706" if _left > 15 else "#DC2626"
+        st.html(f"""
+<div id="rc_{cid}" style="text-align:right;font-size:11px;font-weight:600;
+     color:{_clr};margin-top:-10px;">{_left} / 150 left</div>
+<script>
+(function(){{
+  var counter = document.getElementById('rc_{cid}');
+  function init(){{
+    var dlg = document.querySelector('[data-testid="stDialog"]');
+    if(!dlg || !counter) return false;
+    var ta = dlg.querySelector('textarea');
+    if(!ta) return false;
+    function upd(){{
+      var left = 150 - ta.value.length;
+      counter.textContent = left + ' / 150 left';
+      counter.style.color = left > 50 ? '#16A34A' : left > 15 ? '#D97706' : '#DC2626';
+    }}
+    ta.addEventListener('input', upd);
+    upd();
+    return true;
+  }}
+  var t = setInterval(function(){{ if(init()) clearInterval(t); }}, 50);
+}})();
+</script>""")
+
+        # Save enabled when Remarks not empty
+        _can_save = (nr.strip() != "")
 
     else:
         # No status selected yet
@@ -2048,6 +2085,11 @@ def edit_lead_dialog(row: dict):
                     if not isinstance(na, date):
                         _err_fields.append("Next Appointment")
                         _err_css.append(_inp_border(f"dlg_a_{cid}"))
+                    if nr.strip() == "":
+                        _err_fields.append("Remarks")
+                        _err_css.append(_ta_border(f"dlg_r_{cid}"))
+
+                elif ns == "Not Reachable":
                     if nr.strip() == "":
                         _err_fields.append("Remarks")
                         _err_css.append(_ta_border(f"dlg_r_{cid}"))
