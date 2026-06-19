@@ -49,4 +49,5 @@ desktop.ini
 *.tmp
 run_app.sh*
 backup*
+.hermes
 

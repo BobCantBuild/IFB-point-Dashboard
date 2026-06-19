@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import date, datetime as _dt, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ except Exception:
     pass
 
 
+@lru_cache(maxsize=1)
 def _load_master_codes() -> set[str]:
     """
     Return the full set of valid IFB Point codes from IFB_Point_Master.txt.
@@ -83,6 +85,7 @@ def _clean_channel_name(name: str) -> str:
     return name
 
 
+@lru_cache(maxsize=1)
 def _load_channel_names() -> dict[str, str]:
     """
     Load channel code → friendly name mapping.
@@ -128,6 +131,65 @@ def _load_channel_names() -> dict[str, str]:
 
 _MASTER_CODES = _load_master_codes()
 _CHANNEL_NAMES = _load_channel_names()
+
+
+def _ensure_runtime_indexes() -> None:
+    """Create non-destructive SQLite indexes for production read/write paths."""
+    if DB_PATH.exists():
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.executescript(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_point_id
+                        ON api_leads(ifb_point, id DESC);
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_point_lead_date
+                        ON api_leads(ifb_point, lead_date);
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_customer
+                        ON api_leads(ifb_point, customer_id);
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_key
+                        ON api_leads(key);
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_lead_date
+                        ON api_leads(lead_date);
+                    CREATE INDEX IF NOT EXISTS idx_api_leads_next_appointment
+                        ON api_leads(next_appointment);
+                    """
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    if LOGIN_DB.exists():
+        try:
+            with sqlite3.connect(LOGIN_DB) as conn:
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_users_email_lower
+                        ON users(LOWER(email))
+                """)
+                conn.commit()
+        except Exception:
+            pass
+
+    if LOGIN_MAPPING_DB.exists():
+        try:
+            with sqlite3.connect(LOGIN_MAPPING_DB) as conn:
+                conn.executescript(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_login_mapping_retail_email_lower
+                        ON login_mapping(LOWER("Retail Email_ID"));
+                    CREATE INDEX IF NOT EXISTS idx_login_mapping_email_lower
+                        ON login_mapping(LOWER(Email_ID));
+                    CREATE INDEX IF NOT EXISTS idx_login_mapping_point
+                        ON login_mapping(IFBpoint_id);
+                    CREATE INDEX IF NOT EXISTS idx_login_mapping_region_branch_point
+                        ON login_mapping(Region, Branch, IFBpoint_id);
+                    """
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+
+_ensure_runtime_indexes()
 
 # ── API config for customer detail lookup (eye icon) ──────────────────────────
 _EYE_API_BASE = "https://bseapi.ifbsupport.com/api"
@@ -256,7 +318,16 @@ def _read_db(ifb_point_code: str) -> list[dict]:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM api_leads WHERE ifb_point = ? ORDER BY id DESC",
+                """
+                SELECT id, key, customer_id, customer_name, purchase_date,
+                       installationdate, machine_type, phone_number, alt_number,
+                       email_id, "pinCode", "serialNo", ifb_point, lead_date,
+                       follow_up, status, next_appointment, interested, remarks,
+                       final_status, reason
+                  FROM api_leads
+                 WHERE ifb_point = ?
+                 ORDER BY id DESC
+                """,
                 (ifb_point_code,),
             ).fetchall()
     except Exception:
@@ -378,6 +449,14 @@ def _ensure_counter_db() -> None:
             conn.execute("ALTER TABLE edit_log ADD COLUMN counter INTEGER")
         if "reason" not in existing:
             conn.execute("ALTER TABLE edit_log ADD COLUMN reason TEXT")
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_edit_log_key_status
+                ON edit_log(key, call_status)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_edit_log_key
+                ON edit_log(key)
+        """)
         conn.commit()
 
 
@@ -1120,6 +1199,51 @@ st.markdown("""
   .filter-wrap { max-width:1700px; margin:0 auto; }
   .filter-row-gap { height:22px; }
 
+  /* ── Mobile fallback: prioritize caller actions over dense desktop grid ── */
+  @media (max-width: 768px) {
+    .stApp { overflow-x:hidden !important; }
+    .block-container {
+      padding:10px 10px 24px !important;
+      max-width:100% !important;
+    }
+    .fixed-header {
+      position:static !important;
+      padding:8px 8px 4px !important;
+    }
+    .hero {
+      padding:10px 12px !important;
+      margin-bottom:10px !important;
+      border-radius:12px !important;
+    }
+    .hero h1 { font-size:17px !important; line-height:1.25 !important; }
+    .stats-row {
+      display:grid !important;
+      grid-template-columns:1fr 1fr !important;
+      gap:8px !important;
+      margin-bottom:10px !important;
+    }
+    .stat-solo, .stat-group {
+      min-width:0 !important;
+      padding:8px 9px !important;
+      border-radius:10px !important;
+    }
+    .stat-group { grid-column:1 / -1; }
+    .s-value { font-size:20px !important; }
+    .ss-val { font-size:13px !important; }
+    .ss-lbl { font-size:8px !important; }
+    .st-key-filter_panel { padding:8px !important; margin-bottom:10px !important; }
+    .th { display:none !important; }
+    .td {
+      min-height:30px !important;
+      padding:6px 7px !important;
+      font-size:11px !important;
+      white-space:normal !important;
+      overflow-wrap:anywhere !important;
+    }
+    div[data-testid="stHorizontalBlock"] { gap:0.25rem !important; }
+    .stButton > button { min-height:30px !important; padding:0 8px !important; }
+  }
+
   /* ── API sync status badges ── */
   .api-ok {
     font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;
@@ -1194,7 +1318,9 @@ def _get_allowed_codes(email: str) -> set[str]:
 if not _resolve_point_code():
     if st.session_state.get("_authed"):
         _allowed_codes = _get_allowed_codes(st.session_state.get("_authed_email", ""))
-        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes)
+        _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes,
+                                      login_mapping_db=LOGIN_MAPPING_DB,
+                                      user_email=st.session_state.get("_authed_email", ""))
         st.stop()
 
     # Strip the fixed-header top padding + restore normal vertical spacing
@@ -1513,6 +1639,12 @@ st.html("""
       var doc = (window.parent !== window) ? window.parent.document : document;
       var fh  = doc.querySelector('.fixed-header');
       if(!fh) return false;
+      if(window.innerWidth <= 768){
+        fh.style.setProperty('position','static','important');
+        var bcMobile = doc.querySelector('.block-container');
+        if(bcMobile) bcMobile.style.setProperty('padding-top','10px','important');
+        return true;
+      }
       var hdrRect = fh.getBoundingClientRect();
       var hdrH = Math.ceil(hdrRect.height);
       if(hdrH < 40) return false;
@@ -1937,7 +2069,7 @@ else:
         end   = min(start + PAGE_SIZE, total_rows)
         page_df = df_filt.iloc[start:end]
 
-        R   = [0.4, 1.7, 2.0, 1.1, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.3, 1.0, 0.4]
+        R   = [0.4, 1.7, 2.0, 1.3, 1.5, 1.4, 1.6, 1.3, 1.1, 1.4, 1.1, 1.0, 0.4]
         HDR = ["", "Customer Follow-Up", "Customer Name", "Purchase Date",
                "Machine Type", "Phone", "Email",
                "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", ""]
