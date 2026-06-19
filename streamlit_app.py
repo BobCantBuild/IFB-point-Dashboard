@@ -613,18 +613,12 @@ st.markdown("""
   }
 
   .block-container {
-    /* Enough top-padding to clear the fixed hero+stats band (~220px).
-       JS below fine-tunes to the exact measured height. */
-    padding-top:260px !important; padding-bottom:2rem;
+    padding-top:10px !important; padding-bottom:2rem;
     max-width:1700px;
   }
 
-  /* Filter rows scroll naturally with the content — only the hero+stats
-     band stays pinned. This avoids the empty-gap artifact caused by
-     unreliable position:fixed pinning of dynamic Streamlit elements. */
-
-  /* Collapse element-container wrappers around fixed/hidden elements */
-  .element-container:has(.fixed-header),
+  /* Collapse only the hidden helper elements (custom components / st.html scripts).
+     The fixed-header is now in normal flow, so it should NOT be collapsed. */
   .element-container:has([data-testid="stCustomComponentV1"]),
   .element-container:has([data-testid="stHtml"]) {
     height:0 !important; min-height:0 !important;
@@ -632,13 +626,14 @@ st.markdown("""
     overflow:hidden !important;
   }
 
-  /* ── FIXED header band (hero + stats) — truly pinned, never scrolls ── */
+  /* ── Header band (hero + stats) — flows with content for consistent layout
+     at all screen widths. Previously position:fixed, but that required fragile
+     JS to set block-container padding and broke at intermediate resolutions. */
   .fixed-header {
-    position:fixed;
-    top:0; left:0; right:0;
-    z-index:9999;
+    position:static;
     background:var(--bg);
     padding:0.7rem 1rem 0.3rem;
+    margin-bottom:6px;
   }
 
   /* ── Filter panel anchor — collapse it ── */
@@ -992,6 +987,12 @@ st.markdown("""
     min-width:2200px !important;
     flex-wrap:nowrap !important;
   }
+  /* Override Streamlit's mobile rule that makes each column full-width
+     (calc(100% - 24px)) — without this, columns stack vertically on small screens */
+  .st-key-tbl_area [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    min-width:0 !important;
+    flex-shrink:1 !important;
+  }
 
   /* Sticky edit column (first) */
   .st-key-tbl_area [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
@@ -999,6 +1000,9 @@ st.markdown("""
     left:0 !important;
     z-index:3 !important;
     background:#FFFFFF !important;
+    width:52px !important; min-width:52px !important; max-width:52px !important;
+    flex:0 0 52px !important;
+    box-shadow:6px 0 6px -4px rgba(15,23,42,0.08);
   }
   /* Sticky eye column (last) */
   .st-key-tbl_area [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {
@@ -1006,6 +1010,9 @@ st.markdown("""
     right:0 !important;
     z-index:3 !important;
     background:#FFFFFF !important;
+    width:52px !important; min-width:52px !important; max-width:52px !important;
+    flex:0 0 52px !important;
+    box-shadow:-6px 0 6px -4px rgba(15,23,42,0.08);
   }
 
   .th {
@@ -1227,23 +1234,37 @@ st.markdown("""
   .filter-wrap { max-width:1700px; margin:0 auto; }
   .filter-row-gap { height:22px; }
 
-  /* ── Mobile fallback: prioritize caller actions over dense desktop grid ── */
+  /* ── Tablet & small desktop (≤1100px) — condense stats ── */
+  @media (max-width: 1100px) {
+    .block-container {
+      padding-left:14px !important; padding-right:14px !important;
+    }
+    .fixed-header { padding:8px 8px 6px !important; }
+    .hero h1 { font-size:18px !important; }
+    .stats-row { gap:10px !important; }
+    .stat-solo, .stat-group { padding:9px 10px !important; }
+    .s-value { font-size:22px !important; }
+    .ss-val { font-size:13px !important; }
+    .ss-lbl { font-size:9px !important; }
+  }
+
+  /* ── Mobile fallback (≤768px): stack stats vertically ── */
   @media (max-width: 768px) {
     .stApp { overflow-x:hidden !important; }
     .block-container {
-      padding:10px 10px 24px !important;
+      padding:8px 8px 24px !important;
       max-width:100% !important;
     }
     .fixed-header {
-      position:static !important;
-      padding:8px 8px 4px !important;
+      padding:8px 4px 4px !important;
+      max-width:100% !important;
     }
     .hero {
       padding:10px 12px !important;
       margin-bottom:10px !important;
       border-radius:12px !important;
     }
-    .hero h1 { font-size:17px !important; line-height:1.25 !important; }
+    .hero h1 { font-size:16px !important; line-height:1.25 !important; }
     .stats-row {
       display:grid !important;
       grid-template-columns:1fr 1fr !important;
@@ -1256,20 +1277,45 @@ st.markdown("""
       border-radius:10px !important;
     }
     .stat-group { grid-column:1 / -1; }
-    .s-value { font-size:20px !important; }
+    .stat-group .ss-row { gap:6px !important; }
+    .s-value { font-size:19px !important; }
     .ss-val { font-size:13px !important; }
     .ss-lbl { font-size:8px !important; }
     .st-key-filter_panel { padding:8px !important; margin-bottom:10px !important; }
-    .th { display:none !important; }
-    .td {
-      min-height:30px !important;
-      padding:6px 7px !important;
+
+    /* Table: keep horizontal scroll, slightly narrower min-width so it doesn't
+       feel like the table is empty when first viewed */
+    .st-key-tbl_area { padding-bottom:6px !important; }
+    .st-key-tbl_area [data-testid="stHorizontalBlock"] {
+      min-width:1700px !important;
+    }
+    .th {
       font-size:11px !important;
-      white-space:normal !important;
-      overflow-wrap:anywhere !important;
+      padding:8px 8px !important;
+      min-height:36px !important;
+    }
+    .td {
+      min-height:42px !important;
+      padding:8px 8px !important;
+      font-size:11.5px !important;
+    }
+    .st-key-tbl_area [data-testid="stHorizontalBlock"]:has(.td) .stButton > button {
+      height:32px !important; min-height:32px !important;
+      width:32px !important; min-width:32px !important;
+      font-size:12px !important;
     }
     div[data-testid="stHorizontalBlock"] { gap:0.25rem !important; }
-    .stButton > button { min-height:30px !important; padding:0 8px !important; }
+  }
+
+  /* ── Extra-small phones (≤420px) ── */
+  @media (max-width: 420px) {
+    .hero h1 { font-size:14px !important; }
+    .stats-row { grid-template-columns:1fr !important; }
+    .stat-solo, .stat-group { padding:7px 8px !important; }
+    .s-value { font-size:17px !important; }
+    .st-key-tbl_area [data-testid="stHorizontalBlock"] {
+      min-width:1500px !important;
+    }
   }
 
   /* ── API sync status badges ── */
@@ -1663,47 +1709,9 @@ st.html("""
 (function(){
   /* st.html renders inline (no iframe), so we use document directly.
      Falls back to window.parent.document for any sandboxed context. */
-  function run(){
-    try{
-      var doc = (window.parent !== window) ? window.parent.document : document;
-      var fh  = doc.querySelector('.fixed-header');
-      if(!fh) return false;
-      if(window.innerWidth <= 768){
-        fh.style.setProperty('position','static','important');
-        var bcMobile = doc.querySelector('.block-container');
-        if(bcMobile) bcMobile.style.setProperty('padding-top','10px','important');
-        return true;
-      }
-      var hdrRect = fh.getBoundingClientRect();
-      var hdrH = Math.ceil(hdrRect.height);
-      if(hdrH < 40) return false;
-
-      var bc = doc.querySelector('.block-container');
-      if(!bc) return false;
-
-      // Fine-tune the padding to exactly match the measured header height.
-      // Using header height avoids occasional overestimates that create
-      // a large blank gap between the stats row and the filter rows.
-      var paddingTop = Math.max(0, hdrH + 12);
-      bc.style.setProperty('padding-top', paddingTop+'px','important');
-
-      return true;
-    }catch(e){ return false; }
-  }
-
-  // Retry every 80 ms until the rows are successfully pinned, then stop polling.
-  // MutationObserver re-runs on Streamlit rerenders.
-  var _timer = setInterval(function(){
-    if(run()) clearInterval(_timer);
-  }, 80);
-
-  var _dbt = null;
-  try{
-    new MutationObserver(function(){
-      clearTimeout(_dbt);
-      _dbt = setTimeout(run, 80);
-    }).observe(window.parent.document.body, {childList:true, subtree:false});
-  }catch(e){}
+  // Header is now in normal document flow at all widths — no padding-top
+  // calculation needed. This block is intentionally a no-op kept for legacy
+  // hook compatibility.
 })();
 
 </script>
