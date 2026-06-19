@@ -49,8 +49,8 @@ CENTRAL_RECIPIENTS = [
 #               Change this one line to switch over — no other code changes
 #               needed.
 # ─────────────────────────────────────────────────────────────────────────────
-# TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
-TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
+TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
+# TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 
@@ -120,9 +120,9 @@ def kpis(df):
     contacted       = int((df["status"] == "Contacted").sum())
     rnr             = int((df["status"] == "RnR").sum())
     not_cont        = total - contacted - rnr
-    calls_connected = contacted + rnr
+    calls_attempted = contacted + rnr
     interested_cnt  = int((df["interested"] == "Interested").sum()) if "interested" in df.columns else 0
-    return total, contacted, not_cont, rnr, calls_connected, interested_cnt
+    return total, contacted, not_cont, rnr, calls_attempted, interested_cnt
 
 def pct(n, total):
     return f"{round(n / total * 100)}%" if total else "0%"
@@ -141,15 +141,15 @@ def day_insights(df, today, total_pts=0):
     peak   = max(nz, key=lambda x: x[1], default=(today, 0))
     low    = min(nz, key=lambda x: x[1], default=(today, 0))
     t_df   = df[df["lead_dt"].dt.normalize() == today]
-    _, cont, nc, rnr, t_cc, _ = kpis(t_df)
+    _, cont, nc, rnr, t_ca, _ = kpis(t_df)
     dir_w  = f"+{delta}% above" if delta >= 0 else f"{abs(delta)}% below"
     lines  = [
         (f"&#x2197; <strong>{window:,}</strong> total follow ups over the last 7 days.",                          "#0369A1"),
         (f"&#x25BA; Today&#39;s <strong>{tc:,}</strong> follow ups is <strong>{dir_w}</strong> the 6-day average of <strong>{avg:,}</strong>.", "#334155"),
         (f"&#x25B2; <strong>Peak:</strong> {peak[0].strftime('%d %b')} with <strong>{peak[1]:,}</strong> follow ups.", "#334155"),
         (f"&#x25BC; <strong>Low:</strong> {low[0].strftime('%d %b')} with <strong>{low[1]:,}</strong> follow ups.",   "#334155"),
-        (f"&#x2714; Calls Attempted today: <strong style='color:#16A34A'>{pct(cont, tc)}</strong> ({cont:,} calls attempted).", "#16A34A"),
-        (f"&#x260E; Calls Connected today: <strong style='color:#D97706'>{t_cc:,}</strong> (Attempted + RnR).", "#D97706"),
+        (f"&#x2714; Calls Connected today: <strong style='color:#16A34A'>{pct(cont, tc)}</strong> ({cont:,} calls connected).", "#16A34A"),
+        (f"&#x260E; Calls Attempted today: <strong style='color:#D97706'>{t_ca:,}</strong> (Connected + RnR).", "#D97706"),
     ]
     if tc and (nc / tc * 100) >= 20:
         lines.append((f"&#x2716; <strong style='color:#DC2626'>{nc:,} Not Contacted</strong> today &mdash; needs follow-up action.", "#DC2626"))
@@ -190,7 +190,7 @@ def week_insights(df, today, total_pts=0):
         (f"&#x25BA; This week (<strong>{this_w:,}</strong>) is <strong>{dir_w}</strong> the 3-week average of <strong>{avg:,}</strong>.", "#334155"),
         (f"&#x25B2; <strong>Peak week:</strong> {peak[2]} &ndash; {peak[3]} with <strong>{peak[4]:,}</strong> follow ups.",              "#334155"),
         (f"&#x25BC; <strong>Low week:</strong> {low[2]} &ndash; {low[3]} with <strong>{low[4]:,}</strong> follow ups.",                  "#334155"),
-        (f"&#x2714; Overall calls attempted rate (4 weeks): <strong style='color:#16A34A'>{pct(all_cont, len(df))}</strong>.",           "#16A34A"),
+        (f"&#x2714; Overall calls connected rate (4 weeks): <strong style='color:#16A34A'>{pct(all_cont, len(df))}</strong>.",           "#16A34A"),
     ]
     all_rnr = int((df["status"] == "RnR").sum())
     if all_rnr:
@@ -232,7 +232,7 @@ def month_insights(df, today, total_pts=0):
         (f"&#x25BA; {months[-1][2]} (<strong>{this_m:,}</strong>) is <strong>{dir_w}</strong> the 5-month average of <strong>{avg:,}</strong>.", "#334155"),
         (f"&#x25B2; <strong>Peak month:</strong> {peak[2]} with <strong>{peak[3]:,}</strong> follow ups.",                                       "#334155"),
         (f"&#x25BC; <strong>Low month:</strong> {low[2]} with <strong>{low[3]:,}</strong> follow ups.",                                          "#334155"),
-        (f"&#x2714; Overall calls attempted rate (6 months): <strong style='color:#16A34A'>{pct(all_cont, len(df))}</strong>.",                  "#16A34A"),
+        (f"&#x2714; Overall calls connected rate (6 months): <strong style='color:#16A34A'>{pct(all_cont, len(df))}</strong>.",                  "#16A34A"),
     ]
     if total_pts:
         cm_start, cm_end = months[-1][0], months[-1][1]
@@ -298,7 +298,7 @@ def build_html(df: pd.DataFrame,
     today_day = date.today().strftime("%A")
 
     t_df = df[df["lead_dt"].dt.normalize() == today]
-    t_total, t_cont, t_nc, t_rnr, t_calls_connected, t_interested = kpis(t_df)
+    t_total, t_cont, t_nc, t_rnr, t_calls_attempted, t_interested = kpis(t_df)
     total_pts  = df["ifb_point"].nunique()
     active_pts = df[df["status"].isin(["Contacted", "RnR"])]["ifb_point"].nunique()
 
@@ -397,10 +397,10 @@ def build_html(df: pd.DataFrame,
                   t_total, "#0EA5E9", "#F0F9FF", "#BAE6FD")}
         {kpi_card("Calls Attempted",
                   '<span style="font-size:18px;color:#16A34A;">&#x2714;</span>',
-                  t_cont, "#16A34A", "#F0FDF4", "#BBF7D0")}
+                  t_calls_attempted, "#16A34A", "#F0FDF4", "#BBF7D0")}
         {kpi_card("Calls Connected",
                   '<span style="font-size:18px;color:#D97706;">&#x260E;</span>',
-                  t_calls_connected, "#D97706", "#FFFBEB", "#FDE68A")}
+                  t_cont, "#D97706", "#FFFBEB", "#FDE68A")}
         {kpi_card("Interested Customers",
                   '<span style="font-size:18px;color:#7C3AED;">&#x2605;</span>',
                   t_interested, "#7C3AED", "#F5F3FF", "#DDD6FE")}
