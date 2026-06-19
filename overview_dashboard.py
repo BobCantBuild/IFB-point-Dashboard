@@ -188,6 +188,35 @@ _OVERVIEW_CSS = """
   .st-key-two_pane > div:first-child div[data-testid="stMultiSelect"] [data-baseweb="tag"] span {
     overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important;
   }
+
+  /* ── Mobile fallback: stack overview controls instead of forcing desktop width ── */
+  @media (max-width: 768px) {
+    .block-container { padding:8px 10px 18px !important; }
+    .st-key-two_pane > div {
+      flex-direction:column !important;
+    }
+    .st-key-two_pane > div > div {
+      width:100% !important;
+      flex:1 1 auto !important;
+    }
+    .st-key-two_pane > div:first-child > div:first-child,
+    .st-key-two_pane > div:nth-child(2) > div:first-child {
+      margin-top:8px !important;
+    }
+    .st-key-kpi_row [data-testid="stHorizontalBlock"] {
+      flex-wrap:wrap !important;
+    }
+    .st-key-kpi_row [data-testid="stHorizontalBlock"] > div {
+      min-width:46% !important;
+      flex:1 1 46% !important;
+    }
+    .st-key-sec_day [data-testid="stHorizontalBlock"],
+    .st-key-sec_week [data-testid="stHorizontalBlock"],
+    .st-key-sec_month [data-testid="stHorizontalBlock"] {
+      flex-wrap:wrap !important;
+    }
+    [data-testid="stPlotlyChart"] { overflow-x:auto !important; }
+  }
 </style>
 """
 
@@ -195,14 +224,19 @@ _OVERVIEW_CSS = """
 # ── Data loader ────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=60)
-def _load_df(db_path: str) -> pd.DataFrame:
-    """Load all leads once (cached 60s)."""
+def _load_df(db_path: str, allowed_codes_key: tuple[str, ...] | None = None) -> pd.DataFrame:
+    """Load dashboard lead columns once, scoped in SQL when user access is restricted."""
+    sql = (
+        "SELECT ifb_point, status, final_status, interested, follow_up, lead_date "
+        "FROM api_leads"
+    )
+    params: list[str] = []
+    if allowed_codes_key:
+        placeholders = ",".join("?" for _ in allowed_codes_key)
+        sql += f" WHERE ifb_point IN ({placeholders})"
+        params.extend(allowed_codes_key)
     with sqlite3.connect(db_path) as conn:
-        return pd.read_sql_query(
-            "SELECT ifb_point, status, final_status, interested, follow_up, lead_date "
-            "FROM api_leads",
-            conn,
-        )
+        return pd.read_sql_query(sql, conn, params=params)
 
 
 # ── KPI card ───────────────────────────────────────────────────────────────────
@@ -797,7 +831,8 @@ def render_overview_dashboard(
     </script>
     """)
 
-    df = _load_df(str(db_path)).copy()
+    allowed_codes_key = tuple(sorted(allowed_codes)) if allowed_codes else None
+    df = _load_df(str(db_path), allowed_codes_key).copy()
     if df.empty:
         st.info("No data available yet.")
         return
@@ -811,7 +846,8 @@ def render_overview_dashboard(
     _codes = sorted(df["ifb_point"].unique(),
                     key=lambda c: channel_names.get(c, c).lower())
 
-    # Restrict to only the IFB points this user is mapped to
+    # Restrict to only the IFB points this user is mapped to. The loader already
+    # applies this in SQL; keep this guard for safety if cached data shape changes.
     if allowed_codes:
         df     = df[df["ifb_point"].isin(allowed_codes)]
         _codes = [c for c in _codes if c in allowed_codes]

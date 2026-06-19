@@ -111,6 +111,22 @@ def _ensure_api_leads_table(conn: sqlite3.Connection) -> None:
     for new_col in ("status", "next_appointment", "interested", "remarks", "final_status"):
         if new_col not in existing:
             conn.execute(f"ALTER TABLE api_leads ADD COLUMN {new_col} TEXT")
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_point_id
+            ON api_leads(ifb_point, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_point_lead_date
+            ON api_leads(ifb_point, lead_date);
+        CREATE INDEX IF NOT EXISTS idx_api_leads_ifb_customer
+            ON api_leads(ifb_point, customer_id);
+        CREATE INDEX IF NOT EXISTS idx_api_leads_key
+            ON api_leads(key);
+        CREATE INDEX IF NOT EXISTS idx_api_leads_lead_date
+            ON api_leads(lead_date);
+        CREATE INDEX IF NOT EXISTS idx_api_leads_next_appointment
+            ON api_leads(next_appointment);
+        """
+    )
     conn.commit()
 
 
@@ -144,40 +160,51 @@ def append_to_sqlite(payload: dict | list, point_code: str) -> int:
              WHERE key IS NULL OR key = ''
         """)
 
+        incoming: list[tuple[str, str, dict]] = []
         for bucket_key, _stage in BUCKET_STAGE.items():
             for raw in payload.get(bucket_key, []):
                 if not isinstance(raw, dict):
                     continue
                 cust_id = str(raw.get("customer_id", "") or "").strip()
                 serial  = str(raw.get("serialNo",    "") or "").strip()
-                key_val = f"{point_code}-{cust_id}-{serial}"
+                incoming.append((f"{point_code}-{cust_id}-{serial}", bucket_key, raw))
 
-                # Key-based idempotency: if key already exists, leave the row
-                # alone — don't modify, don't re-insert. (User-edited columns
-                # status/next_appointment/interested/remarks are preserved.)
-                exists = conn.execute(
-                    "SELECT 1 FROM api_leads WHERE key = ? LIMIT 1", (key_val,)
-                ).fetchone()
-                if exists:
-                    skipped += 1
-                    continue
+        existing_keys: set[str] = set()
+        keys = [key_val for key_val, _, _ in incoming]
+        for i in range(0, len(keys), 900):
+            batch = keys[i:i + 900]
+            if not batch:
+                continue
+            placeholders = ",".join("?" for _ in batch)
+            existing_keys.update(
+                r[0] for r in conn.execute(
+                    f"SELECT key FROM api_leads WHERE key IN ({placeholders})",
+                    batch,
+                ).fetchall()
+            )
 
-                values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
-                cur2 = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO api_leads
-                      (ifb_point, key, lead_date, follow_up,
-                       customer_id, customer_name, purchase_date, installationdate,
-                       machine_type, phone_number, alt_number, email_id,
-                       "pinCode", "serialNo")
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (point_code, key_val, lead_date, bucket_key, *values),
-                )
-                if cur2.rowcount:
-                    inserted += 1
-                else:
-                    skipped += 1
+        rows_to_insert = []
+        for key_val, bucket_key, raw in incoming:
+            if key_val in existing_keys:
+                skipped += 1
+                continue
+            values = [str(raw.get(c, "") or "").strip() for c in _API_COLS]
+            rows_to_insert.append((point_code, key_val, lead_date, bucket_key, *values))
+
+        if rows_to_insert:
+            cur = conn.executemany(
+                """
+                INSERT OR IGNORE INTO api_leads
+                  (ifb_point, key, lead_date, follow_up,
+                   customer_id, customer_name, purchase_date, installationdate,
+                   machine_type, phone_number, alt_number, email_id,
+                   "pinCode", "serialNo")
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows_to_insert,
+            )
+            inserted += cur.rowcount if cur.rowcount != -1 else len(rows_to_insert)
+            skipped += max(0, len(rows_to_insert) - (cur.rowcount if cur.rowcount != -1 else len(rows_to_insert)))
 
         conn.commit()
 
