@@ -119,10 +119,11 @@ def kpis(df):
     total           = len(df)
     contacted       = int((df["status"] == "Contacted").sum())
     rnr             = int((df["status"] == "RnR").sum())
-    not_cont        = total - contacted - rnr
-    calls_attempted = contacted + rnr
+    not_reachable   = int((df["status"] == "Not Reachable").sum())
+    not_cont        = total - contacted - rnr - not_reachable
+    calls_attempted = contacted + rnr + not_reachable
     interested_cnt  = int((df["interested"] == "Interested").sum()) if "interested" in df.columns else 0
-    return total, contacted, not_cont, rnr, calls_attempted, interested_cnt
+    return total, contacted, not_cont, rnr, not_reachable, calls_attempted, interested_cnt
 
 def pct(n, total):
     return f"{round(n / total * 100)}%" if total else "0%"
@@ -141,7 +142,7 @@ def day_insights(df, today, total_pts=0):
     peak   = max(nz, key=lambda x: x[1], default=(today, 0))
     low    = min(nz, key=lambda x: x[1], default=(today, 0))
     t_df   = df[df["lead_dt"].dt.normalize() == today]
-    _, cont, nc, rnr, t_ca, _ = kpis(t_df)
+    _, cont, nc, rnr, not_reach, t_ca, _ = kpis(t_df)
     dir_w  = f"+{delta}% above" if delta >= 0 else f"{abs(delta)}% below"
     lines  = [
         (f"&#x2197; <strong>{window:,}</strong> total follow ups over the last 7 days.",                          "#0369A1"),
@@ -149,15 +150,16 @@ def day_insights(df, today, total_pts=0):
         (f"&#x25B2; <strong>Peak:</strong> {peak[0].strftime('%d %b')} with <strong>{peak[1]:,}</strong> follow ups.", "#334155"),
         (f"&#x25BC; <strong>Low:</strong> {low[0].strftime('%d %b')} with <strong>{low[1]:,}</strong> follow ups.",   "#334155"),
         (f"&#x2714; Calls Connected today: <strong style='color:#16A34A'>{pct(cont, tc)}</strong> ({cont:,} calls connected).", "#16A34A"),
-        (f"&#x260E; Calls Attempted today: <strong style='color:#D97706'>{t_ca:,}</strong> (Connected + RnR).", "#D97706"),
+        (f"&#x260E; Calls Attempted today: <strong style='color:#D97706'>{t_ca:,} ({pct(t_ca, tc)})</strong> "
+         f"(Connected {cont:,} + RnR {rnr:,} + Not Reachable {not_reach:,}).", "#D97706"),
     ]
     if tc and (nc / tc * 100) >= 20:
-        lines.append((f"&#x2716; <strong style='color:#DC2626'>{nc:,} Not Contacted</strong> today &mdash; needs follow-up action.", "#DC2626"))
+        lines.append((f"&#x2716; <strong style='color:#DC2626'>{nc:,} ({pct(nc, tc)})</strong> Not Contacted today &mdash; needs follow-up action.", "#DC2626"))
     if rnr:
         u = "follow up" if rnr == 1 else "follow ups"
         lines.append((f"&#x21BA; <strong style='color:#D97706'>{rnr} RnR</strong> {u} pending callback today.", "#D97706"))
     if total_pts:
-        active_pts = len(set(t_df[t_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique()))
+        active_pts = len(set(t_df[t_df["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].unique()))
         no_act     = total_pts - active_pts
         no_act_pct = round(no_act / total_pts * 100) if total_pts else 0
         lines.append((
@@ -199,7 +201,7 @@ def week_insights(df, today, total_pts=0):
     if total_pts:
         cw_start, cw_end = weeks[-1][0], weeks[-1][1]
         cw_df = df[(df["lead_dt"].dt.normalize() >= cw_start) & (df["lead_dt"].dt.normalize() <= cw_end)]
-        active_pts = len(set(cw_df[cw_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique()))
+        active_pts = len(set(cw_df[cw_df["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].unique()))
         no_act     = total_pts - active_pts
         no_act_pct = round(no_act / total_pts * 100) if total_pts else 0
         lines.append((
@@ -237,7 +239,7 @@ def month_insights(df, today, total_pts=0):
     if total_pts:
         cm_start, cm_end = months[-1][0], months[-1][1]
         cm_df = df[(df["lead_dt"] >= cm_start) & (df["lead_dt"] < cm_end)]
-        active_pts = len(set(cm_df[cm_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique()))
+        active_pts = len(set(cm_df[cm_df["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].unique()))
         no_act     = total_pts - active_pts
         no_act_pct = round(no_act / total_pts * 100) if total_pts else 0
         lines.append((
@@ -298,9 +300,9 @@ def build_html(df: pd.DataFrame,
     today_day = date.today().strftime("%A")
 
     t_df = df[df["lead_dt"].dt.normalize() == today]
-    t_total, t_cont, t_nc, t_rnr, t_calls_attempted, t_interested = kpis(t_df)
+    t_total, t_cont, t_nc, t_rnr, t_not_reach, t_calls_attempted, t_interested = kpis(t_df)
     total_pts  = df["ifb_point"].nunique()
-    active_pts = df[df["status"].isin(["Contacted", "RnR"])]["ifb_point"].nunique()
+    active_pts = df[df["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].nunique()
 
     day7_start  = today - pd.Timedelta(days=6)
     wk4_start   = today - pd.Timedelta(weeks=4)

@@ -106,34 +106,38 @@ Fixed header (sticky): IFB Point name + 5 stat badges + API sync status
 Two-pane layout:
   Left Rail (1.85)          │  Main (8.15)
   ────────────────────────  │  ──────────────────────────────────
-  🔍 Search box             │  [IFB Pts][Total FU][Contacted][Not Cont][RnR]  ← KPIs
+  🔍 Search box             │  [Stores][Cust Alloc][Attempted][Connected][Interested][Not Cont]  ← KPIs
   [✅ All]  [✖ Clear]       │  ← horizontally parallel with search+buttons
   ────────────────────────  │  ──────────────────────────────────
   Scrollable checkbox list  │  📅 Day Wise — Last 7 Days
-  (all IFB points)          │    [6 segment circles] | 👆 Click a circle...
+  (all IFB points)          │    [7 segment circles] | 👆 Click a circle...
                             │    [Marimekko chart]   | [Insights panel]
                             │
                             │  📆 Week Wise — Last 4 Weeks
-                            │    [6 segment circles] | 👆 Click a circle...
+                            │    [7 segment circles] | 👆 Click a circle...
                             │    [Marimekko chart]   | [Insights panel]
                             │
                             │  🗓️ Month Wise — Last 6 Months
-                            │    [6 segment circles] | 👆 Click a circle...
+                            │    [7 segment circles] | 👆 Click a circle...
                             │    [Marimekko chart]   | [Insights panel]
 ```
 
-### 5 KPI Cards
-`IFB Points` · `Total Follow Up` · `Contacted` · `Not Contacted` · `RnR`
+### 6 KPI Cards
+`Total Stores` · `Total Customers Allocated` · `Calls Attempted` · `Calls Connected` · `Interested Customers` · `Not Contacted`
 - Height: `76px` each
 - Horizontally aligned with the rail's search + All/Clear buttons (both have `margin-top:14px`)
+- **Total Stores**: main = count of scope codes; sub = "Active Calling Stores" (today's distinct IFB points with status Contacted/RnR/Not Reachable)
+- **Calls Attempted**: `Contacted + RnR + Not Reachable` (any call attempt made)
+- **Calls Connected**: `Contacted` only (call actually picked up)
 
-### 6 Segment Options (Marimekko chart)
+### 7 Segment Options (Marimekko chart)
 ```python
 _MK_SEGMENTS = [
     ("Interested",      "#16A34A"),
     ("Not Interested",  "#9333EA"),
     ("Contacted",       "#86EFAC"),
     ("Not Contacted",   "#DC2626"),
+    ("Not Reachable",   "#F97316"),
     ("RnR",             "#D97706"),
     ("Untouched",       "#CBD5E1"),
 ]
@@ -145,7 +149,7 @@ _MK_SEGMENTS = [
 ### Marimekko Chart
 - Column WIDTH ∝ lead volume per period; HEIGHT = segment mix %
 - No vertical spike line on hover (`showspikes=False`)
-- Full-column tooltip shows all 6 segment counts + % on hover
+- Full-column tooltip shows all 7 segment counts + % on hover
 - Chart height: `158px`
 
 ### Insights Panel (right of each chart, `height:158px`)
@@ -190,7 +194,7 @@ Accessed via `/?id=<code>`. Shows leads for a single IFB point with:
 - Stage filter (Post-Purchase / 1st 30 days call / Pre-AMC / 8 Year Upgrade / Greetings)
 - Search box (Name · Phone · Email · ID)
 - Leads table with eye icon (👁) for detailed customer lookup via API
-- Status update modal: Contacted / Not Contacted / RnR + Interest + Remarks
+- Status update modal: Contacted / RnR / Not Reachable + Interest + Remarks
 
 ---
 

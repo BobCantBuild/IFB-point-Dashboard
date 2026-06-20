@@ -323,7 +323,7 @@ def _bucket_aggregate(df: pd.DataFrame, freq: str, n_buckets: int = 7) -> pd.Dat
     tmp["_bk"] = keys
     counts = pd.DataFrame({
         "Total Customers Allocated": tmp.groupby("_bk").size(),
-        "Calls Attempted":           (tmp["status"] == "Contacted").groupby(tmp["_bk"]).sum(),
+        "Calls Attempted":           tmp["status"].isin(["Contacted", "RnR", "Not Reachable"]).groupby(tmp["_bk"]).sum(),
         "Not Contacted": (tmp["status"] == "Not Contacted").groupby(tmp["_bk"]).sum(),
         "RnR":           (tmp["status"] == "RnR").groupby(tmp["_bk"]).sum(),
     }).reset_index().rename(columns={"_bk": "bucket"})
@@ -379,6 +379,7 @@ _MK_SEGMENTS = [
     ("Not Interested",  "#9333EA"),   # contacted & not interested
     ("Contacted",       "#86EFAC"),   # contacted, interest not logged yet
     ("Not Contacted",   "#DC2626"),
+    ("Not Reachable",   "#F97316"),
     ("RnR",             "#D97706"),
     ("Untouched",       "#CBD5E1"),   # status = Pending
 ]
@@ -394,6 +395,7 @@ def _segments(sdf: pd.DataFrame) -> dict:
         "Not Interested": int((contacted_mask & (it_ == "Not Interested")).sum()),
         "Contacted":      int((contacted_mask & (~it_.isin(["Interested", "Not Interested"]))).sum()),
         "Not Contacted":  int((st_ == "Not Contacted").sum()),
+        "Not Reachable":  int((st_ == "Not Reachable").sum()),
         "RnR":            int((st_ == "RnR").sum()),
         "Untouched":      int((st_ == "Pending").sum()),
     }
@@ -468,6 +470,7 @@ def _marimekko(buckets: list[tuple], height: int = 158,
         # Aggregate to 3 KPI lines — Untouched absorbed into Not Contacted
         contacted_sum = b["Interested"] + b["Not Interested"] + b["Contacted"]
         not_cont_sum  = b["Not Contacted"] + b["Untouched"]
+        not_reach_sum = b["Not Reachable"]
         rnr_sum       = b["RnR"]
 
         def _pct(n): return f"{n/t*100:.1f}%" if t else "0%"
@@ -485,6 +488,9 @@ def _marimekko(buckets: list[tuple], height: int = 158,
             f"<span style='color:#DC2626;'>⬤</span>"
             f" <b style='color:#F1F5F9;'>Not Contacted</b>"
             f"<span style='color:#94A3B8;'>  {not_cont_sum:,}  ({_pct(not_cont_sum)})</span><br>"
+            f"<span style='color:#F97316;'>⬤</span>"
+            f" <b style='color:#F1F5F9;'>Not Reachable</b>"
+            f"<span style='color:#94A3B8;'>  {not_reach_sum:,}  ({_pct(not_reach_sum)})</span><br>"
             f"<span style='color:#D97706;'>⬤</span>"
             f" <b style='color:#F1F5F9;'>RnR</b>"
             f"<span style='color:#94A3B8;'>  {rnr_sum:,}  ({_pct(rnr_sum)})</span><br>"
@@ -724,7 +730,7 @@ def _insights(buckets: list[tuple], period: str, scope_df=None) -> str:
 
         _all_pts = len(scope_df["ifb_point"].unique()) if not scope_df.empty else 0
         if not _pf.empty:
-            _live_pts = set(_pf[_pf["status"].isin(["Contacted", "RnR"])]["ifb_point"].unique())
+            _live_pts = set(_pf[_pf["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].unique())
             _n_live   = len(_live_pts)
             _n_no_act = _all_pts - _n_live
             _no_act_pct = round(_n_no_act / _all_pts * 100) if _all_pts else 0
@@ -1078,17 +1084,19 @@ def render_overview_dashboard(
         # ── MAIN: F KPI + G charts ─────────────────────────────────────────────────
         with main:
             total_leads = len(scope_df)
-            contacted   = int((scope_df["status"] == "Contacted").sum())
-            rnr         = int((scope_df["status"] == "RnR").sum())
-            not_cont    = total_leads - contacted - rnr
+            contacted     = int((scope_df["status"] == "Contacted").sum())
+            rnr           = int((scope_df["status"] == "RnR").sum())
+            not_reachable = int((scope_df["status"] == "Not Reachable").sum())
+            not_cont      = total_leads - contacted - rnr
 
             _today_ts = pd.Timestamp(date.today())
             _df_today = scope_df[scope_df["lead_dt"].dt.normalize() == _today_ts
             ] if "lead_dt" in scope_df.columns else pd.DataFrame()
-            t_total     = len(_df_today)
-            t_contacted = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
-            t_rnr       = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
-            t_not_cont  = t_total - t_contacted - t_rnr
+            t_total         = len(_df_today)
+            t_contacted     = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
+            t_rnr           = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
+            t_not_reachable = int((_df_today["status"] == "Not Reachable").sum()) if not _df_today.empty else 0
+            t_not_cont      = t_total - t_contacted - t_rnr
 
             def _pct(n: int) -> float:
                 return (n / total_leads * 100) if total_leads else 0.0
@@ -1099,18 +1107,18 @@ def render_overview_dashboard(
             # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6, gap="small")
-                _active_pts = int(scope_df[scope_df["status"].isin(["Contacted", "RnR"])]["ifb_point"].nunique()) if not scope_df.empty else 0
+                _active_pts = int(_df_today[_df_today["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].nunique()) if not _df_today.empty else 0
                 _active_pct = (_active_pts / len(scope_codes) * 100) if len(scope_codes) else 0.0
                 _kpi_card(kc1, "Total Stores", len(scope_codes), today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
                 _kpi_card(kc2, "Total Customers Allocated", total_leads, today_val=t_total)
-                _kpi_card(kc3, "Calls Attempted", contacted, today_val=t_contacted, today_pct=_tpct(t_contacted), sub_label="Today Calls Attempted")
+                _calls_attempted   = contacted + rnr + not_reachable
+                _t_calls_attempted = t_contacted + t_rnr + t_not_reachable
+                _t_ca_pct = (_t_calls_attempted / t_total * 100) if t_total else 0.0
+                _kpi_card(kc3, "Calls Attempted", _calls_attempted,
+                          today_val=_t_calls_attempted, today_pct=_t_ca_pct,
+                          sub_label="Today Calls Attempted", all_label="Total Calls Attempted")
 
-                _calls_connected   = contacted + rnr
-                _t_calls_connected = t_contacted + t_rnr
-                _t_cc_pct = (_t_calls_connected / t_total * 100) if t_total else 0.0
-                _kpi_card(kc4, "Calls Connected", _calls_connected,
-                          today_val=_t_calls_connected, today_pct=_t_cc_pct,
-                          sub_label="Todays Calls Connected", all_label="Total Calls Connected")
+                _kpi_card(kc4, "Calls Connected", contacted, today_val=t_contacted, today_pct=_tpct(t_contacted), sub_label="Todays Calls Connected")
 
                 _interested     = int((scope_df["interest"] == "Interested").sum()) if not scope_df.empty else 0
                 _t_interested   = int((_df_today["interested"] == "Interested").sum()) if not _df_today.empty else 0

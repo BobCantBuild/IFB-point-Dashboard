@@ -98,7 +98,7 @@ The IFB API is firewalled — `sync_api.py` only works from a machine on the IFB
 | `email_id` | API | |
 | `pinCode` | API | (original) |
 | `serialNo` | API | (original) |
-| `status` | **User save** | Contacted / Not Contacted |
+| `status` | **User save** | Contacted / RnR / Not Reachable / Not Contacted |
 | `next_appointment` | **User save** | YYYY-MM-DD |
 | `interested` | **User save** | Interested / Not Interested |
 | `remarks` | **User save** | Free text |
@@ -127,7 +127,7 @@ The IFB API is firewalled — `sync_api.py` only works from a machine on the IFB
 ### Stats row
 - 🏪 **IFB Point Code** — current franchise (mirrors `config.py`)
 - 👥 **Total Follow-Ups**
-- 📞 **Contact Status** breakdown — Contacted / Not Contacted / Empty
+- 📞 **Contact Status** breakdown — Contacted / RnR / Not Reachable / Not Contacted / Empty
 - 💬 **Interest** breakdown — Interested / Not Interested / Empty
 - 🎯 **Follow-Up Stage** breakdown — Post Purchase / 1st 30 Days / Pre-AMC / 8 Year Upgrade
 
