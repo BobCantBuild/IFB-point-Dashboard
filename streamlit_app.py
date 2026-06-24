@@ -989,16 +989,18 @@ st.markdown("""
   .st-key-tbl_area {
     overflow-x:auto; overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
-    scrollbar-width:thin;
-    scrollbar-color:#CBD5E1 transparent;
+    scrollbar-color:#94A3B8 #F1F5F9;
     padding-bottom:4px;
     border:1px solid #E2E8F0;
     border-radius:14px;
     box-shadow:0 1px 3px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.03);
   }
-  .st-key-tbl_area::-webkit-scrollbar { height:6px; }
-  .st-key-tbl_area::-webkit-scrollbar-track { background:transparent; }
-  .st-key-tbl_area::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:3px; }
+  .st-key-tbl_area::-webkit-scrollbar { height:12px; }
+  .st-key-tbl_area::-webkit-scrollbar-track { background:#F1F5F9; border-radius:6px; }
+  .st-key-tbl_area::-webkit-scrollbar-thumb { background:#94A3B8; border-radius:6px; min-width:60px; }
+  .st-key-tbl_area::-webkit-scrollbar-thumb:hover { background:#64748B; }
+  .st-key-tbl_area { scrollbar-width:auto; }
+  .st-key-tbl_area.dragging { cursor:grabbing; user-select:none; }
 
   /* Force each row (stHorizontalBlock) to a fixed wide width so columns don't squish */
   .st-key-tbl_area [data-testid="stHorizontalBlock"] {
@@ -1375,6 +1377,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# -- Drag-to-scroll removed from here; injected after table via st.markdown --
 
 # --------------------------------------------------------------------------- #
 # Admin overview dashboard — aggregate visualisation across all IFB Points.
@@ -2178,9 +2181,9 @@ else:
         page_df = df_filt.iloc[start:end]
 
         # Column ratios: edit, 14 data cols, eye
-        R = [0.35, 1.2, 1.6, 1.1, 1.3, 1.8, 1.6, 1.2, 1.5, 1.1, 1.0, 1.2, 1.0, 1.0, 1.0, 0.35]
-        HDR = ["", "Follow-Up", "Customer Name", "Purchase Date",
-               "Machine Type", "Machine Desc", "Dealer Name", "Phone", "Email",
+        R = [0.35, 1.2, 1.6, 1.2, 1.5, 1.1, 1.3, 1.8, 1.6, 1.1, 1.0, 1.2, 1.0, 1.0, 1.0, 0.35]
+        HDR = ["", "Follow-Up", "Customer Name", "Phone", "Email",
+               "Purchase Date", "Machine Type", "Machine Desc", "Dealer Name",
                "Call Status", "Next Appt", "Interested?", "Remarks", "Final Status", "Reason", ""]
 
         def _status_chip(v):
@@ -2258,12 +2261,12 @@ else:
 
                 cols[1].markdown(f"<div class='td'>{_safe(row.get('customer_follow_up'))}</div>", unsafe_allow_html=True)
                 cols[2].markdown(f"<div class='td'>{_name_html}</div>", unsafe_allow_html=True)
-                cols[3].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>", unsafe_allow_html=True)
-                cols[4].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>", unsafe_allow_html=True)
-                cols[5].markdown(f"<div class='td'>{_safe(row.get('machine_desc'))}</div>", unsafe_allow_html=True)
-                cols[6].markdown(f"<div class='td'>{_safe(row.get('dealer_name'))}</div>", unsafe_allow_html=True)
-                cols[7].markdown(f"<div class='td' style='{_ph_style}'>{_phone_display}</div>", unsafe_allow_html=True)
-                cols[8].markdown(f"<div class='td' style='{_em_style}'>{_email_display}</div>", unsafe_allow_html=True)
+                cols[3].markdown(f"<div class='td' style='{_ph_style}'>{_phone_display}</div>", unsafe_allow_html=True)
+                cols[4].markdown(f"<div class='td' style='{_em_style}'>{_email_display}</div>", unsafe_allow_html=True)
+                cols[5].markdown(f"<div class='td'>{_fmt_date(row.get('purchase_date'))}</div>", unsafe_allow_html=True)
+                cols[6].markdown(f"<div class='td'>{_safe(row.get('machine_type'))}</div>", unsafe_allow_html=True)
+                cols[7].markdown(f"<div class='td'>{_safe(row.get('machine_desc'))}</div>", unsafe_allow_html=True)
+                cols[8].markdown(f"<div class='td'>{_safe(row.get('dealer_name'))}</div>", unsafe_allow_html=True)
                 cols[9].markdown(f"<div class='td'>{_status_chip(row.get('status'))}</div>", unsafe_allow_html=True)
                 cols[10].markdown(f"<div class='td'>{_fmt_date(row.get('next_appointment'))}</div>", unsafe_allow_html=True)
                 cols[11].markdown(f"<div class='td'>{_interest_chip(row.get('interested'))}</div>", unsafe_allow_html=True)
@@ -2305,6 +2308,37 @@ else:
                         args=(cid,),
                     )
 
+
+        # -- Right-click drag-to-scroll for the table (mouse-only horizontal scroll) --
+        st.markdown("""
+        <img src="" onerror="
+          (function(){
+            var el=document.querySelector('.st-key-tbl_area');
+            if(!el||el.dataset.dragInit) return;
+            el.dataset.dragInit='1';
+            var isDown=false,startX,sl,didDrag=false;
+            el.addEventListener('mousedown',function(e){
+              if(e.button!==2) return;
+              isDown=true; didDrag=false;
+              el.classList.add('dragging');
+              startX=e.pageX; sl=el.scrollLeft;
+              e.preventDefault();
+            });
+            el.addEventListener('contextmenu',function(e){
+              if(didDrag) e.preventDefault();
+            });
+            document.addEventListener('mouseup',function(e){
+              if(e.button===2 && isDown){ isDown=false; el.classList.remove('dragging'); }
+            });
+            document.addEventListener('mousemove',function(e){
+              if(!isDown) return;
+              e.preventDefault();
+              didDrag=true;
+              el.scrollLeft=sl-(e.pageX-startX);
+            });
+          })();
+        " style="display:none;">
+        """, unsafe_allow_html=True)
 
         st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
         pc1, pc2, pc3 = st.columns([1.2, 6, 1.2])
