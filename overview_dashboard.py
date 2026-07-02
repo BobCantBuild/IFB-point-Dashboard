@@ -759,11 +759,17 @@ def _insights(buckets: list[tuple], period: str, scope_df=None) -> str:
 
 # ── Main render function ───────────────────────────────────────────────────────
 
-def _load_hierarchy(mapping_db: str, email: str, allowed_codes: set[str] | None) -> dict:
+def _load_hierarchy(
+    mapping_db: str,
+    email: str,
+    allowed_codes: set[str] | None,
+    valid_codes: set[str] | None = None,
+) -> dict:
     """Load Region → Branch → IFB Point hierarchy for the logged-in user.
 
     If allowed_codes is empty/None (admin), loads ALL mappings.
     Otherwise restricts to the user's email rows + allowed codes.
+    valid_codes (master list) drops any code no longer in IFB_Point_Master.txt.
     """
     result: dict[str, dict[str, list[str]]] = {}
     try:
@@ -783,6 +789,8 @@ def _load_hierarchy(mapping_db: str, email: str, allowed_codes: set[str] | None)
                 if not region or not branch or not code:
                     continue
                 if allowed_codes and code not in allowed_codes:
+                    continue
+                if valid_codes and code not in valid_codes:
                     continue
                 result.setdefault(region, {}).setdefault(branch, [])
                 if code not in result[region][branch]:
@@ -860,6 +868,14 @@ def render_overview_dashboard(
         st.info("No data available yet.")
         return
 
+    # Restrict to IFB points currently in the master list (IFB_Point_Master.txt) —
+    # the leads DB can retain stale/old codes that are no longer valid points.
+    if channel_names:
+        df = df[df["ifb_point"].isin(channel_names.keys())]
+        if df.empty:
+            st.info("No data available yet.")
+            return
+
     df["status"]     = df["status"].fillna("").replace("", "Pending")
     df["interest"]   = df["interested"].fillna("").replace("", "—")
     df["stage"]      = df["follow_up"].map(bucket_to_stage).fillna("Other")
@@ -905,7 +921,8 @@ def render_overview_dashboard(
             # ── Load hierarchy ────────────────────────────────────────────────
             _hierarchy: dict[str, dict[str, list[str]]] = {}
             if login_mapping_db and user_email:
-                _hierarchy = _load_hierarchy(str(login_mapping_db), user_email, allowed_codes)
+                _hierarchy = _load_hierarchy(str(login_mapping_db), user_email, allowed_codes,
+                                              set(channel_names.keys()) if channel_names else None)
             _all_regions  = sorted(_hierarchy.keys())
             _has_hierarchy = len(_all_regions) > 0
 
@@ -1021,7 +1038,7 @@ def render_overview_dashboard(
                     "🏪 IFB Points",
                     options=_avail_points,
                     default=_prev_pts,
-                    format_func=lambda c: channel_names.get(c, c),
+                    format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
                     key="_ov_ms_points",
                     placeholder="All IFB Points",
                 )
@@ -1038,7 +1055,7 @@ def render_overview_dashboard(
                     "🏪 IFB Points",
                     options=_visible,
                     default=_prev_pts,
-                    format_func=lambda c: channel_names.get(c, c),
+                    format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
                     key="_ov_ms_points_flat",
                     placeholder="All IFB Points",
                 )

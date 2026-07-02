@@ -90,12 +90,28 @@ def _clean_channel_name(name: str) -> str:
 def _load_channel_names() -> dict[str, str]:
     """
     Load channel code → friendly name mapping.
-    Prefers the Excel master file; falls back to IFB_Point_Master.txt.
+    Prefers IFB_Point_Master.txt (kept up to date manually); falls back to the Excel master file.
     Strips corporate prefixes so names are short and readable.
     """
     mapping: dict[str, str] = {}
 
-    # Try Excel first (authoritative, clean names)
+    # Try txt first (authoritative, manually maintained)
+    if MASTER_FILE.exists():
+        raw = MASTER_FILE.read_text(encoding="utf-8", errors="replace")
+        for line in raw.split("\n"):
+            line = line.strip()
+            if not line or "\t" not in line:
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                code = parts[0].strip()
+                name = parts[1].strip()
+                if code and name:
+                    mapping[code] = _clean_channel_name(name)
+        if mapping:
+            return mapping
+
+    # Fallback: Excel master file
     if _EXCEL_MASTER.exists():
         try:
             import pandas as pd
@@ -107,25 +123,8 @@ def _load_channel_names() -> dict[str, str]:
                 name = str(row[name_col]).strip()
                 if code and name and code != "nan":
                     mapping[code] = _clean_channel_name(name)
-            return mapping
         except Exception:
-            pass  # fall through to txt
-
-    # Fallback: tab-separated txt file
-    if not MASTER_FILE.exists():
-        return mapping
-
-    raw = MASTER_FILE.read_text(encoding="utf-8", errors="replace")
-    for line in raw.split("\n"):
-        line = line.strip()
-        if not line or "\t" not in line:
-            continue
-        parts = line.split("\t", 1)
-        if len(parts) == 2:
-            code = parts[0].strip()
-            name = parts[1].strip()
-            if code and name:
-                mapping[code] = _clean_channel_name(name)
+            pass
 
     return mapping
 
@@ -1395,23 +1394,17 @@ _STATUS_COLORS = {"Contacted": "#16A34A", "Not Contacted": "#DC2626",
 def _get_allowed_codes(email: str) -> set[str]:
     """Return IFBpoint_id values assigned to this email in login_mapping.db.
 
-    Checks Retail Email_ID first; if no match, falls back to Email_ID.
+    Unions Email_ID (territory manager) and Retail Email_ID (store contact) matches.
     """
     try:
         _e = email.strip().lower()
         with sqlite3.connect(LOGIN_MAPPING_DB) as _mc:
             rows = _mc.execute(
-                'SELECT IFBpoint_id FROM login_mapping WHERE LOWER("Retail Email_ID")=?',
-                (_e,),
+                'SELECT IFBpoint_id FROM login_mapping '
+                'WHERE LOWER("Retail Email_ID")=? OR LOWER(Email_ID)=?',
+                (_e, _e),
             ).fetchall()
-            codes = {r[0] for r in rows if r[0]}
-            if not codes:
-                rows = _mc.execute(
-                    "SELECT IFBpoint_id FROM login_mapping WHERE LOWER(Email_ID)=?",
-                    (_e,),
-                ).fetchall()
-                codes = {r[0] for r in rows if r[0]}
-        return codes
+        return {r[0] for r in rows if r[0]}
     except Exception:
         return set()
 
