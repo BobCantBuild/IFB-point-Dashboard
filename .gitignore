@@ -11,6 +11,7 @@
 # Local data files — generated at runtime, not needed in git
 data/api_data.json
 data/followups.json
+IFB_Point_Master.txt
 
 # Python
 __pycache__/

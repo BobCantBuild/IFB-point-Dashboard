@@ -782,9 +782,15 @@ def _load_hierarchy(
                 _e = email.strip().lower()
                 rows = conn.execute(
                     'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
-                    'WHERE LOWER("Retail Email_ID")=? OR LOWER(Email_ID)=?',
-                    (_e, _e),
+                    'WHERE LOWER("Retail Email_ID")=?',
+                    (_e,),
                 ).fetchall()
+                if not rows:
+                    rows = conn.execute(
+                        'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
+                        'WHERE LOWER(Email_ID)=?',
+                        (_e,),
+                    ).fetchall()
             for region, branch, code in rows:
                 if not region or not branch or not code:
                     continue
@@ -1063,6 +1069,11 @@ def render_overview_dashboard(
 
             selected_set = st.session_state["_ov_sel"]
 
+            # Master-list total for this user's scope (used for Total Stores KPI)
+            _master_all = set(channel_names.keys())
+            if allowed_codes:
+                _master_all = _master_all & allowed_codes
+
             # Determine scope based on hierarchy selections (not just IFB point picks)
             if _has_hierarchy and not selected_set:
                 # No specific IFB points picked — scope from region/branch cascade
@@ -1076,22 +1087,26 @@ def render_overview_dashboard(
                         _cascade_pts.extend(_pts)
                 _cascade_set = set(_cascade_pts)
                 if sel_regions or sel_branches:
-                    scope_codes = _cascade_set
-                    scope_df    = df[df["ifb_point"].isin(scope_codes)]
-                    scope_label = f"{len(scope_codes)} point{'s' if len(scope_codes) != 1 else ''}"
+                    scope_codes       = _cascade_set
+                    scope_df          = df[df["ifb_point"].isin(scope_codes)]
+                    _master_store_count = len(scope_codes)
+                    scope_label       = f"{_master_store_count} point{'s' if _master_store_count != 1 else ''}"
                 else:
-                    scope_codes = set(_codes)
-                    scope_df    = df
-                    scope_label = f"All {len(_codes)} points"
+                    scope_codes         = set(_codes)
+                    scope_df            = df
+                    _master_store_count = len(_master_all)
+                    scope_label         = f"All {_master_store_count} points"
             elif selected_set:
-                scope_codes = selected_set
-                scope_df    = df[df["ifb_point"].isin(scope_codes)]
-                n = len(selected_set)
+                scope_codes         = selected_set
+                scope_df            = df[df["ifb_point"].isin(scope_codes)]
+                _master_store_count = len(selected_set)
+                n = _master_store_count
                 scope_label = f"{n} point{'s' if n != 1 else ''} selected"
             else:
-                scope_codes = set(_codes)
-                scope_df    = df
-                scope_label = f"All {len(_codes)} points"
+                scope_codes         = set(_codes)
+                scope_df            = df
+                _master_store_count = len(_master_all)
+                scope_label         = f"All {_master_store_count} points"
 
             st.markdown(
                 f"<div class='scope-badge'>⚡ {scope_label}</div>",
@@ -1125,8 +1140,8 @@ def render_overview_dashboard(
             with st.container(border=True, key="kpi_row"):
                 kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6, gap="small")
                 _active_pts = int(_df_today[_df_today["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].nunique()) if not _df_today.empty else 0
-                _active_pct = (_active_pts / len(scope_codes) * 100) if len(scope_codes) else 0.0
-                _kpi_card(kc1, "Total Stores", len(scope_codes), today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
+                _active_pct = (_active_pts / _master_store_count * 100) if _master_store_count else 0.0
+                _kpi_card(kc1, "Total Stores", _master_store_count, today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
                 _kpi_card(kc2, "Total Customers Allocated", total_leads, today_val=t_total)
                 _calls_attempted   = contacted + rnr + not_reachable
                 _t_calls_attempted = t_contacted + t_rnr + t_not_reachable
