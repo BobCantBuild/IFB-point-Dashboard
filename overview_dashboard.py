@@ -217,6 +217,78 @@ _OVERVIEW_CSS = """
     }
     [data-testid="stPlotlyChart"] { overflow-x:auto !important; }
   }
+
+  /* ── Pointer tables (Day / Week / Month) — pricing-table style ── */
+  .pt-wrap {
+    overflow:auto; max-height:302px;
+    border-radius:14px; background:#FFFFFF;
+    box-shadow:0 2px 12px rgba(15,23,42,0.07), 0 0 0 1px rgba(226,232,240,0.7);
+    scroll-behavior:smooth;
+  }
+  .pt-wrap::-webkit-scrollbar { width:7px; height:7px; }
+  .pt-wrap::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:4px; }
+  .pt-wrap::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
+  .pt-wrap::-webkit-scrollbar-track { background:transparent; }
+  table.pt-table {
+    border-collapse:separate; border-spacing:0; width:100%;
+    font-family:'Inter',sans-serif; font-size:11px; color:#0F172A;
+  }
+  .pt-table th, .pt-table td {
+    padding:5px 10px; text-align:center; white-space:nowrap; border:none;
+  }
+  .pt-table tbody td { border-bottom:1px solid #D1FAE5; }
+  .pt-table thead th { position:sticky; top:0; z-index:3; }
+  .pt-table th.pt-h2 {
+    background:#276749; color:#FFFFFF;
+    font-weight:800; font-size:10px; text-transform:uppercase;
+    letter-spacing:0.5px; border-bottom:none;
+  }
+  .pt-table th.pt-corner {
+    background:#276749; color:#FFFFFF; text-align:left;
+    font-size:10px; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.5px; z-index:5; border-bottom:none;
+  }
+  .pt-table td.pt-name {
+    text-align:left; font-weight:700; font-size:11px; color:#FFFFFF;
+    background:#276749;
+    vertical-align:middle; min-width:160px; max-width:220px;
+    overflow:hidden; text-overflow:ellipsis; padding:5px 12px;
+  }
+  .pt-idx {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:6px; margin-right:7px;
+    font-size:9.5px; font-weight:800; color:#276749; vertical-align:middle;
+    background:rgba(255,255,255,0.25);
+  }
+  .pt-table td.pt-pointer {
+    text-align:left; color:#374151; font-weight:600; font-size:10.5px;
+    min-width:160px; padding:5px 12px; background:#FFFFFF;
+  }
+  .pt-dot {
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    margin-right:7px; vertical-align:middle;
+  }
+  .pt-r-alloc          .pt-dot { background:#0EA5E9; }
+  .pt-r-contacted      .pt-dot { background:#16A34A; }
+  .pt-r-not_contacted  .pt-dot { background:#DC2626; }
+  .pt-r-interested     .pt-dot { background:#7C3AED; }
+  .pt-r-not_interested .pt-dot { background:#C026D3; }
+  .pt-r-rnr            .pt-dot { background:#D97706; }
+  .pt-table td.pt-val { font-variant-numeric:tabular-nums; background:#F0FDF4; }
+  .pt-chip {
+    display:inline-block; min-width:28px; padding:1px 8px;
+    border-radius:999px; font-weight:700; font-size:10px; line-height:1.5;
+  }
+  .pt-r-alloc          .pt-chip { background:#DBEAFE; color:#1D4ED8; }
+  .pt-r-contacted      .pt-chip { background:#DCFCE7; color:#15803D; }
+  .pt-r-not_contacted  .pt-chip { background:#FEE2E2; color:#B91C1C; }
+  .pt-r-interested     .pt-chip { background:#EDE9FE; color:#6D28D9; }
+  .pt-r-not_interested .pt-chip { background:#FAE8FF; color:#A21CAF; }
+  .pt-r-rnr            .pt-chip { background:#FEF3C7; color:#B45309; }
+  .pt-table tbody tr:hover td.pt-val { background:#D1FAE5; }
+  .pt-table tbody tr:hover td.pt-pointer { background:#F8FAFC; }
+  .pt-table tbody tr.pt-first td { border-top:2px solid #A7F3D0; }
+  .pt-table tbody tr.pt-first:first-child td { border-top:none; }
 </style>
 """
 
@@ -429,6 +501,165 @@ def _time_buckets(df: pd.DataFrame, period: str, n: int) -> list[tuple]:
         sub = df[keys == b] if keys is not None else df.iloc[0:0]
         buckets.append((labels[i], len(sub), _segments(sub)))
     return buckets
+
+
+# ── Pointer tabular view (Day / Week / Month) ─────────────────────────────────
+
+def _period_labels_keys(period: str, n: int) -> list[tuple[pd.Timestamp, str]]:
+    """Return ordered list of (bucket_key_ts, display_label) for the period.
+
+    Day → chronological (oldest → newest, left→right).
+    Week / Month → reverse chronological (newest → oldest, left→right).
+    """
+    today_ts = pd.Timestamp(date.today())
+    if period == "day":
+        idx    = pd.date_range(today_ts.normalize() - pd.Timedelta(days=n - 1),
+                               today_ts.normalize(), freq="D")
+        labels = [d.strftime("%d-%b") for d in idx]
+        return list(zip(idx, labels))
+    if period == "week":
+        ws  = today_ts.normalize() - pd.Timedelta(days=today_ts.weekday())
+        idx = pd.date_range(ws - pd.Timedelta(weeks=n - 1), ws, freq="W-MON")
+        labels = [f"{d.strftime('%d')}-{(d + pd.Timedelta(days=6)).strftime('%d %b')}"
+                  for d in idx]
+        pairs = list(zip(idx, labels))
+        pairs.reverse()
+        return pairs
+    # month
+    ms  = today_ts.normalize().replace(day=1)
+    idx = pd.date_range(ms - pd.DateOffset(months=n - 1), ms, freq="MS")
+    labels = [d.strftime("%b-%y") for d in idx]
+    pairs = list(zip(idx, labels))
+    pairs.reverse()
+    return pairs
+
+
+def _bucket_keys_for(df: pd.DataFrame, period: str) -> pd.Series | None:
+    """Compute per-row bucket-key timestamp so rows can be grouped by period."""
+    if df.empty or "lead_dt" not in df.columns:
+        return None
+    dt = df["lead_dt"]
+    if period == "day":
+        return dt.dt.normalize()
+    if period == "week":
+        return (dt - pd.to_timedelta(dt.dt.weekday, unit="D")).dt.normalize()
+    # month
+    return dt.dt.to_period("M").dt.to_timestamp()
+
+
+# (pointer_label, internal column key) — order matches the Excel reference
+_POINTER_FIELDS = [
+    ("Customers Allocated",    "alloc"),
+    ("Contacted",              "contacted"),
+    ("Not Contacted",          "not_contacted"),
+    ("Interested",             "interested"),
+    ("Not Interested",         "not_interested"),
+    ("RnR (Ring No Response)", "rnr"),
+]
+
+
+def _pointer_table_html(
+    scope_df: pd.DataFrame,
+    scope_codes: set[str] | list[str],
+    channel_names: dict[str, str],
+    period: str,
+    n: int,
+    force_all: bool = False,
+    limit: int | None = None,
+) -> tuple[str, int, int]:
+    """Build the IFB Point × 6 pointers × N periods table.
+
+    Returns (html, stores_shown, stores_total). HTML is emitted as a single
+    line — any newline + indentation would be re-parsed by Streamlit's
+    markdown as a literal code block.
+    By default only stores with ≥1 follow up inside the window are listed;
+    force_all=True (explicit point selection) lists every scoped store.
+    limit caps the number of stores rendered (busiest first) to keep the DOM
+    light; None renders all.
+    """
+    col_pairs = _period_labels_keys(period, n)
+    col_keys  = [k for k, _ in col_pairs]
+    col_lbls  = [lbl for _, lbl in col_pairs]
+
+    # Vectorized counts: one groupby over the whole scope instead of one
+    # _segments()-style pass per (store, bucket) slice.
+    lookup: dict[tuple, pd.Series] = {}
+    window_totals: dict = {}
+    bucket_keys = _bucket_keys_for(scope_df, period)
+    if bucket_keys is not None:
+        st_ = scope_df["status"]
+        it_ = scope_df["interest"]
+        tmp = pd.DataFrame({
+            "code":           scope_df["ifb_point"].values,
+            "bk":             bucket_keys.values,
+            "alloc":          1,
+            "contacted":      (st_ == "Contacted").astype(int).values,
+            "not_contacted":  (~st_.isin(["Contacted", "RnR", "Not Reachable"])).astype(int).values,
+            "interested":     (it_ == "Interested").astype(int).values,
+            "not_interested": (it_ == "Not Interested").astype(int).values,
+            "rnr":            (st_ == "RnR").astype(int).values,
+        })
+        tmp = tmp[tmp["bk"].isin(col_keys)]
+        if not tmp.empty:
+            grouped = tmp.groupby(["code", "bk"]).sum(numeric_only=True)
+            for key, row in grouped.iterrows():
+                lookup[key] = row
+                window_totals[key[0]] = window_totals.get(key[0], 0) + int(row["alloc"])
+
+    codes = sorted(
+        set(scope_codes),
+        key=lambda c: (channel_names.get(c, str(c)).lower(), str(c)),
+    )
+    if not force_all:
+        codes = [c for c in codes if c in window_totals]
+    total_stores = len(codes)
+    if limit is not None and total_stores > limit:
+        # Busiest stores first when truncating, so the visible slice matters
+        codes = sorted(
+            codes,
+            key=lambda c: (-window_totals.get(c, 0),
+                           channel_names.get(c, str(c)).lower(), str(c)),
+        )[:limit]
+    if not codes:
+        return (
+            "<div style='padding:16px;color:#94A3B8;font-style:italic;font-size:12px;"
+            "background:#FFFFFF;border:1px solid #E2E8F0;border-radius:10px;'>"
+            "No follow ups in this window.</div>",
+            0, 0,
+        )
+
+    ncols = len(col_lbls)
+
+    parts: list[str] = [f"<div class='pt-wrap'><table class='pt-table pt-{period}'><thead>"]
+    parts.append(
+        "<tr>"
+        "<th class='pt-corner'>IFB Point</th>"
+        "<th class='pt-corner'>Pointers</th>"
+        + "".join(f"<th class='pt-h2'>{lbl}</th>" for lbl in col_lbls) +
+        "</tr>"
+    )
+    parts.append("</thead><tbody>")
+
+    for idx_c, code in enumerate(codes, start=1):
+        name = channel_names.get(code, str(code))
+        for row_i, (pointer, field) in enumerate(_POINTER_FIELDS):
+            cells: list[str] = []
+            if row_i == 0:
+                cells.append(
+                    f"<td class='pt-name' rowspan='6' title='{name} ({code})'>"
+                    f"<span class='pt-idx'>{idx_c}</span>{name}</td>"
+                )
+            cells.append(f"<td class='pt-pointer'><span class='pt-dot'></span>{pointer}</td>")
+            for bk in col_keys:
+                row = lookup.get((code, bk))
+                val = int(row[field]) if row is not None else 0
+                cell = f"<span class='pt-chip'>{val}</span>" if val else ""
+                cells.append(f"<td class='pt-val'>{cell}</td>")
+            row_cls = f" class='pt-r-{field}{' pt-first' if row_i == 0 else ''}'"
+            parts.append(f"<tr{row_cls}>" + "".join(cells) + "</tr>")
+
+    parts.append("</tbody></table></div>")
+    return "".join(parts), len(codes), total_stores
 
 
 def _marimekko(buckets: list[tuple], height: int = 158,
@@ -1160,98 +1391,61 @@ def render_overview_dashboard(
 
                 _kpi_card(kc6, "Not Contacted", not_cont, today_val=t_not_cont, today_pct=_tpct(t_not_cont))
 
-            # G — CHART ROWS  (colour-coded per time bucket)
-            #   Day  → last 7 days · Week → last 4 weeks · Month → last 6 months
+            # G — TABULAR ROWS  (Day / Week / Month) — IFB Point × 6 Pointers × N periods
             _section_colors = {
                 "day":   ("#6366F1", "#EEF2FF"),   # indigo
                 "week":  ("#0891B2", "#ECFEFF"),   # cyan
                 "month": ("#7C3AED", "#F5F3FF"),   # violet
             }
-            _freq = {"day": "D", "week": "W", "month": "M"}
+            # Stores explicitly picked in the rail are always listed, even with
+            # zero activity; otherwise only stores active in the window appear.
+            _force_all = bool(selected_set)
 
-            # Inject per-segment circle CSS (once, before the loop)
-            def _seg_css_key(period: str, seg: str) -> str:
-                return f"cb_{period}_{seg.lower().replace(' ', '_')}"
-
-            _circle_css = "<style>"
-            for period_name in ("day", "week", "month"):
-                for seg, color in _MK_SEGMENTS:
-                    k = _seg_css_key(period_name, seg)
-                    _circle_css += f"""
-  .st-key-{k} [data-baseweb="checkbox"] > span:first-child {{
-    border-radius:50% !important;
-    border-color:{color} !important;
-    width:13px !important; height:13px !important;
-  }}
-  .st-key-{k}:has(input:checked) [data-baseweb="checkbox"] > span:first-child {{
-    background:{color} !important;
-    border-color:{color} !important;
-  }}"""
-            _circle_css += "</style>"
-            st.markdown(_circle_css, unsafe_allow_html=True)
+            _PT_LIMIT = 40  # stores rendered per table unless "Show all" is ticked
 
             for title, period, n in [
-                ("📅  Day Wise — Last 7 Days",    "day",   7),
-                ("📆  Week Wise — Last 4 Weeks",  "week",  4),
-                ("🗓️  Month Wise — Last 6 Months","month", 6),
+                ("📅  Day Wise — Last 7 Days",     "day",   7),
+                ("📆  Week Wise — Last 4 Weeks",   "week",  4),
+                ("🗓️  Month Wise — Last 6 Months", "month", 6),
             ]:
                 accent, _ = _section_colors[period]
-                agg = _bucket_aggregate(scope_df, _freq[period], n)
+                _show_all = _force_all or st.session_state.get(f"pt_showall_{period}", False)
+                tbl_html, n_shown, n_total = _pointer_table_html(
+                    scope_df=scope_df,
+                    scope_codes=scope_codes,
+                    channel_names=channel_names,
+                    period=period,
+                    n=n,
+                    force_all=_force_all,
+                    limit=None if _show_all else _PT_LIMIT,
+                )
+                if n_shown < n_total:
+                    _count_note = f" · top {n_shown} of {n_total} active stores"
+                else:
+                    _count_note = f" · {n_shown} store{'s' if n_shown != 1 else ''}"
                 st.markdown(
                     f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
                     f"text-transform:uppercase;letter-spacing:0.7px;"
-                    f"padding-left:3px;margin-bottom:1px;'>{title}</div>",
+                    f"padding-left:3px;margin-bottom:1px;'>{title}"
+                    f"<span style='color:#94A3B8;font-weight:600;'>{_count_note}</span>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
-                buckets = _time_buckets(scope_df, period, n)
-                # Pre-compute visible_segs before entering the container
-                visible_segs = set()
-                for seg, _ in _MK_SEGMENTS:
-                    _key = _seg_css_key(period, seg)
-                    if _key not in st.session_state:
-                        st.session_state[_key] = True
-                    if st.session_state[_key]:
-                        visible_segs.add(seg)
-
-                with st.container(border=True, key=f"sec_{period}"):
-                    cb_wrap, cb_hint = st.columns([6.5, 3.5], gap="small")
-                    with cb_wrap:
-                        cb_cols = st.columns(len(_MK_SEGMENTS), gap="small")
-                        for (seg, color), cb_col in zip(_MK_SEGMENTS, cb_cols):
-                            _key = _seg_css_key(period, seg)
-                            checked = cb_col.checkbox(
-                                seg, value=st.session_state.get(_key, True), key=_key
-                            )
-                            if checked:
-                                visible_segs.add(seg)
-                            else:
-                                visible_segs.discard(seg)
-
-                    with cb_hint:
-                        st.markdown(
-                            "<div style='display:flex;align-items:center;height:100%;"
-                            "padding-top:2px;'>"
-                            "<span style='font-size:9.5px;color:#94A3B8;font-style:italic;"
-                            "line-height:1.4;'>"
-                            "👈 Click a circle to filter the chart view"
-                            "</span></div>",
-                            unsafe_allow_html=True,
+                tcol, icol = st.columns([6.9, 3.1], gap="small")
+                with tcol:
+                    st.markdown(tbl_html, unsafe_allow_html=True)
+                    if not _force_all and n_total > _PT_LIMIT:
+                        st.checkbox(
+                            f"Show all {n_total} stores",
+                            key=f"pt_showall_{period}",
                         )
-
-                    # Chart and insights now start at the same vertical position
-                    cg1, cg2 = st.columns([6.5, 3.5], gap="small")
-                    with cg1:
-                        st.plotly_chart(
-                            _marimekko(buckets, visible_segs=visible_segs),
-                            use_container_width=True,
-                            config={"displayModeBar": False},
-                            key=f"mk3_{period}",
-                        )
-                    with cg2:
-                        st.markdown(
-                            f"<div style='background:#FFFFFF;border-left:4px solid {accent};"
-                            f"border-radius:8px;padding:8px 11px;"
-                            f"height:158px;overflow-y:auto;box-sizing:border-box;'>"
-                            f"{_insights(buckets, period, scope_df=scope_df)}</div>",
-                            unsafe_allow_html=True,
-                        )
+                with icol:
+                    buckets = _time_buckets(scope_df, period, n)
+                    st.markdown(
+                        f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;"
+                        f"border-left:4px solid {accent};"
+                        f"border-radius:10px;padding:8px 11px;"
+                        f"height:302px;overflow-y:auto;box-sizing:border-box;'>"
+                        f"{_insights(buckets, period, scope_df=scope_df)}</div>",
+                        unsafe_allow_html=True,
+                    )
