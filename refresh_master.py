@@ -64,12 +64,19 @@ def _fetch_codes(session: requests.Session, token: str) -> list[str]:
 
 
 def _load_existing() -> dict[str, str]:
-    """Return {code: name} from the current master txt."""
+    """Return {code: name} from the current master txt.
+    Splits each line on the first run of whitespace, so it accepts both the
+    tab-separated format (code\\tname) and the space-separated format the
+    external sync currently produces (code name) — same parsing as
+    overview_dashboard._read_master_names / streamlit_app._load_master_codes."""
     mapping: dict[str, str] = {}
     if not MASTER_TXT.exists():
         return mapping
-    for line in MASTER_TXT.read_text(encoding="utf-8").splitlines():
-        parts = line.split("\t", 1)
+    for line in MASTER_TXT.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
         code = parts[0].strip()
         name = parts[1].strip() if len(parts) > 1 else ""
         if code:

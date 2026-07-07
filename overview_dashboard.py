@@ -306,30 +306,12 @@ _OVERVIEW_CSS = """
     min-width:160px; padding:5px 12px; background:#F8FAFC;
     border-right:1px solid #E2E8F0;
   }
-  .pt-dot {
-    display:inline-block; width:8px; height:8px; border-radius:50%;
-    margin-right:8px; vertical-align:middle;
-    box-shadow:0 0 0 3px rgba(255,255,255,0.9);
-  }
-  .pt-r-alloc          .pt-dot { background:#0EA5E9; }
-  .pt-r-contacted      .pt-dot { background:#16A34A; }
-  .pt-r-not_contacted  .pt-dot { background:#DC2626; }
-  .pt-r-interested     .pt-dot { background:#7C3AED; }
-  .pt-r-not_interested .pt-dot { background:#C026D3; }
-  .pt-r-rnr            .pt-dot { background:#D97706; }
   .pt-table td.pt-val {
     font-variant-numeric:tabular-nums;
     background:#FCFEFD;
     color:#0F172A;
   }
-  .pt-table tbody tr:nth-child(12n+1) td.pt-val,
-  .pt-table tbody tr:nth-child(12n+2) td.pt-val,
-  .pt-table tbody tr:nth-child(12n+3) td.pt-val,
-  .pt-table tbody tr:nth-child(12n+4) td.pt-val,
-  .pt-table tbody tr:nth-child(12n+5) td.pt-val,
-  .pt-table tbody tr:nth-child(12n+6) td.pt-val {
-    background:var(--pt-accent-soft);
-  }
+  /* Uniform value-cell background for every store block (no per-store striping). */
   .pt-chip {
     display:inline-block; min-width:28px; padding:1px 8px;
     border-radius:999px; font-weight:800; font-size:10px; line-height:1.35;
@@ -715,7 +697,7 @@ def _pointer_table_html(
                     f"<td class='pt-name' rowspan='6' title='{name} ({code})'>"
                     f"<span class='pt-idx'>{idx_c}</span>{name}</td>"
                 )
-            cells.append(f"<td class='pt-pointer'><span class='pt-dot'></span>{pointer}</td>")
+            cells.append(f"<td class='pt-pointer'>{pointer}</td>")
             for bk in col_keys:
                 row = lookup.get((code, bk))
                 val = int(row[field]) if row is not None else 0
@@ -1111,27 +1093,34 @@ _RM_COL_TO_DB = {
     "Cluster Manager Email ID": "Email_ID",
     "Retail Name":              "Retail Name",
     "Retail Email ID":          "Retail Email_ID",
+    "Regional Manager Name":     "Regional Name",
+    "Regional Manager Email ID": "Regional Email_ID",
 }
 _RM_DISPLAY_COLS = [
     "IFB Point ID", "IFB Point Name", "Branch", "Region",
     "Cluster Manager Name", "Cluster Manager Email ID",
     "Retail Name", "Retail Email ID",
+    "Regional Manager Name", "Regional Manager Email ID",
 ]
 
 
 def _read_master_names(master_file: str | Path) -> dict[str, str]:
-    """Return {code: name} read raw from IFB_Point_Master.txt (tab-separated)."""
+    """Return {code: name} read raw from IFB_Point_Master.txt.
+    Splits each line on the first run of whitespace, so it accepts both the
+    tab-separated format (code\\tname) and the space-separated format the
+    external sync currently produces (code name)."""
     names: dict[str, str] = {}
     p = Path(master_file)
     if not p.exists():
         return names
-    for line in p.read_text(encoding="utf-8", errors="replace").split("\n"):
-        if "\t" not in line:
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
             continue
-        code, _, name = line.partition("\t")
-        code = code.strip()
+        parts = line.split(None, 1)
+        code = parts[0].strip()
         if code:
-            names[code] = name.strip()
+            names[code] = parts[1].strip() if len(parts) > 1 else ""
     return names
 
 
@@ -1144,12 +1133,12 @@ def _write_master_names(master_file: str | Path, updates: dict[str, str]) -> Non
     out: list[str] = []
     for line in existing:
         raw = line.rstrip("\r")
-        if "\t" in raw:
-            code = raw.split("\t", 1)[0].strip()
-            if code in updates:
-                out.append(f"{code}\t{updates[code]}")
-                seen.add(code)
-                continue
+        parts = raw.split(None, 1)
+        code = parts[0].strip() if parts else ""
+        if code and code in updates:
+            out.append(f"{code}\t{updates[code]}")
+            seen.add(code)
+            continue
         out.append(raw)
     for code, name in updates.items():
         if code not in seen:
@@ -1158,32 +1147,45 @@ def _write_master_names(master_file: str | Path, updates: dict[str, str]) -> Non
 
 
 def _load_rm_rows(mapping_db: str | Path, master_names: dict[str, str],
-                  allowed_codes: set[str] | None) -> pd.DataFrame:
-    """Build the RM-mapping table (one row per IFB Point ID) from login_mapping.db,
-    joining the IFB Point name from the master file."""
-    rows: list[dict] = []
-    seen: set[str] = set()
+                  allowed_codes: set[str] | None,
+                  channel_names: dict[str, str] | None = None) -> pd.DataFrame:
+    """Build the RM-mapping table — one row per IFB Point ID **from
+    IFB_Point_Master.txt** (the authoritative point list), left-joined with
+    login_mapping.db for Region/Branch/Cluster/Retail fields. Row count therefore
+    always matches the master file: delete/add a line there and RM Mapping follows."""
     with sqlite3.connect(str(mapping_db)) as conn:
         data = conn.execute(
             'SELECT IFBpoint_id, Region, Branch, Name, Email_ID, '
-            '"Retail Name", "Retail Email_ID" FROM login_mapping'
+            '"Retail Name", "Retail Email_ID", "Regional Name", "Regional Email_ID" '
+            'FROM login_mapping'
         ).fetchall()
-    for code, region, branch, name, email, rname, remail in data:
+    db_by_code: dict[str, tuple] = {}
+    for code, region, branch, name, email, rname, remail, regmname, regmemail in data:
         code = (str(code).strip() if code is not None else "")
-        if not code or code in seen:
+        if not code or code in db_by_code:
+            continue
+        db_by_code[code] = (region, branch, name, email, rname, remail, regmname, regmemail)
+
+    rows: list[dict] = []
+    for code, mname in master_names.items():
+        code = code.strip()
+        if not code:
             continue
         if allowed_codes and code not in allowed_codes:
             continue
-        seen.add(code)
+        region, branch, name, email, rname, remail, regmname, regmemail = db_by_code.get(
+            code, ("", "", "", "", "", "", "", ""))
         rows.append({
             "IFB Point ID":             code,
-            "IFB Point Name":           master_names.get(code, ""),
+            "IFB Point Name":           mname or (channel_names or {}).get(code, ""),
             "Branch":                   branch or "",
             "Region":                   region or "",
             "Cluster Manager Name":     name or "",
             "Cluster Manager Email ID": email or "",
             "Retail Name":              rname or "",
             "Retail Email ID":          remail or "",
+            "Regional Manager Name":     regmname or "",
+            "Regional Manager Email ID": regmemail or "",
         })
     df = pd.DataFrame(rows, columns=_RM_DISPLAY_COLS)
     if not df.empty:
@@ -1198,6 +1200,19 @@ def _apply_rm_updates(master_updates: dict[str, str],
     master_updates → IFB_Point_Master.txt. Returns count of fields changed."""
     if db_updates:
         with sqlite3.connect(str(mapping_db)) as conn:
+            # Row may not exist yet if this code only lives in the master file —
+            # ensure it exists (once per code, not once per field: IFBpoint_id has
+            # no UNIQUE constraint, so a naive INSERT OR IGNORE per field would
+            # insert a fresh duplicate row for every edited field).
+            codes = {code for code, _col, _val in db_updates}
+            for code in codes:
+                exists = conn.execute(
+                    "SELECT 1 FROM login_mapping WHERE IFBpoint_id=? LIMIT 1", (code,)
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO login_mapping (IFBpoint_id) VALUES (?)", (code,)
+                    )
             for code, db_col, val in db_updates:
                 conn.execute(
                     f'UPDATE login_mapping SET "{db_col}"=? WHERE IFBpoint_id=?',
@@ -1265,34 +1280,66 @@ def _rm_cell(text: str, cls: str = "") -> str:
 
 # Column layout: (label, key, streamlit-column-ratio, css-class)
 _RM_COLS = [
-    ("IFB Point ID",       "IFB Point ID",             1.25, "rm-mono"),
-    ("IFB Point Name",     "IFB Point Name",           2.20, "rm-strong"),
+    ("Point ID",           "IFB Point ID",             1.25, "rm-mono"),
+    ("Point Name",         "IFB Point Name",           2.20, "rm-strong"),
     ("Branch",             "Branch",                   1.40, ""),
     ("Region",             "Region",                   1.40, "rm-badgecol"),
     ("Cluster Mgr",        "Cluster Manager Name",     1.55, ""),
     ("Cluster Mgr Email",  "Cluster Manager Email ID", 2.05, "rm-email"),
-    ("Retail Name",        "Retail Name",              1.50, ""),
-    ("Retail Email",       "Retail Email ID",          2.05, "rm-email"),
+    ("Retail Mgr",         "Retail Name",              1.50, ""),
+    ("Retail Mgr Email",   "Retail Email ID",          2.05, "rm-email"),
+    ("Regional Mgr",       "Regional Manager Name",     1.55, ""),
+    ("Regional Mgr Email", "Regional Manager Email ID", 2.05, "rm-email"),
     ("Edit",               "__edit__",                 0.70, "rm-editcol"),
 ]
 _RM_RATIOS = [c[2] for c in _RM_COLS]
 
 _POPOVER_CSS = """
 <style>
-  /* ── Hamburger: strip the trailing "expand more" chevron, icon-only ── */
-  [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
-  [data-testid="stPopoverButton"] svg { display:none !important; }
-  [data-testid="stPopoverButton"] {
-    min-width:42px !important; padding:6px 12px !important;
-    font-size:18px !important; line-height:1 !important;
-    border:1px solid #E2E8F0 !important; border-radius:9px !important;
-    background:#FFFFFF !important; box-shadow:none !important;
+  /* ── LinkedIn-style topbar nav items (icon on top, label below) ── */
+  .st-key-_nav_analytics button, .st-key-_nav_rmmap button, .st-key-_nav_signout button {
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    white-space:pre-line !important; line-height:1.25 !important; padding:4px 6px 2px !important;
+    font-size:11.5px !important; font-weight:600 !important; color:#64748B !important;
+    border-radius:6px !important; border-bottom:2.5px solid transparent !important;
   }
-  [data-testid="stPopoverButton"]:hover { border-color:#6366F1 !important;
-    background:#EEF2FF !important; }
-  /* Menu items inside the popover */
-  [data-testid="stPopoverBody"] [data-testid="stButton"] > button {
-    justify-content:flex-start !important; font-weight:600 !important;
+  .st-key-_nav_analytics button p, .st-key-_nav_rmmap button p, .st-key-_nav_signout button p {
+    white-space:pre-line !important; line-height:1.25 !important; font-size:11.5px !important;
+  }
+  .st-key-_nav_analytics button:hover, .st-key-_nav_rmmap button:hover,
+  .st-key-_nav_signout button:hover {
+    background:#F1F5F9 !important; color:#0F172A !important;
+  }
+  /* Active-tab indicator rendered as static markdown block (see _nav_item()) */
+  .nav-item-active {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    white-space:pre-line; line-height:1.25; padding:4px 6px 2px; font-size:11.5px;
+    font-weight:700; color:#0F172A; border-bottom:2.5px solid #4F46E5;
+    text-align:center; cursor:default;
+  }
+  /* Topbar "Search IFB Point ID" box (RM Mapping view only) — centred between the
+     title and the Analytics tab, with an "✖" clear icon overlaid inside the bar. */
+  .st-key-rm_search_wrap {
+    position:relative; max-width:260px; margin:2px auto 0;
+  }
+  .st-key-rm_search_wrap input {
+    min-height:30px !important; font-size:12px !important; padding-right:26px !important;
+  }
+  /* The button's own element-container is already position:relative (Streamlit
+     default), which becomes a closer containing block than rm_search_wrap — so
+     position the container itself, not the [data-testid="stButton"] div inside it. */
+  .st-key-rm_search_wrap .st-key-_rm_search_x {
+    position:absolute !important; top:50% !important; right:2px !important;
+    transform:translateY(-50%) !important; z-index:5 !important;
+  }
+  .st-key-rm_search_wrap [data-testid="stButton"] > button {
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    padding:0 !important; min-height:20px !important; height:20px !important;
+    width:20px !important; font-size:11px !important; color:#94A3B8 !important;
+    line-height:1 !important; border-radius:5px !important;
+  }
+  .st-key-rm_search_wrap [data-testid="stButton"] > button:hover {
+    color:#475569 !important; background:#EEF2FF !important;
   }
 </style>
 """
@@ -1300,6 +1347,8 @@ _POPOVER_CSS = """
 _RM_CSS = """
 <style>
   /* ── RM Mapping table ── */
+  .st-key-rm_head { margin-top:6px !important; }
+  .st-key-rm_pager { margin-top:6px !important; }
   .st-key-rm_head [data-testid="stHorizontalBlock"],
   .st-key-rm_body [data-testid="stHorizontalBlock"] {
     gap:0 !important; align-items:center !important;
@@ -1314,8 +1363,9 @@ _RM_CSS = """
   /* Header sort buttons — flat, blue, DataTables-like */
   .st-key-rm_head [data-testid="stButton"] > button {
     background:transparent !important; border:none !important; box-shadow:none !important;
-    color:#2F6FB0 !important; font-weight:700 !important; font-size:12px !important;
-    padding:8px 0 !important; width:100% !important; justify-content:flex-start !important;
+    color:#2F6FB0 !important; font-weight:700 !important; font-size:10.5px !important;
+    padding:4px 0 !important; height:auto !important; min-height:0 !important;
+    line-height:1.15 !important; width:100% !important; justify-content:flex-start !important;
     text-align:left !important; border-radius:0 !important; letter-spacing:.2px;
   }
   .st-key-rm_head [data-testid="stButton"] > button:hover {
@@ -1324,7 +1374,7 @@ _RM_CSS = """
   .st-key-rm_head [data-testid="stHorizontalBlock"] { border-bottom:2px solid #E2E8F0 !important; }
 
   /* Body cells */
-  .rm-cell { font-size:12px; color:#334155; padding:9px 0; line-height:1.25;
+  .rm-cell { font-size:13px; color:#334155; padding:9px 0; line-height:1.25;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .rm-strong { font-weight:600; color:#0F172A; }
   .rm-mono   { font-variant-numeric:tabular-nums; color:#0F172A; font-weight:600; }
@@ -1380,6 +1430,8 @@ def _rm_edit_dialog(row: dict, mapping_db: str | Path, master_file: str | Path) 
     cm_email = c2.text_input("Cluster Manager Email ID", value=row["Cluster Manager Email ID"])
     r_name   = c1.text_input("Retail Name",     value=row["Retail Name"])
     r_email  = c2.text_input("Retail Email ID", value=row["Retail Email ID"])
+    rm_name  = c1.text_input("Regional Manager Name",     value=row["Regional Manager Name"])
+    rm_email = c2.text_input("Regional Manager Email ID", value=row["Regional Manager Email ID"])
 
     b1, b2 = st.columns([1, 1])
     if b1.button("💾 Save", type="primary", use_container_width=True):
@@ -1387,6 +1439,7 @@ def _rm_edit_dialog(row: dict, mapping_db: str | Path, master_file: str | Path) 
             "IFB Point Name": name, "Branch": branch, "Region": region,
             "Cluster Manager Name": cm_name, "Cluster Manager Email ID": cm_email,
             "Retail Name": r_name, "Retail Email ID": r_email,
+            "Regional Manager Name": rm_name, "Regional Manager Email ID": rm_email,
         }
         n = _save_rm_row(str(code), values, row, mapping_db, master_file)
         st.session_state["_rm_flash"] = (
@@ -1399,7 +1452,8 @@ def _rm_edit_dialog(row: dict, mapping_db: str | Path, master_file: str | Path) 
 
 
 def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
-                       allowed_codes: set[str] | None) -> None:
+                       allowed_codes: set[str] | None,
+                       channel_names: dict[str, str] | None = None) -> None:
     """RM Mapping screen — a DataTables-style, searchable, sortable, paginated table
     of login_mapping.db joined with IFB Point names from the master file.
     Each row has an ✏️ button that opens an edit dialog; IFB Point ID is the key."""
@@ -1409,16 +1463,8 @@ def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
     if _flash:
         st.toast(_flash, icon="✅")
 
-    st.markdown(
-        "<div style='font-size:15px;font-weight:800;color:#0F172A;margin:2px 0 6px;'>"
-        "🗺️ RM Mapping"
-        "<span style='font-weight:600;color:#64748B;font-size:11.5px;'> · "
-        "click ✏️ on a row to edit</span></div>",
-        unsafe_allow_html=True,
-    )
-
     master_names = _read_master_names(master_file)
-    df = _load_rm_rows(mapping_db, master_names, allowed_codes)
+    df = _load_rm_rows(mapping_db, master_names, allowed_codes, channel_names)
     if df.empty:
         st.info("No mapping rows available for your scope.")
         return
@@ -1442,7 +1488,7 @@ def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
         key=lambda s: s.astype(str).str.lower(),
     ).reset_index(drop=True)
 
-    psize = ss.get("_rm_psize", 10)
+    psize = ss.get("_rm_psize", 12)
     total = len(fdf)
     npages = max(1, math.ceil(total / psize))
     page = min(max(1, ss["_rm_page"]), npages)
@@ -1451,36 +1497,11 @@ def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
     end = min(start + psize, total)
     page_df = fdf.iloc[start:end]
 
-    # ── Top bar: "Showing X to Y of Z items"  ·  Search ───────────────────────
-    tcol, scol = st.columns([6, 4])
-    with tcol:
-        _shown = f"{start + 1} to {end}" if total else "0 to 0"
-        st.markdown(
-            f"<div style='color:#64748B;font-size:12.5px;padding-top:8px;'>"
-            f"Showing <b style='color:#334155;'>{_shown}</b> of "
-            f"<b style='color:#334155;'>{total}</b> items</div>",
-            unsafe_allow_html=True,
-        )
-    with scol:
-        _prev_q = ss.get("_rm_search", "")
-        _q_new = st.text_input(
-            "Search", placeholder="🔍  Search…", label_visibility="collapsed",
-            key="_rm_search",
-        )
-        if _q_new != _prev_q:
-            ss["_rm_page"] = 1
-            st.rerun()
-
     # ── Header (sortable) ─────────────────────────────────────────────────────
     with st.container(key="rm_head"):
         hc = st.columns(_RM_RATIOS)
         for i, (label, key, _r, _cls) in enumerate(_RM_COLS):
             if key == "__edit__":
-                hc[i].markdown(
-                    "<div style='font-size:12px;font-weight:700;color:#2F6FB0;"
-                    "text-align:center;padding:8px 0;'>Edit</div>",
-                    unsafe_allow_html=True,
-                )
                 continue
             arrow = ""
             if ss["_rm_sort_col"] == key:
@@ -1511,41 +1532,25 @@ def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
                 else:
                     rc[i].markdown(_rm_cell(row[key], cls), unsafe_allow_html=True)
 
-    # ── Footer: pagination  ·  page-size ──────────────────────────────────────
+    # ── Footer: Prev / Next pagination (fixed 15 rows per page) ────────────────
     with st.container(key="rm_pager"):
-        fc1, fc2 = st.columns([7, 3])
-        with fc1:
-            # window of page numbers around the current page
-            win = 4
-            lo = max(1, page - win // 2)
-            hi = min(npages, lo + win)
-            lo = max(1, hi - win)
-            nums = list(range(lo, hi + 1))
-            slots = st.columns(len(nums) + 2, gap="small")
-            if slots[0].button("‹ Prev", key="_rm_prev", disabled=(page <= 1),
-                               use_container_width=True):
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        with pc1:
+            if st.button("‹ Prev", key="_rm_prev", disabled=(page <= 1),
+                        use_container_width=True):
                 ss["_rm_page"] = page - 1
                 st.rerun()
-            for j, pnum in enumerate(nums, start=1):
-                if slots[j].button(str(pnum), key=f"_rm_p_{pnum}",
-                                   type="primary" if pnum == page else "secondary",
-                                   use_container_width=True):
-                    ss["_rm_page"] = pnum
-                    st.rerun()
-            if slots[-1].button("Next ›", key="_rm_next", disabled=(page >= npages),
-                                use_container_width=True):
-                ss["_rm_page"] = page + 1
-                st.rerun()
-        with fc2:
-            _prev_ps = ss.get("_rm_psize", 10)
-            _ps_new = st.selectbox(
-                "Show entries", [10, 25, 50, 100],
-                index=[10, 25, 50, 100].index(_prev_ps) if _prev_ps in (10, 25, 50, 100) else 0,
-                key="_rm_psize_sel", label_visibility="collapsed",
+        with pc2:
+            st.markdown(
+                f"<div style='text-align:center;color:#64748B;font-size:12.5px;"
+                f"padding-top:6px;'>Page <b style='color:#334155;'>{page}</b> of "
+                f"<b style='color:#334155;'>{npages}</b></div>",
+                unsafe_allow_html=True,
             )
-            if _ps_new != _prev_ps:
-                ss["_rm_psize"] = _ps_new
-                ss["_rm_page"] = 1
+        with pc3:
+            if st.button("Next ›", key="_rm_next", disabled=(page >= npages),
+                        use_container_width=True):
+                ss["_rm_page"] = page + 1
                 st.rerun()
 
 
@@ -1616,24 +1621,59 @@ def render_overview_dashboard(
     </script>
     """)
 
-    # ── A TOPBAR: ☰ menu · title · sign out ───────────────────────────────────
-    tb0, tb1, tb2 = st.columns([0.55, 8, 1.1])
-    with tb0:
-        with st.popover("☰", use_container_width=True):
-            if st.button("📊  IFB Point Analytics", use_container_width=True, key="_nav_analytics"):
-                st.session_state["_ov_view"] = "analytics"
-                st.rerun()
-            if st.button("🗺️  RM Mapping", use_container_width=True, key="_nav_rmmap"):
-                st.session_state["_ov_view"] = "rm_mapping"
-                st.rerun()
+    # ── A TOPBAR: title · [search] · Analytics · RM Mapping · Sign Out ─────────
+    # Clear-flag must be applied *before* the _rm_search widget is instantiated —
+    # writing to a widget's session-state key after it's created raises in Streamlit.
+    if st.session_state.pop("_rm_search_clear", False):
+        st.session_state["_rm_search"] = ""
+
+    cur_view = st.session_state.get("_ov_view", "analytics")
+    if cur_view == "rm_mapping":
+        # tb1 is deliberately narrow (title text is ~215px) so the search column
+        # begins right after the title text — the search box then centres in the
+        # visible whitespace between the title and the Analytics tab, not in a
+        # column padded out to half the topbar width.
+        tb1, tbs, tb2, tb3, tb4 = st.columns([1.95, 5.25, 0.85, 0.95, 0.75])
+    else:
+        tb1, tb2, tb3, tb4 = st.columns([7.2, 0.85, 0.95, 0.75])
     with tb1:
+        # white-space:nowrap keeps the title on one line even when its column is
+        # deliberately narrow (RM Mapping view) — the text ends well left of the
+        # search box, so any overflow into the gap is harmless.
         st.markdown(
             "<div style='font-size:19px;font-weight:800;color:#0F172A;line-height:1.1;"
-            "letter-spacing:-0.3px;padding-top:4px;'>🎯 Follow Up Control Tower</div>",
+            "letter-spacing:-0.3px;padding-top:4px;white-space:nowrap;overflow:visible;'>"
+            "🎯 Follow Up Control Tower</div>",
             unsafe_allow_html=True,
         )
+    if cur_view == "rm_mapping":
+        with tbs:
+            with st.container(key="rm_search_wrap"):
+                _rm_prev_q = st.session_state.get("_rm_search", "")
+                st.text_input(
+                    "Search IFB Point ID", placeholder="🔍  Search IFB Point ID…",
+                    label_visibility="collapsed", key="_rm_search",
+                )
+                if st.session_state.get("_rm_search", "").strip():
+                    if st.button("✖", key="_rm_search_x"):
+                        st.session_state["_rm_search_clear"] = True
+                        st.rerun()
+                if st.session_state.get("_rm_search", "") != _rm_prev_q:
+                    st.session_state["_rm_page"] = 1
     with tb2:
-        if st.button("Sign Out", use_container_width=True):
+        if cur_view == "analytics":
+            st.markdown("<div class='nav-item-active'>📊\nAnalytics</div>", unsafe_allow_html=True)
+        elif st.button("📊\nAnalytics", use_container_width=True, key="_nav_analytics"):
+            st.session_state["_ov_view"] = "analytics"
+            st.rerun()
+    with tb3:
+        if cur_view == "rm_mapping":
+            st.markdown("<div class='nav-item-active'>🗺️\nRM Mapping</div>", unsafe_allow_html=True)
+        elif st.button("🗺️\nRM Mapping", use_container_width=True, key="_nav_rmmap"):
+            st.session_state["_ov_view"] = "rm_mapping"
+            st.rerun()
+    with tb4:
+        if st.button("🚪\nSign Out", use_container_width=True, key="_nav_signout"):
             st.session_state["_authed"] = False
             st.session_state.pop("_authed_email", None)
             st.query_params.clear()
@@ -1644,7 +1684,7 @@ def render_overview_dashboard(
     # ── View routing ──────────────────────────────────────────────────────────
     if st.session_state.get("_ov_view", "analytics") == "rm_mapping":
         _render_rm_mapping(login_mapping_db or (Path(db_path).parent / "login_mapping.db"),
-                           master_file, allowed_codes)
+                           master_file, allowed_codes, channel_names)
         return
 
     allowed_codes_key = tuple(sorted(allowed_codes)) if allowed_codes else None
