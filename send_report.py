@@ -83,28 +83,26 @@ def load_user_mappings() -> dict[str, dict]:
         for email in emails:
             e = email.strip().lower()
 
-            # Retail Email_ID match — per-point retail contact
-            retail_rows = conn.execute(
-                'SELECT IFBpoint_id, Name FROM login_mapping '
-                'WHERE LOWER("Retail Email_ID")=?',
-                (e,),
-            ).fetchall()
+            points: set[str] = set()
+            name = ""
+            for col, name_col in (
+                ('"Regional Email_ID"', '"Regional Name"'),
+                ('"Retail Email_ID"',   '"Retail Name"'),
+                ("Email_ID",            "Name"),
+            ):
+                rows = conn.execute(
+                    f'SELECT IFBpoint_id, {name_col} FROM login_mapping '
+                    f'WHERE LOWER({col})=?',
+                    (e,),
+                ).fetchall()
+                if rows:
+                    points = {str(r[0]) for r in rows if r[0]}
+                    name = next((r[1] for r in rows if r[1]), "")
+                    break
 
-            # Email_ID match — territory manager
-            mgr_rows = conn.execute(
-                "SELECT IFBpoint_id, Name FROM login_mapping "
-                "WHERE LOWER(Email_ID)=?",
-                (e,),
-            ).fetchall()
-
-            points = {str(r[0]) for r in retail_rows + mgr_rows if r[0]}
             if not points:
                 continue
 
-            # Name column refers to the territory manager (Email_ID owner).
-            # Use it only when this email matches via Email_ID; otherwise derive
-            # a readable name from the email prefix.
-            name = next((r[1] for r in mgr_rows if r[1]), "")
             if not name:
                 name = email.split("@")[0].replace("_", " ").replace(".", " ").title()
 

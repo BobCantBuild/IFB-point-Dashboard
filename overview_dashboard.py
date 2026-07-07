@@ -10,6 +10,8 @@ Usage (from streamlit_app.py):
 """
 from __future__ import annotations
 
+import html
+import math
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -221,8 +223,9 @@ _OVERVIEW_CSS = """
   /* ── Pointer tables (Day / Week / Month) — pricing-table style ── */
   .pt-wrap {
     overflow:auto; max-height:302px;
-    border-radius:14px; background:#FFFFFF;
-    box-shadow:0 2px 12px rgba(15,23,42,0.07), 0 0 0 1px rgba(226,232,240,0.7);
+    border-radius:18px; background:linear-gradient(180deg, #FFFFFF 0%, #FCFDFE 100%);
+    border:1px solid #E2E8F0;
+    box-shadow:0 10px 26px rgba(15,23,42,0.07);
     scroll-behavior:smooth;
   }
   .pt-wrap::-webkit-scrollbar { width:7px; height:7px; }
@@ -230,43 +233,83 @@ _OVERVIEW_CSS = """
   .pt-wrap::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
   .pt-wrap::-webkit-scrollbar-track { background:transparent; }
   table.pt-table {
+    --pt-accent:#276749;
+    --pt-accent-dark:#1F7A52;
+    --pt-accent-soft:#F0FDF4;
+    --pt-accent-hover:#ECFDF3;
+    --pt-accent-divider:#BFE8D0;
+    --pt-name-grad-1:#2C7A57;
+    --pt-name-grad-2:#276749;
     border-collapse:separate; border-spacing:0; width:100%;
     font-family:'Inter',sans-serif; font-size:11px; color:#0F172A;
+    background:#FFFFFF;
+  }
+  .pt-table.pt-day {
+    --pt-accent:#6366F1;
+    --pt-accent-dark:#4F46E5;
+    --pt-accent-soft:#EEF2FF;
+    --pt-accent-hover:#E0E7FF;
+    --pt-accent-divider:#C7D2FE;
+    --pt-name-grad-1:#6366F1;
+    --pt-name-grad-2:#4F46E5;
+  }
+  .pt-table.pt-week {
+    --pt-accent:#0891B2;
+    --pt-accent-dark:#0E7490;
+    --pt-accent-soft:#ECFEFF;
+    --pt-accent-hover:#CFFAFE;
+    --pt-accent-divider:#A5F3FC;
+    --pt-name-grad-1:#0891B2;
+    --pt-name-grad-2:#0E7490;
+  }
+  .pt-table.pt-month {
+    --pt-accent:#7C3AED;
+    --pt-accent-dark:#6D28D9;
+    --pt-accent-soft:#F5F3FF;
+    --pt-accent-hover:#EDE9FE;
+    --pt-accent-divider:#C4B5FD;
+    --pt-name-grad-1:#8B5CF6;
+    --pt-name-grad-2:#6D28D9;
   }
   .pt-table th, .pt-table td {
     padding:5px 10px; text-align:center; white-space:nowrap; border:none;
   }
-  .pt-table tbody td { border-bottom:1px solid #D1FAE5; }
+  .pt-table tbody td { border-bottom:1px solid #EAF2EF; }
   .pt-table thead th { position:sticky; top:0; z-index:3; }
   .pt-table th.pt-h2 {
-    background:#276749; color:#FFFFFF;
+    background:linear-gradient(180deg, var(--pt-accent-dark) 0%, var(--pt-accent) 100%); color:#FFFFFF;
     font-weight:800; font-size:10px; text-transform:uppercase;
-    letter-spacing:0.5px; border-bottom:none;
+    letter-spacing:0.6px; border-bottom:none;
+    box-shadow:inset 0 -1px 0 rgba(255,255,255,0.12);
   }
   .pt-table th.pt-corner {
-    background:#276749; color:#FFFFFF; text-align:left;
+    background:linear-gradient(180deg, var(--pt-accent-dark) 0%, var(--pt-accent) 100%); color:#FFFFFF; text-align:left;
     font-size:10px; font-weight:800; text-transform:uppercase;
-    letter-spacing:0.5px; z-index:5; border-bottom:none;
+    letter-spacing:0.6px; z-index:5; border-bottom:none;
+    box-shadow:inset 0 -1px 0 rgba(255,255,255,0.12);
   }
   .pt-table td.pt-name {
-    text-align:left; font-weight:700; font-size:11px; color:#FFFFFF;
-    background:#276749;
+    text-align:left; font-weight:700; font-size:11px; color:#F8FAFC;
+    background:linear-gradient(180deg, var(--pt-name-grad-1) 0%, var(--pt-name-grad-2) 100%);
     vertical-align:middle; min-width:160px; max-width:220px;
-    overflow:hidden; text-overflow:ellipsis; padding:5px 12px;
+    overflow:hidden; text-overflow:ellipsis; padding:7px 12px;
+    border-right:1px solid rgba(255,255,255,0.08);
   }
   .pt-idx {
     display:inline-flex; align-items:center; justify-content:center;
-    width:18px; height:18px; border-radius:6px; margin-right:7px;
-    font-size:9.5px; font-weight:800; color:#276749; vertical-align:middle;
-    background:rgba(255,255,255,0.25);
+    width:20px; height:20px; border-radius:7px; margin-right:8px;
+    font-size:9.5px; font-weight:800; color:#14532D; vertical-align:middle;
+    background:rgba(255,255,255,0.82);
   }
   .pt-table td.pt-pointer {
-    text-align:left; color:#374151; font-weight:600; font-size:10.5px;
-    min-width:160px; padding:5px 12px; background:#FFFFFF;
+    text-align:left; color:#334155; font-weight:600; font-size:10.5px;
+    min-width:160px; padding:5px 12px; background:#F8FAFC;
+    border-right:1px solid #E2E8F0;
   }
   .pt-dot {
-    display:inline-block; width:7px; height:7px; border-radius:50%;
-    margin-right:7px; vertical-align:middle;
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    margin-right:8px; vertical-align:middle;
+    box-shadow:0 0 0 3px rgba(255,255,255,0.9);
   }
   .pt-r-alloc          .pt-dot { background:#0EA5E9; }
   .pt-r-contacted      .pt-dot { background:#16A34A; }
@@ -274,10 +317,23 @@ _OVERVIEW_CSS = """
   .pt-r-interested     .pt-dot { background:#7C3AED; }
   .pt-r-not_interested .pt-dot { background:#C026D3; }
   .pt-r-rnr            .pt-dot { background:#D97706; }
-  .pt-table td.pt-val { font-variant-numeric:tabular-nums; background:#F0FDF4; }
+  .pt-table td.pt-val {
+    font-variant-numeric:tabular-nums;
+    background:#FCFEFD;
+    color:#0F172A;
+  }
+  .pt-table tbody tr:nth-child(12n+1) td.pt-val,
+  .pt-table tbody tr:nth-child(12n+2) td.pt-val,
+  .pt-table tbody tr:nth-child(12n+3) td.pt-val,
+  .pt-table tbody tr:nth-child(12n+4) td.pt-val,
+  .pt-table tbody tr:nth-child(12n+5) td.pt-val,
+  .pt-table tbody tr:nth-child(12n+6) td.pt-val {
+    background:var(--pt-accent-soft);
+  }
   .pt-chip {
     display:inline-block; min-width:28px; padding:1px 8px;
-    border-radius:999px; font-weight:700; font-size:10px; line-height:1.5;
+    border-radius:999px; font-weight:800; font-size:10px; line-height:1.35;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.45);
   }
   .pt-r-alloc          .pt-chip { background:#DBEAFE; color:#1D4ED8; }
   .pt-r-contacted      .pt-chip { background:#DCFCE7; color:#15803D; }
@@ -285,10 +341,20 @@ _OVERVIEW_CSS = """
   .pt-r-interested     .pt-chip { background:#EDE9FE; color:#6D28D9; }
   .pt-r-not_interested .pt-chip { background:#FAE8FF; color:#A21CAF; }
   .pt-r-rnr            .pt-chip { background:#FEF3C7; color:#B45309; }
-  .pt-table tbody tr:hover td.pt-val { background:#D1FAE5; }
-  .pt-table tbody tr:hover td.pt-pointer { background:#F8FAFC; }
-  .pt-table tbody tr.pt-first td { border-top:2px solid #A7F3D0; }
+  .pt-table tbody tr:hover td.pt-val { background:var(--pt-accent-hover); }
+  .pt-table tbody tr:hover td.pt-pointer { background:#F1F5F9; }
+  .pt-table tbody tr:hover .pt-chip { transform:translateY(-1px); }
+  .pt-table tbody tr.pt-first td { border-top:2px solid var(--pt-accent-divider); }
   .pt-table tbody tr.pt-first:first-child td { border-top:none; }
+
+  /* ── Keep Day/Week/Month section wrappers, but hide their border visually ── */
+  .st-key-pt_section_day,
+  .st-key-pt_section_week,
+  .st-key-pt_section_month {
+    border-color:transparent !important;
+    background:transparent !important;
+    box-shadow:none !important;
+  }
 </style>
 """
 
@@ -1011,17 +1077,15 @@ def _load_hierarchy(
                 ).fetchall()
             else:
                 _e = email.strip().lower()
-                rows = conn.execute(
-                    'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
-                    'WHERE LOWER("Retail Email_ID")=?',
-                    (_e,),
-                ).fetchall()
-                if not rows:
+                rows = []
+                for _col in ('"Regional Email_ID"', '"Retail Email_ID"', "Email_ID"):
                     rows = conn.execute(
-                        'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
-                        'WHERE LOWER(Email_ID)=?',
+                        f'SELECT Region, Branch, IFBpoint_id FROM login_mapping '
+                        f'WHERE LOWER({_col})=?',
                         (_e,),
                     ).fetchall()
+                    if rows:
+                        break
             for region, branch, code in rows:
                 if not region or not branch or not code:
                     continue
@@ -1037,6 +1101,454 @@ def _load_hierarchy(
     return result
 
 
+# ── RM Mapping (editable) ─────────────────────────────────────────────────────
+# Column label (shown in the editor)  →  login_mapping.db column name.
+# "IFB Point Name" is handled separately (persisted to IFB_Point_Master.txt).
+_RM_COL_TO_DB = {
+    "Branch":                   "Branch",
+    "Region":                   "Region",
+    "Cluster Manager Name":     "Name",
+    "Cluster Manager Email ID": "Email_ID",
+    "Retail Name":              "Retail Name",
+    "Retail Email ID":          "Retail Email_ID",
+}
+_RM_DISPLAY_COLS = [
+    "IFB Point ID", "IFB Point Name", "Branch", "Region",
+    "Cluster Manager Name", "Cluster Manager Email ID",
+    "Retail Name", "Retail Email ID",
+]
+
+
+def _read_master_names(master_file: str | Path) -> dict[str, str]:
+    """Return {code: name} read raw from IFB_Point_Master.txt (tab-separated)."""
+    names: dict[str, str] = {}
+    p = Path(master_file)
+    if not p.exists():
+        return names
+    for line in p.read_text(encoding="utf-8", errors="replace").split("\n"):
+        if "\t" not in line:
+            continue
+        code, _, name = line.partition("\t")
+        code = code.strip()
+        if code:
+            names[code] = name.strip()
+    return names
+
+
+def _write_master_names(master_file: str | Path, updates: dict[str, str]) -> None:
+    """Update names for the given codes in IFB_Point_Master.txt, preserving order.
+    Appends a new `code\\tname` line for any code not already present."""
+    p = Path(master_file)
+    existing = p.read_text(encoding="utf-8", errors="replace").split("\n") if p.exists() else []
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in existing:
+        raw = line.rstrip("\r")
+        if "\t" in raw:
+            code = raw.split("\t", 1)[0].strip()
+            if code in updates:
+                out.append(f"{code}\t{updates[code]}")
+                seen.add(code)
+                continue
+        out.append(raw)
+    for code, name in updates.items():
+        if code not in seen:
+            out.append(f"{code}\t{name}")
+    p.write_text("\n".join(out), encoding="utf-8")
+
+
+def _load_rm_rows(mapping_db: str | Path, master_names: dict[str, str],
+                  allowed_codes: set[str] | None) -> pd.DataFrame:
+    """Build the RM-mapping table (one row per IFB Point ID) from login_mapping.db,
+    joining the IFB Point name from the master file."""
+    rows: list[dict] = []
+    seen: set[str] = set()
+    with sqlite3.connect(str(mapping_db)) as conn:
+        data = conn.execute(
+            'SELECT IFBpoint_id, Region, Branch, Name, Email_ID, '
+            '"Retail Name", "Retail Email_ID" FROM login_mapping'
+        ).fetchall()
+    for code, region, branch, name, email, rname, remail in data:
+        code = (str(code).strip() if code is not None else "")
+        if not code or code in seen:
+            continue
+        if allowed_codes and code not in allowed_codes:
+            continue
+        seen.add(code)
+        rows.append({
+            "IFB Point ID":             code,
+            "IFB Point Name":           master_names.get(code, ""),
+            "Branch":                   branch or "",
+            "Region":                   region or "",
+            "Cluster Manager Name":     name or "",
+            "Cluster Manager Email ID": email or "",
+            "Retail Name":              rname or "",
+            "Retail Email ID":          remail or "",
+        })
+    df = pd.DataFrame(rows, columns=_RM_DISPLAY_COLS)
+    if not df.empty:
+        df = df.sort_values("IFB Point Name", key=lambda s: s.str.lower()).reset_index(drop=True)
+    return df
+
+
+def _apply_rm_updates(master_updates: dict[str, str],
+                      db_updates: list[tuple[str, str, str]],
+                      mapping_db: str | Path, master_file: str | Path) -> int:
+    """Write the collected changes: db_updates → login_mapping.db,
+    master_updates → IFB_Point_Master.txt. Returns count of fields changed."""
+    if db_updates:
+        with sqlite3.connect(str(mapping_db)) as conn:
+            for code, db_col, val in db_updates:
+                conn.execute(
+                    f'UPDATE login_mapping SET "{db_col}"=? WHERE IFBpoint_id=?',
+                    (val if val != "" else None, code),
+                )
+            conn.commit()
+    if master_updates:
+        _write_master_names(master_file, master_updates)
+        # Invalidate the cached channel-name / master-code lookups in the main app
+        # so the Analytics view reflects renamed points without a restart.
+        try:
+            import streamlit_app as _sa
+            _sa._load_channel_names.cache_clear()
+            _sa._load_master_codes.cache_clear()
+        except Exception:
+            pass
+    return len(db_updates) + len(master_updates)
+
+
+def _save_rm_row(code: str, values: dict[str, str], original: dict[str, str],
+                 mapping_db: str | Path, master_file: str | Path) -> int:
+    """Persist edits for a single IFB Point row (from the edit dialog)."""
+    master_updates: dict[str, str] = {}
+    db_updates: list[tuple[str, str, str]] = []
+    for col in _RM_DISPLAY_COLS:
+        if col == "IFB Point ID":
+            continue
+        new_v = (values.get(col) or "").strip()
+        old_v = (original.get(col) or "").strip()
+        if new_v == old_v:
+            continue
+        if col == "IFB Point Name":
+            master_updates[code] = new_v
+        else:
+            db_updates.append((code, _RM_COL_TO_DB[col], new_v))
+    return _apply_rm_updates(master_updates, db_updates, mapping_db, master_file)
+
+
+# Soft badge palette for the Region pill (echoes the DataTables Status/Priority look)
+_RM_BADGE_PALETTE = [
+    ("#DBEAFE", "#1E40AF"), ("#DCFCE7", "#166534"), ("#FEF9C3", "#854D0E"),
+    ("#FCE7F3", "#9D174D"), ("#E0E7FF", "#3730A3"), ("#FFEDD5", "#9A3412"),
+    ("#CCFBF1", "#115E59"), ("#F3E8FF", "#6B21A8"), ("#FEE2E2", "#991B1B"),
+]
+
+
+def _rm_badge(text: str) -> str:
+    """Coloured pill for a Region value (stable colour per distinct value)."""
+    text = (text or "").strip()
+    if not text:
+        return "<span class='rm-muted'>—</span>"
+    idx = sum(ord(c) for c in text) % len(_RM_BADGE_PALETTE)
+    bg, fg = _RM_BADGE_PALETTE[idx]
+    return (f"<span class='rm-badge' style='background:{bg};color:{fg};'>"
+            f"{html.escape(text)}</span>")
+
+
+def _rm_cell(text: str, cls: str = "") -> str:
+    """Ellipsised, hover-titled table cell."""
+    text = "" if text is None else str(text)
+    safe = html.escape(text)
+    inner = safe if text.strip() else "<span class='rm-muted'>—</span>"
+    return f"<div class='rm-cell {cls}' title='{safe}'>{inner}</div>"
+
+
+# Column layout: (label, key, streamlit-column-ratio, css-class)
+_RM_COLS = [
+    ("IFB Point ID",       "IFB Point ID",             1.25, "rm-mono"),
+    ("IFB Point Name",     "IFB Point Name",           2.20, "rm-strong"),
+    ("Branch",             "Branch",                   1.40, ""),
+    ("Region",             "Region",                   1.40, "rm-badgecol"),
+    ("Cluster Mgr",        "Cluster Manager Name",     1.55, ""),
+    ("Cluster Mgr Email",  "Cluster Manager Email ID", 2.05, "rm-email"),
+    ("Retail Name",        "Retail Name",              1.50, ""),
+    ("Retail Email",       "Retail Email ID",          2.05, "rm-email"),
+    ("Edit",               "__edit__",                 0.70, "rm-editcol"),
+]
+_RM_RATIOS = [c[2] for c in _RM_COLS]
+
+_POPOVER_CSS = """
+<style>
+  /* ── Hamburger: strip the trailing "expand more" chevron, icon-only ── */
+  [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
+  [data-testid="stPopoverButton"] svg { display:none !important; }
+  [data-testid="stPopoverButton"] {
+    min-width:42px !important; padding:6px 12px !important;
+    font-size:18px !important; line-height:1 !important;
+    border:1px solid #E2E8F0 !important; border-radius:9px !important;
+    background:#FFFFFF !important; box-shadow:none !important;
+  }
+  [data-testid="stPopoverButton"]:hover { border-color:#6366F1 !important;
+    background:#EEF2FF !important; }
+  /* Menu items inside the popover */
+  [data-testid="stPopoverBody"] [data-testid="stButton"] > button {
+    justify-content:flex-start !important; font-weight:600 !important;
+  }
+</style>
+"""
+
+_RM_CSS = """
+<style>
+  /* ── RM Mapping table ── */
+  .st-key-rm_head [data-testid="stHorizontalBlock"],
+  .st-key-rm_body [data-testid="stHorizontalBlock"] {
+    gap:0 !important; align-items:center !important;
+  }
+  .st-key-rm_body [data-testid="stHorizontalBlock"] {
+    border-bottom:1px solid #EEF1F5 !important; min-height:40px;
+  }
+  .st-key-rm_body [data-testid="stHorizontalBlock"]:hover { background:#F8FAFF !important; }
+  .st-key-rm_head [data-testid="stColumn"],
+  .st-key-rm_body [data-testid="stColumn"] { padding:0 6px !important; }
+
+  /* Header sort buttons — flat, blue, DataTables-like */
+  .st-key-rm_head [data-testid="stButton"] > button {
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    color:#2F6FB0 !important; font-weight:700 !important; font-size:12px !important;
+    padding:8px 0 !important; width:100% !important; justify-content:flex-start !important;
+    text-align:left !important; border-radius:0 !important; letter-spacing:.2px;
+  }
+  .st-key-rm_head [data-testid="stButton"] > button:hover {
+    color:#1D4E8A !important; text-decoration:underline; background:transparent !important;
+  }
+  .st-key-rm_head [data-testid="stHorizontalBlock"] { border-bottom:2px solid #E2E8F0 !important; }
+
+  /* Body cells */
+  .rm-cell { font-size:12px; color:#334155; padding:9px 0; line-height:1.25;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rm-strong { font-weight:600; color:#0F172A; }
+  .rm-mono   { font-variant-numeric:tabular-nums; color:#0F172A; font-weight:600; }
+  .rm-email  { color:#475569; }
+  .rm-muted  { color:#CBD5E1; }
+  .rm-badge  { display:inline-block; padding:2px 8px; border-radius:5px;
+    font-size:10.5px; font-weight:700; white-space:nowrap; }
+
+  /* Per-row edit button — small ghost icon */
+  .st-key-rm_body [data-testid="stButton"] > button {
+    background:transparent !important; border:1px solid transparent !important;
+    box-shadow:none !important; padding:2px 6px !important; min-height:28px !important;
+    font-size:14px !important; color:#64748B !important; border-radius:7px !important;
+  }
+  .st-key-rm_body [data-testid="stButton"] > button:hover {
+    background:#EEF2FF !important; border-color:#C7D2FE !important; color:#4F46E5 !important;
+  }
+
+  /* Footer pager buttons */
+  .st-key-rm_pager [data-testid="stButton"] > button {
+    min-height:30px !important; padding:2px 11px !important; font-size:12px !important;
+    border:1px solid #E2E8F0 !important; background:#FFFFFF !important;
+    color:#475569 !important; box-shadow:none !important; border-radius:7px !important;
+  }
+  .st-key-rm_pager [data-testid="stButton"] > button:hover {
+    border-color:#6366F1 !important; color:#4F46E5 !important; background:#EEF2FF !important; }
+  .st-key-rm_pager [data-testid="stButton"] > button:disabled {
+    color:#CBD5E1 !important; background:#F8FAFC !important; }
+  .st-key-rm_pager [data-testid="stButton"] > button[kind="primary"] {
+    background:#4F46E5 !important; border-color:#4F46E5 !important; color:#FFFFFF !important;
+    font-weight:700 !important; }
+  .st-key-rm_pager [data-testid="stButton"] > button[kind="primary"]:hover {
+    background:#4338CA !important; color:#FFFFFF !important; }
+</style>
+"""
+
+
+@st.dialog("✏️ Edit IFB Point")
+def _rm_edit_dialog(row: dict, mapping_db: str | Path, master_file: str | Path) -> None:
+    code = row["IFB Point ID"]
+    st.markdown(
+        f"<div style='font-size:12px;color:#64748B;margin:-6px 0 8px;'>"
+        f"IFB Point ID <b style='color:#0F172A;'>{html.escape(str(code))}</b> "
+        f"· reference key, not editable</div>",
+        unsafe_allow_html=True,
+    )
+    name = st.text_input("IFB Point Name", value=row["IFB Point Name"],
+                         help="Saved to IFB_Point_Master.txt")
+    c1, c2 = st.columns(2)
+    branch   = c1.text_input("Branch",   value=row["Branch"])
+    region   = c2.text_input("Region",   value=row["Region"])
+    cm_name  = c1.text_input("Cluster Manager Name",     value=row["Cluster Manager Name"])
+    cm_email = c2.text_input("Cluster Manager Email ID", value=row["Cluster Manager Email ID"])
+    r_name   = c1.text_input("Retail Name",     value=row["Retail Name"])
+    r_email  = c2.text_input("Retail Email ID", value=row["Retail Email ID"])
+
+    b1, b2 = st.columns([1, 1])
+    if b1.button("💾 Save", type="primary", use_container_width=True):
+        values = {
+            "IFB Point Name": name, "Branch": branch, "Region": region,
+            "Cluster Manager Name": cm_name, "Cluster Manager Email ID": cm_email,
+            "Retail Name": r_name, "Retail Email ID": r_email,
+        }
+        n = _save_rm_row(str(code), values, row, mapping_db, master_file)
+        st.session_state["_rm_flash"] = (
+            f"Saved {n} change{'s' if n != 1 else ''} for {code}." if n
+            else "No changes to save."
+        )
+        st.rerun()
+    if b2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
+def _render_rm_mapping(mapping_db: str | Path, master_file: str | Path,
+                       allowed_codes: set[str] | None) -> None:
+    """RM Mapping screen — a DataTables-style, searchable, sortable, paginated table
+    of login_mapping.db joined with IFB Point names from the master file.
+    Each row has an ✏️ button that opens an edit dialog; IFB Point ID is the key."""
+    st.markdown(_RM_CSS, unsafe_allow_html=True)
+
+    _flash = st.session_state.pop("_rm_flash", None)
+    if _flash:
+        st.toast(_flash, icon="✅")
+
+    st.markdown(
+        "<div style='font-size:15px;font-weight:800;color:#0F172A;margin:2px 0 6px;'>"
+        "🗺️ RM Mapping"
+        "<span style='font-weight:600;color:#64748B;font-size:11.5px;'> · "
+        "click ✏️ on a row to edit</span></div>",
+        unsafe_allow_html=True,
+    )
+
+    master_names = _read_master_names(master_file)
+    df = _load_rm_rows(mapping_db, master_names, allowed_codes)
+    if df.empty:
+        st.info("No mapping rows available for your scope.")
+        return
+
+    ss = st.session_state
+    ss.setdefault("_rm_page", 1)
+    ss.setdefault("_rm_sort_col", "IFB Point Name")
+    ss.setdefault("_rm_sort_asc", True)
+
+    # ── Filter + sort ─────────────────────────────────────────────────────────
+    q = ss.get("_rm_search", "").strip().lower()
+    if q:
+        mask = df.apply(
+            lambda r: q in " ".join(str(v).lower() for v in r.values), axis=1)
+        fdf = df[mask]
+    else:
+        fdf = df
+    sort_col = ss["_rm_sort_col"] if ss["_rm_sort_col"] in df.columns else "IFB Point Name"
+    fdf = fdf.sort_values(
+        sort_col, ascending=ss["_rm_sort_asc"], kind="stable",
+        key=lambda s: s.astype(str).str.lower(),
+    ).reset_index(drop=True)
+
+    psize = ss.get("_rm_psize", 10)
+    total = len(fdf)
+    npages = max(1, math.ceil(total / psize))
+    page = min(max(1, ss["_rm_page"]), npages)
+    ss["_rm_page"] = page
+    start = (page - 1) * psize
+    end = min(start + psize, total)
+    page_df = fdf.iloc[start:end]
+
+    # ── Top bar: "Showing X to Y of Z items"  ·  Search ───────────────────────
+    tcol, scol = st.columns([6, 4])
+    with tcol:
+        _shown = f"{start + 1} to {end}" if total else "0 to 0"
+        st.markdown(
+            f"<div style='color:#64748B;font-size:12.5px;padding-top:8px;'>"
+            f"Showing <b style='color:#334155;'>{_shown}</b> of "
+            f"<b style='color:#334155;'>{total}</b> items</div>",
+            unsafe_allow_html=True,
+        )
+    with scol:
+        _prev_q = ss.get("_rm_search", "")
+        _q_new = st.text_input(
+            "Search", placeholder="🔍  Search…", label_visibility="collapsed",
+            key="_rm_search",
+        )
+        if _q_new != _prev_q:
+            ss["_rm_page"] = 1
+            st.rerun()
+
+    # ── Header (sortable) ─────────────────────────────────────────────────────
+    with st.container(key="rm_head"):
+        hc = st.columns(_RM_RATIOS)
+        for i, (label, key, _r, _cls) in enumerate(_RM_COLS):
+            if key == "__edit__":
+                hc[i].markdown(
+                    "<div style='font-size:12px;font-weight:700;color:#2F6FB0;"
+                    "text-align:center;padding:8px 0;'>Edit</div>",
+                    unsafe_allow_html=True,
+                )
+                continue
+            arrow = ""
+            if ss["_rm_sort_col"] == key:
+                arrow = " ▲" if ss["_rm_sort_asc"] else " ▼"
+            if hc[i].button(f"{label}{arrow}", key=f"_rm_h_{i}", use_container_width=True):
+                if ss["_rm_sort_col"] == key:
+                    ss["_rm_sort_asc"] = not ss["_rm_sort_asc"]
+                else:
+                    ss["_rm_sort_col"] = key
+                    ss["_rm_sort_asc"] = True
+                st.rerun()
+
+    # ── Body ──────────────────────────────────────────────────────────────────
+    with st.container(key="rm_body"):
+        if page_df.empty:
+            st.markdown(
+                "<div style='padding:22px 4px;color:#94A3B8;font-size:13px;'>"
+                "No matching rows.</div>", unsafe_allow_html=True)
+        for _, row in page_df.iterrows():
+            rc = st.columns(_RM_RATIOS)
+            for i, (label, key, _r, cls) in enumerate(_RM_COLS):
+                if key == "__edit__":
+                    if rc[i].button("✏️", key=f"_rm_e_{row['IFB Point ID']}",
+                                    help="Edit this row"):
+                        _rm_edit_dialog(row.to_dict(), mapping_db, master_file)
+                elif "rm-badgecol" in cls:
+                    rc[i].markdown(_rm_badge(row[key]), unsafe_allow_html=True)
+                else:
+                    rc[i].markdown(_rm_cell(row[key], cls), unsafe_allow_html=True)
+
+    # ── Footer: pagination  ·  page-size ──────────────────────────────────────
+    with st.container(key="rm_pager"):
+        fc1, fc2 = st.columns([7, 3])
+        with fc1:
+            # window of page numbers around the current page
+            win = 4
+            lo = max(1, page - win // 2)
+            hi = min(npages, lo + win)
+            lo = max(1, hi - win)
+            nums = list(range(lo, hi + 1))
+            slots = st.columns(len(nums) + 2, gap="small")
+            if slots[0].button("‹ Prev", key="_rm_prev", disabled=(page <= 1),
+                               use_container_width=True):
+                ss["_rm_page"] = page - 1
+                st.rerun()
+            for j, pnum in enumerate(nums, start=1):
+                if slots[j].button(str(pnum), key=f"_rm_p_{pnum}",
+                                   type="primary" if pnum == page else "secondary",
+                                   use_container_width=True):
+                    ss["_rm_page"] = pnum
+                    st.rerun()
+            if slots[-1].button("Next ›", key="_rm_next", disabled=(page >= npages),
+                                use_container_width=True):
+                ss["_rm_page"] = page + 1
+                st.rerun()
+        with fc2:
+            _prev_ps = ss.get("_rm_psize", 10)
+            _ps_new = st.selectbox(
+                "Show entries", [10, 25, 50, 100],
+                index=[10, 25, 50, 100].index(_prev_ps) if _prev_ps in (10, 25, 50, 100) else 0,
+                key="_rm_psize_sel", label_visibility="collapsed",
+            )
+            if _ps_new != _prev_ps:
+                ss["_rm_psize"] = _ps_new
+                ss["_rm_page"] = 1
+                st.rerun()
+
+
 def render_overview_dashboard(
     db_path: Path,
     channel_names: dict[str, str],
@@ -1044,6 +1556,7 @@ def render_overview_dashboard(
     allowed_codes: set[str] | None = None,
     login_mapping_db: Path | None = None,
     user_email: str = "",
+    master_file: Path | None = None,
 ) -> None:
     """
     Render the Analytics Console overview screen.
@@ -1056,8 +1569,12 @@ def render_overview_dashboard(
                         None or empty set means no restriction.
         login_mapping_db: Path to login_mapping.db (for Region/Branch hierarchy)
         user_email:     Logged-in user's email
+        master_file:    Path to IFB_Point_Master.txt (for the RM Mapping editor)
     """
+    if master_file is None:
+        master_file = Path(db_path).parent / "IFB_Point_Master.txt"
     st.markdown(_OVERVIEW_CSS, unsafe_allow_html=True)
+    st.markdown(_POPOVER_CSS, unsafe_allow_html=True)
 
     # ── JS: rounded tooltip corners + column highlight on hover ──────────────
     st.html("""
@@ -1099,6 +1616,37 @@ def render_overview_dashboard(
     </script>
     """)
 
+    # ── A TOPBAR: ☰ menu · title · sign out ───────────────────────────────────
+    tb0, tb1, tb2 = st.columns([0.55, 8, 1.1])
+    with tb0:
+        with st.popover("☰", use_container_width=True):
+            if st.button("📊  IFB Point Analytics", use_container_width=True, key="_nav_analytics"):
+                st.session_state["_ov_view"] = "analytics"
+                st.rerun()
+            if st.button("🗺️  RM Mapping", use_container_width=True, key="_nav_rmmap"):
+                st.session_state["_ov_view"] = "rm_mapping"
+                st.rerun()
+    with tb1:
+        st.markdown(
+            "<div style='font-size:19px;font-weight:800;color:#0F172A;line-height:1.1;"
+            "letter-spacing:-0.3px;padding-top:4px;'>🎯 Follow Up Control Tower</div>",
+            unsafe_allow_html=True,
+        )
+    with tb2:
+        if st.button("Sign Out", use_container_width=True):
+            st.session_state["_authed"] = False
+            st.session_state.pop("_authed_email", None)
+            st.query_params.clear()
+            st.rerun()
+
+    st.divider()
+
+    # ── View routing ──────────────────────────────────────────────────────────
+    if st.session_state.get("_ov_view", "analytics") == "rm_mapping":
+        _render_rm_mapping(login_mapping_db or (Path(db_path).parent / "login_mapping.db"),
+                           master_file, allowed_codes)
+        return
+
     allowed_codes_key = tuple(sorted(allowed_codes)) if allowed_codes else None
     df = _load_df(str(db_path), allowed_codes_key).copy()
     if df.empty:
@@ -1128,23 +1676,6 @@ def render_overview_dashboard(
         df     = df[df["ifb_point"].isin(allowed_codes)]
         _codes = [c for c in _codes if c in allowed_codes]
 
-    # ── A TOPBAR ──────────────────────────────────────────────────────────────
-    tb1, tb2 = st.columns([8, 1.1])
-    with tb1:
-        st.markdown(
-            "<div style='font-size:19px;font-weight:800;color:#0F172A;line-height:1.1;"
-            "letter-spacing:-0.3px;'>🎯 Follow Up Control Tower</div>",
-            unsafe_allow_html=True,
-        )
-    with tb2:
-        if st.button("Sign Out", use_container_width=True):
-            st.session_state["_authed"] = False
-            st.session_state.pop("_authed_email", None)
-            st.query_params.clear()
-            st.rerun()
-
-    st.divider()
-
     # ── Two-pane: C RAIL | main ────────────────────────────────────────────────
     with st.container(key="two_pane"):
         rail, main = st.columns([1.3, 8.7], gap="medium")
@@ -1163,21 +1694,8 @@ def render_overview_dashboard(
             _all_regions  = sorted(_hierarchy.keys())
             _has_hierarchy = len(_all_regions) > 0
 
-            # Clear flag must be applied before widgets are instantiated
-            if st.session_state.pop("_ov_search_clear", False):
-                st.session_state["_ov_search"] = ""
-
-            _prev_q = st.session_state.get("_ov_prev_q", "")
-
-            # ── Search box ────────────────────────────────────────────────────
-            _q = st.text_input(
-                "s", placeholder="🔍 Search IFB Point or Code…",
-                label_visibility="collapsed", key="_ov_search",
-            ).strip().lower()
-
-            if _q != _prev_q:
-                st.session_state["_ov_prev_q"] = _q
-                st.session_state["_ov_sel"] = set()
+            # Search removed — Region/Branch/IFB Point cascade drives filtering now.
+            _q = ""
 
             # ── All / Clear buttons ───────────────────────────────────────────
             # Precompute all branches and all points for "All" button
@@ -1202,8 +1720,6 @@ def render_overview_dashboard(
                     st.rerun()
             with qa2:
                 if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
-                    st.session_state["_ov_search_clear"]  = True
-                    st.session_state["_ov_prev_q"]        = ""
                     st.session_state["_ov_sel"]            = set()
                     st.session_state["_ov_sel_regions"]    = []
                     st.session_state["_ov_sel_branches"]   = []
@@ -1261,6 +1777,15 @@ def render_overview_dashboard(
                         _avail_points.extend(_pts)
                 _avail_points = sorted(set(_avail_points),
                                        key=lambda c: channel_names.get(c, c).lower())
+
+                # Include codes that have DB data but are absent from login_mapping
+                _hierarchy_codes = set(_avail_points)
+                _unassigned = [c for c in _codes if c not in _hierarchy_codes]
+                if _unassigned:
+                    _avail_points = sorted(
+                        set(_avail_points) | set(_unassigned),
+                        key=lambda c: channel_names.get(c, c).lower(),
+                    )
 
                 # Apply search filter
                 if _q:
@@ -1346,6 +1871,21 @@ def render_overview_dashboard(
 
         # ── MAIN: F KPI + G charts ─────────────────────────────────────────────────
         with main:
+            _section_colors = {
+                "day":   ("#6366F1", "#EEF2FF"),   # indigo
+                "week":  ("#0891B2", "#ECFEFF"),   # cyan
+                "month": ("#7C3AED", "#F5F3FF"),   # violet
+            }
+            _force_all = bool(selected_set)
+            _day_html, _day_shown, _day_total = _pointer_table_html(
+                scope_df=scope_df,
+                scope_codes=scope_codes,
+                channel_names=channel_names,
+                period="day",
+                n=7,
+                force_all=_force_all,
+                limit=None,
+            )
             total_leads = len(scope_df)
             contacted     = int((scope_df["status"] == "Contacted").sum())
             rnr           = int((scope_df["status"] == "RnR").sum())
@@ -1392,16 +1932,14 @@ def render_overview_dashboard(
                 _kpi_card(kc6, "Not Contacted", not_cont, today_val=t_not_cont, today_pct=_tpct(t_not_cont))
 
             # G — TABULAR ROWS  (Day / Week / Month) — IFB Point × 6 Pointers × N periods
-            _section_colors = {
-                "day":   ("#6366F1", "#EEF2FF"),   # indigo
-                "week":  ("#0891B2", "#ECFEFF"),   # cyan
-                "month": ("#7C3AED", "#F5F3FF"),   # violet
-            }
-            # Stores explicitly picked in the rail are always listed, even with
-            # zero activity; otherwise only stores active in the window appear.
-            _force_all = bool(selected_set)
-
-            _PT_LIMIT = 40  # stores rendered per table unless "Show all" is ticked
+            st.markdown(
+                f"<div style='font-size:9.5px;font-weight:800;color:{_section_colors['day'][0]};"
+                f"text-transform:uppercase;letter-spacing:0.7px;"
+                f"padding-left:3px;margin-top:8px;margin-bottom:8px;'>📅  Day Wise — Last 7 Days"
+                f"<span style='color:#94A3B8;font-weight:600;'> · {_day_shown} store{'s' if _day_shown != 1 else ''}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
             for title, period, n in [
                 ("📅  Day Wise — Last 7 Days",     "day",   7),
@@ -1409,43 +1947,40 @@ def render_overview_dashboard(
                 ("🗓️  Month Wise — Last 6 Months", "month", 6),
             ]:
                 accent, _ = _section_colors[period]
-                _show_all = _force_all or st.session_state.get(f"pt_showall_{period}", False)
-                tbl_html, n_shown, n_total = _pointer_table_html(
-                    scope_df=scope_df,
-                    scope_codes=scope_codes,
-                    channel_names=channel_names,
-                    period=period,
-                    n=n,
-                    force_all=_force_all,
-                    limit=None if _show_all else _PT_LIMIT,
-                )
-                if n_shown < n_total:
-                    _count_note = f" · top {n_shown} of {n_total} active stores"
+                if period == "day":
+                    tbl_html, n_shown, n_total = _day_html, _day_shown, _day_total
                 else:
-                    _count_note = f" · {n_shown} store{'s' if n_shown != 1 else ''}"
-                st.markdown(
-                    f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
-                    f"text-transform:uppercase;letter-spacing:0.7px;"
-                    f"padding-left:3px;margin-bottom:1px;'>{title}"
-                    f"<span style='color:#94A3B8;font-weight:600;'>{_count_note}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                tcol, icol = st.columns([6.9, 3.1], gap="small")
-                with tcol:
-                    st.markdown(tbl_html, unsafe_allow_html=True)
-                    if not _force_all and n_total > _PT_LIMIT:
-                        st.checkbox(
-                            f"Show all {n_total} stores",
-                            key=f"pt_showall_{period}",
-                        )
-                with icol:
-                    buckets = _time_buckets(scope_df, period, n)
+                    tbl_html, n_shown, n_total = _pointer_table_html(
+                        scope_df=scope_df,
+                        scope_codes=scope_codes,
+                        channel_names=channel_names,
+                        period=period,
+                        n=n,
+                        force_all=_force_all,
+                        limit=None,
+                    )
+                _count_note = f" · {n_shown} store{'s' if n_shown != 1 else ''}"
+                if period != "day":
                     st.markdown(
-                        f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;"
-                        f"border-left:4px solid {accent};"
-                        f"border-radius:10px;padding:8px 11px;"
-                        f"height:302px;overflow-y:auto;box-sizing:border-box;'>"
-                        f"{_insights(buckets, period, scope_df=scope_df)}</div>",
+                        f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
+                        f"text-transform:uppercase;letter-spacing:0.7px;"
+                        f"padding-left:3px;margin-bottom:8px;'>{title}"
+                        f"<span style='color:#94A3B8;font-weight:600;'>{_count_note}</span>"
+                        f"</div>",
                         unsafe_allow_html=True,
                     )
+                with st.container(border=True, key=f"pt_section_{period}"):
+                    tcol, icol = st.columns([6.8, 3.2], gap="medium")
+                    with tcol:
+                        st.markdown(tbl_html, unsafe_allow_html=True)
+                    with icol:
+                        buckets = _time_buckets(scope_df, period, n)
+                        st.markdown(
+                            f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;"
+                            f"border-left:4px solid {accent};"
+                            f"border-radius:10px;padding:10px 12px;"
+                            f"height:302px;overflow-y:auto;box-sizing:border-box;'>"
+                            f"{_insights(buckets, period, scope_df=scope_df)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)

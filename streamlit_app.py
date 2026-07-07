@@ -178,6 +178,8 @@ def _ensure_runtime_indexes() -> None:
                         ON login_mapping(LOWER("Retail Email_ID"));
                     CREATE INDEX IF NOT EXISTS idx_login_mapping_email_lower
                         ON login_mapping(LOWER(Email_ID));
+                    CREATE INDEX IF NOT EXISTS idx_login_mapping_regional_email_lower
+                        ON login_mapping(LOWER("Regional Email_ID"));
                     CREATE INDEX IF NOT EXISTS idx_login_mapping_point
                         ON login_mapping(IFBpoint_id);
                     CREATE INDEX IF NOT EXISTS idx_login_mapping_region_branch_point
@@ -1394,23 +1396,20 @@ _STATUS_COLORS = {"Contacted": "#16A34A", "Not Contacted": "#DC2626",
 def _get_allowed_codes(email: str) -> set[str]:
     """Return IFBpoint_id values assigned to this email in login_mapping.db.
 
-    Checks Retail Email_ID first; if no match, falls back to Email_ID.
+    Checks Regional Email_ID first (widest scope), then Retail Email_ID, then Email_ID.
     """
     try:
         _e = email.strip().lower()
         with sqlite3.connect(LOGIN_MAPPING_DB) as _mc:
-            rows = _mc.execute(
-                'SELECT IFBpoint_id FROM login_mapping WHERE LOWER("Retail Email_ID")=?',
-                (_e,),
-            ).fetchall()
-            codes = {r[0] for r in rows if r[0]}
-            if not codes:
+            for col in ('"Regional Email_ID"', '"Retail Email_ID"', "Email_ID"):
                 rows = _mc.execute(
-                    "SELECT IFBpoint_id FROM login_mapping WHERE LOWER(Email_ID)=?",
+                    f"SELECT IFBpoint_id FROM login_mapping WHERE LOWER({col})=?",
                     (_e,),
                 ).fetchall()
                 codes = {r[0] for r in rows if r[0]}
-        return codes
+                if codes:
+                    return codes
+        return set()
     except Exception:
         return set()
 
@@ -1425,7 +1424,8 @@ if not _resolve_point_code():
         _allowed_codes = _get_allowed_codes(st.session_state.get("_authed_email", ""))
         _render_overview_dashboard_ext(DB_PATH, _CHANNEL_NAMES, _BUCKET_TO_STAGE, _allowed_codes,
                                       login_mapping_db=LOGIN_MAPPING_DB,
-                                      user_email=st.session_state.get("_authed_email", ""))
+                                      user_email=st.session_state.get("_authed_email", ""),
+                                      master_file=MASTER_FILE)
         st.stop()
 
     # Strip the fixed-header top padding + restore normal vertical spacing

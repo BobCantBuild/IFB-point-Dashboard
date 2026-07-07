@@ -99,6 +99,36 @@ Counter/usage tracking database. Both DBs are committed to GitHub.
 
 ## Analytics Console (`overview_dashboard.py`)
 
+### Navigation (☰ hamburger menu)
+The topbar has a `☰` popover (left of the title) with two views, tracked in
+`st.session_state["_ov_view"]` (default `"analytics"`). `_POPOVER_CSS` (emitted in
+`render_overview_dashboard` for both views) hides Streamlit's trailing "expand_more"
+chevron so the button is icon-only.
+1. **📊 IFB Point Analytics** — the normal dashboard (KPIs + Day/Week/Month charts).
+2. **🗺️ RM Mapping** — `_render_rm_mapping()`: a **DataTables-style** table (built from
+   `st.columns`, not `st.data_editor`) of `login_mapping.db` joined with IFB Point names
+   from `IFB_Point_Master.txt`. Styled via `_RM_CSS`.
+   - Columns (`_RM_COLS`, ratio-based widths): `IFB Point ID` (key) · `IFB Point Name` ·
+     `Branch` · `Region` (coloured pill via `_rm_badge`) · `Cluster Mgr` ·
+     `Cluster Mgr Email` · `Retail Name` · `Retail Email` · **Edit** (✏️ per row).
+   - **DataTables chrome**: "Showing X to Y of Z items" + Search box (top);
+     clickable sortable headers (▲/▼, `_rm_sort_col`/`_rm_sort_asc`); footer pager
+     (‹ Prev · page numbers · Next › with active page as `type="primary"`) +
+     "Show N entries" selectbox (`_rm_psize`, options 10/25/50/100). Page = `_rm_page`.
+   - **Editing**: click a row's ✏️ → `@st.dialog _rm_edit_dialog` opens a 7-field form
+     (ID shown read-only). Save → `_save_rm_row` → `_apply_rm_updates`:
+     - **IFB Point Name → `IFB_Point_Master.txt`** (`_write_master_names`, keyed by ID;
+       clears `streamlit_app._load_channel_names`/`_load_master_codes` lru_caches).
+     - **Other fields → `login_mapping.db`** via `UPDATE ... WHERE IFBpoint_id=?`
+       (empty string writes `NULL`). `_RM_COL_TO_DB` maps labels → DB columns.
+     - A `_rm_flash` session key carries the post-save toast across the rerun.
+   - Scoped by `allowed_codes` (admin/empty = all ~550 points).
+   - `render_overview_dashboard(..., master_file=MASTER_FILE)` param; falls back to
+     `db_path.parent / "IFB_Point_Master.txt"` if not passed.
+
+> The old rail **"🔍 Search IFB Point or Code…"** box was removed; the
+> Region/Branch/IFB Point multiselect cascade is now the only rail filter (`_q = ""`).
+
 ### Layout Structure
 ```
 Fixed header (sticky): IFB Point name + 5 stat badges + API sync status
