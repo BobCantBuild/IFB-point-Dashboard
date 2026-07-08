@@ -1663,21 +1663,27 @@ def render_overview_dashboard(
     with tb2:
         if cur_view == "analytics":
             st.markdown("<div class='nav-item-active'>📊\nAnalytics</div>", unsafe_allow_html=True)
-        elif st.button("📊\nAnalytics", use_container_width=True, key="_nav_analytics"):
-            st.session_state["_ov_view"] = "analytics"
-            st.rerun()
+        else:
+            # on_click callbacks run *before* Streamlit's single automatic rerun,
+            # so the state flip is already in effect when the script body runs
+            # top-to-bottom again — no need for an extra manual st.rerun(), which
+            # would otherwise force the whole (expensive) script to execute twice
+            # per click and make tab switching feel sluggish.
+            st.button("📊\nAnalytics", use_container_width=True, key="_nav_analytics",
+                      on_click=lambda: st.session_state.update({"_ov_view": "analytics"}))
     with tb3:
         if cur_view == "rm_mapping":
             st.markdown("<div class='nav-item-active'>🗺️\nRM Mapping</div>", unsafe_allow_html=True)
-        elif st.button("🗺️\nRM Mapping", use_container_width=True, key="_nav_rmmap"):
-            st.session_state["_ov_view"] = "rm_mapping"
-            st.rerun()
+        else:
+            st.button("🗺️\nRM Mapping", use_container_width=True, key="_nav_rmmap",
+                      on_click=lambda: st.session_state.update({"_ov_view": "rm_mapping"}))
     with tb4:
-        if st.button("🚪\nSign Out", use_container_width=True, key="_nav_signout"):
+        def _do_sign_out():
             st.session_state["_authed"] = False
             st.session_state.pop("_authed_email", None)
             st.query_params.clear()
-            st.rerun()
+        st.button("🚪\nSign Out", use_container_width=True, key="_nav_signout",
+                  on_click=_do_sign_out)
 
     st.divider()
 
