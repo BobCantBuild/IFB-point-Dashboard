@@ -1,7 +1,5 @@
-# SQLite — runtime DBs are excluded; only login DBs are tracked
+# SQLite — all DBs excluded from tracking
 *.db
-!login.db
-!login_mapping.db
 *.db-journal
 *.db-wal
 *.db-shm
