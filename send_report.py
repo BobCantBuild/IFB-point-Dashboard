@@ -49,8 +49,8 @@ CENTRAL_RECIPIENTS = [
 #               Change this one line to switch over — no other code changes
 #               needed.
 # ─────────────────────────────────────────────────────────────────────────────
-TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
-# TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
+# TEST_REDIRECT_TO = "s_aswin@ifbglobal.com"     # ← TEST MODE (current)
+TEST_REDIRECT_TO = None                       # ← LIVE MODE (uncomment to go live)
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 
@@ -69,10 +69,9 @@ def load_user_mappings() -> dict[str, dict]:
     """Return {email: {"name": str, "points": set[str]}} for every login.db user
     that has at least one IFB Point mapping.
 
-    Mirrors streamlit_app._get_allowed_codes: checks Retail Email_ID first
-    (per-point owner / store contact), falls back to Email_ID (territory manager).
-    Both columns are queried — overlapping points get deduplicated via set union.
-    centrallogin is excluded (not a real email)."""
+    Collects IFBpoint_id values from ALL three email columns (union), so a user
+    appearing in multiple roles gets the combined set of points.
+    Name resolved in priority order: Regional > Retail > Cluster Mgr."""
     conn = sqlite3.connect(LOGIN_DB)
     emails = [r[0] for r in conn.execute("SELECT email FROM users").fetchall()
               if r[0] and "@" in r[0]]
@@ -83,25 +82,35 @@ def load_user_mappings() -> dict[str, dict]:
         for email in emails:
             e = email.strip().lower()
 
-            points: set[str] = set()
+            rows = conn.execute(
+                """
+                SELECT IFBpoint_id FROM login_mapping
+                WHERE LOWER(Email_ID) = ?
+                   OR LOWER("Retail Email_ID") = ?
+                   OR LOWER("Regional Email_ID") = ?
+                """,
+                (e, e, e),
+            ).fetchall()
+            points = {str(r[0]) for r in rows if r[0]}
+
+            if not points:
+                continue
+
             name = ""
             for col, name_col in (
                 ('"Regional Email_ID"', '"Regional Name"'),
                 ('"Retail Email_ID"',   '"Retail Name"'),
                 ("Email_ID",            "Name"),
             ):
-                rows = conn.execute(
-                    f'SELECT IFBpoint_id, {name_col} FROM login_mapping '
-                    f'WHERE LOWER({col})=?',
+                row = conn.execute(
+                    f'SELECT {name_col} FROM login_mapping '
+                    f'WHERE LOWER({col})=? AND {name_col} IS NOT NULL AND TRIM({name_col})!="" '
+                    f'LIMIT 1',
                     (e,),
-                ).fetchall()
-                if rows:
-                    points = {str(r[0]) for r in rows if r[0]}
-                    name = next((r[1] for r in rows if r[1]), "")
+                ).fetchone()
+                if row and row[0]:
+                    name = row[0]
                     break
-
-            if not points:
-                continue
 
             if not name:
                 name = email.split("@")[0].replace("_", " ").replace(".", " ").title()

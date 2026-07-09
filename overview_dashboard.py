@@ -1417,8 +1417,7 @@ def _rm_edit_dialog(row: dict, mapping_db: str | Path, master_file: str | Path) 
     code = row["IFB Point ID"]
     st.markdown(
         f"<div style='font-size:12px;color:#64748B;margin:-6px 0 8px;'>"
-        f"IFB Point ID <b style='color:#0F172A;'>{html.escape(str(code))}</b> "
-        f"· reference key, not editable</div>",
+        f"IFB Point ID <b style='color:#0F172A;'>{html.escape(str(code))}</b></div>",
         unsafe_allow_html=True,
     )
     name = st.text_input("IFB Point Name", value=row["IFB Point Name"],
@@ -1627,15 +1626,23 @@ def render_overview_dashboard(
     if st.session_state.pop("_rm_search_clear", False):
         st.session_state["_rm_search"] = ""
 
+    is_admin = (user_email == "centrallogin")
+
+    # Non-admin users cannot access RM Mapping; reset if session state has it set
+    if not is_admin and st.session_state.get("_ov_view") == "rm_mapping":
+        st.session_state["_ov_view"] = "analytics"
+
     cur_view = st.session_state.get("_ov_view", "analytics")
-    if cur_view == "rm_mapping":
+    if is_admin and cur_view == "rm_mapping":
         # tb1 is deliberately narrow (title text is ~215px) so the search column
         # begins right after the title text — the search box then centres in the
         # visible whitespace between the title and the Analytics tab, not in a
         # column padded out to half the topbar width.
         tb1, tbs, tb2, tb3, tb4 = st.columns([1.95, 5.25, 0.85, 0.95, 0.75])
-    else:
+    elif is_admin:
         tb1, tb2, tb3, tb4 = st.columns([7.2, 0.85, 0.95, 0.75])
+    else:
+        tb1, tb2, tb4 = st.columns([7.2, 0.85, 0.75])
     with tb1:
         # white-space:nowrap keeps the title on one line even when its column is
         # deliberately narrow (RM Mapping view) — the text ends well left of the
@@ -1646,7 +1653,7 @@ def render_overview_dashboard(
             "🎯 Follow Up Control Tower</div>",
             unsafe_allow_html=True,
         )
-    if cur_view == "rm_mapping":
+    if is_admin and cur_view == "rm_mapping":
         with tbs:
             with st.container(key="rm_search_wrap"):
                 _rm_prev_q = st.session_state.get("_rm_search", "")
@@ -1671,12 +1678,13 @@ def render_overview_dashboard(
             # per click and make tab switching feel sluggish.
             st.button("📊\nAnalytics", use_container_width=True, key="_nav_analytics",
                       on_click=lambda: st.session_state.update({"_ov_view": "analytics"}))
-    with tb3:
-        if cur_view == "rm_mapping":
-            st.markdown("<div class='nav-item-active'>🗺️\nRM Mapping</div>", unsafe_allow_html=True)
-        else:
-            st.button("🗺️\nRM Mapping", use_container_width=True, key="_nav_rmmap",
-                      on_click=lambda: st.session_state.update({"_ov_view": "rm_mapping"}))
+    if is_admin:
+        with tb3:
+            if cur_view == "rm_mapping":
+                st.markdown("<div class='nav-item-active'>🗺️\nRM Mapping</div>", unsafe_allow_html=True)
+            else:
+                st.button("🗺️\nRM Mapping", use_container_width=True, key="_nav_rmmap",
+                          on_click=lambda: st.session_state.update({"_ov_view": "rm_mapping"}))
     with tb4:
         def _do_sign_out():
             st.session_state["_authed"] = False
@@ -1687,346 +1695,348 @@ def render_overview_dashboard(
 
     st.divider()
 
-    # ── View routing ──────────────────────────────────────────────────────────
-    if st.session_state.get("_ov_view", "analytics") == "rm_mapping":
-        _render_rm_mapping(login_mapping_db or (Path(db_path).parent / "login_mapping.db"),
-                           master_file, allowed_codes, channel_names)
-        return
+    _view_slot = st.empty()
+    with _view_slot.container():
+        # ── View routing ──────────────────────────────────────────────────────────
+        if is_admin and st.session_state.get("_ov_view", "analytics") == "rm_mapping":
+            _render_rm_mapping(login_mapping_db or (Path(db_path).parent / "login_mapping.db"),
+                               master_file, allowed_codes, channel_names)
+            return
 
-    allowed_codes_key = tuple(sorted(allowed_codes)) if allowed_codes else None
-    df = _load_df(str(db_path), allowed_codes_key).copy()
-    if df.empty:
-        st.info("No data available yet.")
-        return
-
-    # Restrict to IFB points currently in the master list (IFB_Point_Master.txt) —
-    # the leads DB can retain stale/old codes that are no longer valid points.
-    if channel_names:
-        df = df[df["ifb_point"].isin(channel_names.keys())]
+        allowed_codes_key = tuple(sorted(allowed_codes)) if allowed_codes else None
+        df = _load_df(str(db_path), allowed_codes_key).copy()
         if df.empty:
             st.info("No data available yet.")
             return
 
-    df["status"]     = df["status"].fillna("").replace("", "Pending")
-    df["interest"]   = df["interested"].fillna("").replace("", "—")
-    df["stage"]      = df["follow_up"].map(bucket_to_stage).fillna("Other")
-    df["point_name"] = df["ifb_point"].map(channel_names).fillna(df["ifb_point"])
-    df["lead_dt"]    = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
+        # Restrict to IFB points currently in the master list (IFB_Point_Master.txt) —
+        # the leads DB can retain stale/old codes that are no longer valid points.
+        if channel_names:
+            df = df[df["ifb_point"].isin(channel_names.keys())]
+            if df.empty:
+                st.info("No data available yet.")
+                return
 
-    _codes = sorted(df["ifb_point"].unique(),
-                    key=lambda c: channel_names.get(c, c).lower())
+        df["status"]     = df["status"].fillna("").replace("", "Pending")
+        df["interest"]   = df["interested"].fillna("").replace("", "—")
+        df["stage"]      = df["follow_up"].map(bucket_to_stage).fillna("Other")
+        df["point_name"] = df["ifb_point"].map(channel_names).fillna(df["ifb_point"])
+        df["lead_dt"]    = pd.to_datetime(df["lead_date"], format="%d-%m-%Y", errors="coerce")
 
-    # Restrict to only the IFB points this user is mapped to. The loader already
-    # applies this in SQL; keep this guard for safety if cached data shape changes.
-    if allowed_codes:
-        df     = df[df["ifb_point"].isin(allowed_codes)]
-        _codes = [c for c in _codes if c in allowed_codes]
+        _codes = sorted(df["ifb_point"].unique(),
+                        key=lambda c: channel_names.get(c, c).lower())
 
-    # ── Two-pane: C RAIL | main ────────────────────────────────────────────────
-    with st.container(key="two_pane"):
-        rail, main = st.columns([1.3, 8.7], gap="medium")
+        # Restrict to only the IFB points this user is mapped to. The loader already
+        # applies this in SQL; keep this guard for safety if cached data shape changes.
+        if allowed_codes:
+            df     = df[df["ifb_point"].isin(allowed_codes)]
+            _codes = [c for c in _codes if c in allowed_codes]
 
-        with rail:
-            _LIST_H = 634
+        # ── Two-pane: C RAIL | main ────────────────────────────────────────────────
+        with st.container(key="two_pane"):
+            rail, main = st.columns([1.3, 8.7], gap="medium")
 
-            if "_ov_sel" not in st.session_state:
-                st.session_state["_ov_sel"] = set()
+            with rail:
+                _LIST_H = 634
 
-            # ── Load hierarchy ────────────────────────────────────────────────
-            _hierarchy: dict[str, dict[str, list[str]]] = {}
-            if login_mapping_db and user_email:
-                _hierarchy = _load_hierarchy(str(login_mapping_db), user_email, allowed_codes,
-                                              set(channel_names.keys()) if channel_names else None)
-            _all_regions  = sorted(_hierarchy.keys())
-            _has_hierarchy = len(_all_regions) > 0
+                if "_ov_sel" not in st.session_state:
+                    st.session_state["_ov_sel"] = set()
 
-            # Search removed — Region/Branch/IFB Point cascade drives filtering now.
-            _q = ""
+                # ── Load hierarchy ────────────────────────────────────────────────
+                _hierarchy: dict[str, dict[str, list[str]]] = {}
+                if login_mapping_db and user_email:
+                    _hierarchy = _load_hierarchy(str(login_mapping_db), user_email, allowed_codes,
+                                                  set(channel_names.keys()) if channel_names else None)
+                _all_regions  = sorted(_hierarchy.keys())
+                _has_hierarchy = len(_all_regions) > 0
 
-            # ── All / Clear buttons ───────────────────────────────────────────
-            # Precompute all branches and all points for "All" button
-            _all_branches_list = sorted({
-                b for r_data in _hierarchy.values() for b in r_data.keys()
-            }) if _has_hierarchy else []
-            _all_points_list = sorted({
-                c for r_data in _hierarchy.values()
-                for pts in r_data.values() for c in pts
-            }) if _has_hierarchy else list(_codes)
+                # Search removed — Region/Branch/IFB Point cascade drives filtering now.
+                _q = ""
 
-            qa1, qa2 = st.columns(2, gap="small")
-            with qa1:
-                if st.button("✅ All", use_container_width=True, key="_ov_selall"):
-                    st.session_state["_ov_sel_regions"]  = list(_all_regions)
-                    st.session_state["_ov_sel_branches"] = list(_all_branches_list)
-                    st.session_state["_ov_sel"]          = set(_all_points_list)
-                    # Set widget keys directly so multiselects reflect selection visually
-                    st.session_state["_ov_ms_region"]    = list(_all_regions)
-                    st.session_state["_ov_ms_branch"]    = list(_all_branches_list)
-                    st.session_state["_ov_ms_points"]    = list(_all_points_list)
-                    st.rerun()
-            with qa2:
-                if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
-                    st.session_state["_ov_sel"]            = set()
-                    st.session_state["_ov_sel_regions"]    = []
-                    st.session_state["_ov_sel_branches"]   = []
-                    # Clear the widget keys directly so multiselects reset visually
-                    st.session_state["_ov_ms_region"]      = []
-                    st.session_state["_ov_ms_branch"]      = []
-                    st.session_state["_ov_ms_points"]      = []
-                    st.rerun()
+                # ── All / Clear buttons ───────────────────────────────────────────
+                # Precompute all branches and all points for "All" button
+                _all_branches_list = sorted({
+                    b for r_data in _hierarchy.values() for b in r_data.keys()
+                }) if _has_hierarchy else []
+                _all_points_list = sorted({
+                    c for r_data in _hierarchy.values()
+                    for pts in r_data.values() for c in pts
+                }) if _has_hierarchy else list(_codes)
 
-            # ── Region / Branch / IFB Point cascade ───────────────────────────
-            if _has_hierarchy:
-                # Region multiselect
-                sel_regions = st.multiselect(
-                    "🌍 Region",
-                    options=_all_regions,
-                    default=st.session_state.get("_ov_sel_regions", []),
-                    key="_ov_ms_region",
-                    placeholder="All Regions",
-                )
-                st.session_state["_ov_sel_regions"] = sel_regions
+                qa1, qa2 = st.columns(2, gap="small")
+                with qa1:
+                    if st.button("✅ All", use_container_width=True, key="_ov_selall"):
+                        st.session_state["_ov_sel_regions"]  = list(_all_regions)
+                        st.session_state["_ov_sel_branches"] = list(_all_branches_list)
+                        st.session_state["_ov_sel"]          = set(_all_points_list)
+                        # Set widget keys directly so multiselects reflect selection visually
+                        st.session_state["_ov_ms_region"]    = list(_all_regions)
+                        st.session_state["_ov_ms_branch"]    = list(_all_branches_list)
+                        st.session_state["_ov_ms_points"]    = list(_all_points_list)
+                        st.rerun()
+                with qa2:
+                    if st.button("✖ Clear", use_container_width=True, key="_ov_clr"):
+                        st.session_state["_ov_sel"]            = set()
+                        st.session_state["_ov_sel_regions"]    = []
+                        st.session_state["_ov_sel_branches"]   = []
+                        # Clear the widget keys directly so multiselects reset visually
+                        st.session_state["_ov_ms_region"]      = []
+                        st.session_state["_ov_ms_branch"]      = []
+                        st.session_state["_ov_ms_points"]      = []
+                        st.rerun()
 
-                # Derive available branches from selected regions
-                if sel_regions:
-                    _avail_branches = sorted({
-                        b for r in sel_regions
-                        for b in _hierarchy.get(r, {}).keys()
-                    })
-                else:
-                    _avail_branches = sorted({
-                        b for r_data in _hierarchy.values()
-                        for b in r_data.keys()
-                    })
-
-                # Clean stale branch selections
-                _prev_branches = st.session_state.get("_ov_sel_branches", [])
-                _valid_branches = [b for b in _prev_branches if b in _avail_branches]
-
-                sel_branches = st.multiselect(
-                    "🏢 Branch",
-                    options=_avail_branches,
-                    default=_valid_branches,
-                    key="_ov_ms_branch",
-                    placeholder="All Branches",
-                )
-                st.session_state["_ov_sel_branches"] = sel_branches
-
-                # Derive available IFB points from selected regions + branches
-                _avail_points: list[str] = []
-                _src_regions = sel_regions if sel_regions else list(_hierarchy.keys())
-                _src_branches_set = set(sel_branches) if sel_branches else None
-                for _r in _src_regions:
-                    for _b, _pts in _hierarchy.get(_r, {}).items():
-                        if _src_branches_set and _b not in _src_branches_set:
-                            continue
-                        _avail_points.extend(_pts)
-                _avail_points = sorted(set(_avail_points),
-                                       key=lambda c: channel_names.get(c, c).lower())
-
-                # Include codes that have DB data but are absent from login_mapping
-                _hierarchy_codes = set(_avail_points)
-                _unassigned = [c for c in _codes if c not in _hierarchy_codes]
-                if _unassigned:
-                    _avail_points = sorted(
-                        set(_avail_points) | set(_unassigned),
-                        key=lambda c: channel_names.get(c, c).lower(),
+                # ── Region / Branch / IFB Point cascade ───────────────────────────
+                if _has_hierarchy:
+                    # Region multiselect
+                    sel_regions = st.multiselect(
+                        "🌍 Region",
+                        options=_all_regions,
+                        default=st.session_state.get("_ov_sel_regions", []),
+                        key="_ov_ms_region",
+                        placeholder="All Regions",
                     )
+                    st.session_state["_ov_sel_regions"] = sel_regions
 
-                # Apply search filter
-                if _q:
-                    _avail_points = [c for c in _avail_points
-                                     if _q in channel_names.get(c, str(c)).lower()
-                                     or _q in str(c).lower()]
+                    # Derive available branches from selected regions
+                    if sel_regions:
+                        _avail_branches = sorted({
+                            b for r in sel_regions
+                            for b in _hierarchy.get(r, {}).keys()
+                        })
+                    else:
+                        _avail_branches = sorted({
+                            b for r_data in _hierarchy.values()
+                            for b in r_data.keys()
+                        })
 
-                # IFB Points multiselect
-                _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
-                             if c in _avail_points]
-                sel_points = st.multiselect(
-                    "🏪 IFB Points",
-                    options=_avail_points,
-                    default=_prev_pts,
-                    format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
-                    key="_ov_ms_points",
-                    placeholder="All IFB Points",
-                )
-                st.session_state["_ov_sel"] = set(sel_points)
-            else:
-                # Fallback: no hierarchy data — show flat multiselect
-                _visible = [c for c in _codes
-                            if not _q
-                            or _q in channel_names.get(c, str(c)).lower()
-                            or _q in str(c).lower()]
-                _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
-                             if c in _visible]
-                sel_points = st.multiselect(
-                    "🏪 IFB Points",
-                    options=_visible,
-                    default=_prev_pts,
-                    format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
-                    key="_ov_ms_points_flat",
-                    placeholder="All IFB Points",
-                )
-                st.session_state["_ov_sel"] = set(sel_points)
+                    # Clean stale branch selections
+                    _prev_branches = st.session_state.get("_ov_sel_branches", [])
+                    _valid_branches = [b for b in _prev_branches if b in _avail_branches]
 
-            selected_set = st.session_state["_ov_sel"]
+                    sel_branches = st.multiselect(
+                        "🏢 Branch",
+                        options=_avail_branches,
+                        default=_valid_branches,
+                        key="_ov_ms_branch",
+                        placeholder="All Branches",
+                    )
+                    st.session_state["_ov_sel_branches"] = sel_branches
 
-            # Master-list total for this user's scope (used for Total Stores KPI)
-            _master_all = set(channel_names.keys())
-            if allowed_codes:
-                _master_all = _master_all & allowed_codes
+                    # Derive available IFB points from selected regions + branches
+                    _avail_points: list[str] = []
+                    _src_regions = sel_regions if sel_regions else list(_hierarchy.keys())
+                    _src_branches_set = set(sel_branches) if sel_branches else None
+                    for _r in _src_regions:
+                        for _b, _pts in _hierarchy.get(_r, {}).items():
+                            if _src_branches_set and _b not in _src_branches_set:
+                                continue
+                            _avail_points.extend(_pts)
+                    _avail_points = sorted(set(_avail_points),
+                                           key=lambda c: channel_names.get(c, c).lower())
 
-            # Determine scope based on hierarchy selections (not just IFB point picks)
-            if _has_hierarchy and not selected_set:
-                # No specific IFB points picked — scope from region/branch cascade
-                _cascade_pts: list[str] = []
-                _src_r = sel_regions if sel_regions else list(_hierarchy.keys())
-                _src_b = set(sel_branches) if sel_branches else None
-                for _r in _src_r:
-                    for _b, _pts in _hierarchy.get(_r, {}).items():
-                        if _src_b and _b not in _src_b:
-                            continue
-                        _cascade_pts.extend(_pts)
-                _cascade_set = set(_cascade_pts)
-                if sel_regions or sel_branches:
-                    scope_codes       = _cascade_set
-                    scope_df          = df[df["ifb_point"].isin(scope_codes)]
-                    _master_store_count = len(scope_codes)
-                    scope_label       = f"{_master_store_count} point{'s' if _master_store_count != 1 else ''}"
+                    # Include codes that have DB data but are absent from login_mapping
+                    _hierarchy_codes = set(_avail_points)
+                    _unassigned = [c for c in _codes if c not in _hierarchy_codes]
+                    if _unassigned:
+                        _avail_points = sorted(
+                            set(_avail_points) | set(_unassigned),
+                            key=lambda c: channel_names.get(c, c).lower(),
+                        )
+
+                    # Apply search filter
+                    if _q:
+                        _avail_points = [c for c in _avail_points
+                                         if _q in channel_names.get(c, str(c)).lower()
+                                         or _q in str(c).lower()]
+
+                    # IFB Points multiselect
+                    _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
+                                 if c in _avail_points]
+                    sel_points = st.multiselect(
+                        "🏪 IFB Points",
+                        options=_avail_points,
+                        default=_prev_pts,
+                        format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
+                        key="_ov_ms_points",
+                        placeholder="All IFB Points",
+                    )
+                    st.session_state["_ov_sel"] = set(sel_points)
+                else:
+                    # Fallback: no hierarchy data — show flat multiselect
+                    _visible = [c for c in _codes
+                                if not _q
+                                or _q in channel_names.get(c, str(c)).lower()
+                                or _q in str(c).lower()]
+                    _prev_pts = [c for c in st.session_state.get("_ov_sel", set())
+                                 if c in _visible]
+                    sel_points = st.multiselect(
+                        "🏪 IFB Points",
+                        options=_visible,
+                        default=_prev_pts,
+                        format_func=lambda c: f"{channel_names.get(c, c)} ({c})",
+                        key="_ov_ms_points_flat",
+                        placeholder="All IFB Points",
+                    )
+                    st.session_state["_ov_sel"] = set(sel_points)
+
+                selected_set = st.session_state["_ov_sel"]
+
+                # Master-list total for this user's scope (used for Total Stores KPI)
+                _master_all = set(channel_names.keys())
+                if allowed_codes:
+                    _master_all = _master_all & allowed_codes
+
+                # Determine scope based on hierarchy selections (not just IFB point picks)
+                if _has_hierarchy and not selected_set:
+                    # No specific IFB points picked — scope from region/branch cascade
+                    _cascade_pts: list[str] = []
+                    _src_r = sel_regions if sel_regions else list(_hierarchy.keys())
+                    _src_b = set(sel_branches) if sel_branches else None
+                    for _r in _src_r:
+                        for _b, _pts in _hierarchy.get(_r, {}).items():
+                            if _src_b and _b not in _src_b:
+                                continue
+                            _cascade_pts.extend(_pts)
+                    _cascade_set = set(_cascade_pts)
+                    if sel_regions or sel_branches:
+                        scope_codes       = _cascade_set
+                        scope_df          = df[df["ifb_point"].isin(scope_codes)]
+                        _master_store_count = len(scope_codes)
+                        scope_label       = f"{_master_store_count} point{'s' if _master_store_count != 1 else ''}"
+                    else:
+                        scope_codes         = set(_codes)
+                        scope_df            = df
+                        _master_store_count = len(_master_all)
+                        scope_label         = f"All {_master_store_count} points"
+                elif selected_set:
+                    scope_codes         = selected_set
+                    scope_df            = df[df["ifb_point"].isin(scope_codes)]
+                    _master_store_count = len(selected_set)
+                    n = _master_store_count
+                    scope_label = f"{n} point{'s' if n != 1 else ''} selected"
                 else:
                     scope_codes         = set(_codes)
                     scope_df            = df
                     _master_store_count = len(_master_all)
                     scope_label         = f"All {_master_store_count} points"
-            elif selected_set:
-                scope_codes         = selected_set
-                scope_df            = df[df["ifb_point"].isin(scope_codes)]
-                _master_store_count = len(selected_set)
-                n = _master_store_count
-                scope_label = f"{n} point{'s' if n != 1 else ''} selected"
-            else:
-                scope_codes         = set(_codes)
-                scope_df            = df
-                _master_store_count = len(_master_all)
-                scope_label         = f"All {_master_store_count} points"
 
-            st.markdown(
-                f"<div class='scope-badge'>⚡ {scope_label}</div>",
-                unsafe_allow_html=True,
-            )
+                st.markdown(
+                    f"<div class='scope-badge'>⚡ {scope_label}</div>",
+                    unsafe_allow_html=True,
+                )
 
-        # ── MAIN: F KPI + G charts ─────────────────────────────────────────────────
-        with main:
-            _section_colors = {
-                "day":   ("#6366F1", "#EEF2FF"),   # indigo
-                "week":  ("#0891B2", "#ECFEFF"),   # cyan
-                "month": ("#7C3AED", "#F5F3FF"),   # violet
-            }
-            _force_all = bool(selected_set)
-            _day_html, _day_shown, _day_total = _pointer_table_html(
-                scope_df=scope_df,
-                scope_codes=scope_codes,
-                channel_names=channel_names,
-                period="day",
-                n=7,
-                force_all=_force_all,
-                limit=None,
-            )
-            total_leads = len(scope_df)
-            contacted     = int((scope_df["status"] == "Contacted").sum())
-            rnr           = int((scope_df["status"] == "RnR").sum())
-            not_reachable = int((scope_df["status"] == "Not Reachable").sum())
-            not_cont      = total_leads - contacted - rnr
+            # ── MAIN: F KPI + G charts ─────────────────────────────────────────────────
+            with main:
+                _section_colors = {
+                    "day":   ("#6366F1", "#EEF2FF"),   # indigo
+                    "week":  ("#0891B2", "#ECFEFF"),   # cyan
+                    "month": ("#7C3AED", "#F5F3FF"),   # violet
+                }
+                _force_all = bool(selected_set)
+                _day_html, _day_shown, _day_total = _pointer_table_html(
+                    scope_df=scope_df,
+                    scope_codes=scope_codes,
+                    channel_names=channel_names,
+                    period="day",
+                    n=7,
+                    force_all=_force_all,
+                    limit=None,
+                )
+                total_leads = len(scope_df)
+                contacted     = int((scope_df["status"] == "Contacted").sum())
+                rnr           = int((scope_df["status"] == "RnR").sum())
+                not_reachable = int((scope_df["status"] == "Not Reachable").sum())
+                not_cont      = total_leads - contacted - rnr
 
-            _today_ts = pd.Timestamp(date.today())
-            _df_today = scope_df[scope_df["lead_dt"].dt.normalize() == _today_ts
-            ] if "lead_dt" in scope_df.columns else pd.DataFrame()
-            t_total         = len(_df_today)
-            t_contacted     = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
-            t_rnr           = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
-            t_not_reachable = int((_df_today["status"] == "Not Reachable").sum()) if not _df_today.empty else 0
-            t_not_cont      = t_total - t_contacted - t_rnr
+                _today_ts = pd.Timestamp(date.today())
+                _df_today = scope_df[scope_df["lead_dt"].dt.normalize() == _today_ts
+                ] if "lead_dt" in scope_df.columns else pd.DataFrame()
+                t_total         = len(_df_today)
+                t_contacted     = int((_df_today["status"] == "Contacted").sum()) if not _df_today.empty else 0
+                t_rnr           = int((_df_today["status"] == "RnR").sum()) if not _df_today.empty else 0
+                t_not_reachable = int((_df_today["status"] == "Not Reachable").sum()) if not _df_today.empty else 0
+                t_not_cont      = t_total - t_contacted - t_rnr
 
-            def _pct(n: int) -> float:
-                return (n / total_leads * 100) if total_leads else 0.0
+                def _pct(n: int) -> float:
+                    return (n / total_leads * 100) if total_leads else 0.0
 
-            def _tpct(n: int) -> float:
-                return (n / t_total * 100) if t_total else 0.0
+                def _tpct(n: int) -> float:
+                    return (n / t_total * 100) if t_total else 0.0
 
-            # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
-            with st.container(border=True, key="kpi_row"):
-                kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6, gap="small")
-                _active_pts = int(_df_today[_df_today["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].nunique()) if not _df_today.empty else 0
-                _active_pct = (_active_pts / _master_store_count * 100) if _master_store_count else 0.0
-                _kpi_card(kc1, "Total Stores", _master_store_count, today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
-                _kpi_card(kc2, "Total Customers Allocated", total_leads, today_val=t_total)
-                _calls_attempted   = contacted + rnr + not_reachable
-                _t_calls_attempted = t_contacted + t_rnr + t_not_reachable
-                _t_ca_pct = (_t_calls_attempted / t_total * 100) if t_total else 0.0
-                _kpi_card(kc3, "Calls Attempted", _calls_attempted,
-                          today_val=_t_calls_attempted, today_pct=_t_ca_pct,
-                          sub_label="Today Calls Attempted", all_label="Total Calls Attempted")
+                # F — KPI ROW  (bordered container kept for spacing; border hidden via CSS)
+                with st.container(border=True, key="kpi_row"):
+                    kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6, gap="small")
+                    _active_pts = int(_df_today[_df_today["status"].isin(["Contacted", "RnR", "Not Reachable"])]["ifb_point"].nunique()) if not _df_today.empty else 0
+                    _active_pct = (_active_pts / _master_store_count * 100) if _master_store_count else 0.0
+                    _kpi_card(kc1, "Total Stores", _master_store_count, today_val=_active_pts, today_pct=_active_pct, sub_label="Active Calling Stores")
+                    _kpi_card(kc2, "Total Customers Allocated", total_leads, today_val=t_total)
+                    _calls_attempted   = contacted + rnr + not_reachable
+                    _t_calls_attempted = t_contacted + t_rnr + t_not_reachable
+                    _t_ca_pct = (_t_calls_attempted / t_total * 100) if t_total else 0.0
+                    _kpi_card(kc3, "Calls Attempted", _calls_attempted,
+                              today_val=_t_calls_attempted, today_pct=_t_ca_pct,
+                              sub_label="Today Calls Attempted", all_label="Total Calls Attempted")
 
-                _kpi_card(kc4, "Calls Connected", contacted, today_val=t_contacted, today_pct=_tpct(t_contacted), sub_label="Todays Calls Connected")
+                    _kpi_card(kc4, "Calls Connected", contacted, today_val=t_contacted, today_pct=_tpct(t_contacted), sub_label="Todays Calls Connected")
 
-                _interested     = int((scope_df["interest"] == "Interested").sum()) if not scope_df.empty else 0
-                _t_interested   = int((_df_today["interested"] == "Interested").sum()) if not _df_today.empty else 0
-                _t_int_pct      = (_t_interested / t_total * 100) if t_total else 0.0
-                _kpi_card(kc5, "Interested Customers", _interested,
-                          today_val=_t_interested, today_pct=_t_int_pct)
+                    _interested     = int((scope_df["interest"] == "Interested").sum()) if not scope_df.empty else 0
+                    _t_interested   = int((_df_today["interested"] == "Interested").sum()) if not _df_today.empty else 0
+                    _t_int_pct      = (_t_interested / t_total * 100) if t_total else 0.0
+                    _kpi_card(kc5, "Interested Customers", _interested,
+                              today_val=_t_interested, today_pct=_t_int_pct)
 
-                _kpi_card(kc6, "Not Contacted", not_cont, today_val=t_not_cont, today_pct=_tpct(t_not_cont))
+                    _kpi_card(kc6, "Not Contacted", not_cont, today_val=t_not_cont, today_pct=_tpct(t_not_cont))
 
-            # G — TABULAR ROWS  (Day / Week / Month) — IFB Point × 6 Pointers × N periods
-            st.markdown(
-                f"<div style='font-size:9.5px;font-weight:800;color:{_section_colors['day'][0]};"
-                f"text-transform:uppercase;letter-spacing:0.7px;"
-                f"padding-left:3px;margin-top:8px;margin-bottom:8px;'>📅  Day Wise — Last 7 Days"
-                f"<span style='color:#94A3B8;font-weight:600;'> · {_day_shown} store{'s' if _day_shown != 1 else ''}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+                # G — TABULAR ROWS  (Day / Week / Month) — IFB Point × 6 Pointers × N periods
+                st.markdown(
+                    f"<div style='font-size:9.5px;font-weight:800;color:{_section_colors['day'][0]};"
+                    f"text-transform:uppercase;letter-spacing:0.7px;"
+                    f"padding-left:3px;margin-top:8px;margin-bottom:8px;'>📅  Day Wise — Last 7 Days"
+                    f"<span style='color:#94A3B8;font-weight:600;'> · {_day_shown} store{'s' if _day_shown != 1 else ''}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
-            for title, period, n in [
-                ("📅  Day Wise — Last 7 Days",     "day",   7),
-                ("📆  Week Wise — Last 4 Weeks",   "week",  4),
-                ("🗓️  Month Wise — Last 6 Months", "month", 6),
-            ]:
-                accent, _ = _section_colors[period]
-                if period == "day":
-                    tbl_html, n_shown, n_total = _day_html, _day_shown, _day_total
-                else:
-                    tbl_html, n_shown, n_total = _pointer_table_html(
-                        scope_df=scope_df,
-                        scope_codes=scope_codes,
-                        channel_names=channel_names,
-                        period=period,
-                        n=n,
-                        force_all=_force_all,
-                        limit=None,
-                    )
-                _count_note = f" · {n_shown} store{'s' if n_shown != 1 else ''}"
-                if period != "day":
-                    st.markdown(
-                        f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
-                        f"text-transform:uppercase;letter-spacing:0.7px;"
-                        f"padding-left:3px;margin-bottom:8px;'>{title}"
-                        f"<span style='color:#94A3B8;font-weight:600;'>{_count_note}</span>"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                with st.container(border=True, key=f"pt_section_{period}"):
-                    tcol, icol = st.columns([6.8, 3.2], gap="medium")
-                    with tcol:
-                        st.markdown(tbl_html, unsafe_allow_html=True)
-                    with icol:
-                        buckets = _time_buckets(scope_df, period, n)
+                for title, period, n in [
+                    ("📅  Day Wise — Last 7 Days",     "day",   7),
+                    ("📆  Week Wise — Last 4 Weeks",   "week",  4),
+                    ("🗓️  Month Wise — Last 6 Months", "month", 6),
+                ]:
+                    accent, _ = _section_colors[period]
+                    if period == "day":
+                        tbl_html, n_shown, n_total = _day_html, _day_shown, _day_total
+                    else:
+                        tbl_html, n_shown, n_total = _pointer_table_html(
+                            scope_df=scope_df,
+                            scope_codes=scope_codes,
+                            channel_names=channel_names,
+                            period=period,
+                            n=n,
+                            force_all=_force_all,
+                            limit=None,
+                        )
+                    _count_note = f" · {n_shown} store{'s' if n_shown != 1 else ''}"
+                    if period != "day":
                         st.markdown(
-                            f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;"
-                            f"border-left:4px solid {accent};"
-                            f"border-radius:10px;padding:10px 12px;"
-                            f"height:302px;overflow-y:auto;box-sizing:border-box;'>"
-                            f"{_insights(buckets, period, scope_df=scope_df)}</div>",
+                            f"<div style='font-size:9.5px;font-weight:800;color:{accent};"
+                            f"text-transform:uppercase;letter-spacing:0.7px;"
+                            f"padding-left:3px;margin-bottom:8px;'>{title}"
+                            f"<span style='color:#94A3B8;font-weight:600;'>{_count_note}</span>"
+                            f"</div>",
                             unsafe_allow_html=True,
                         )
-                st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+                    with st.container(border=True, key=f"pt_section_{period}"):
+                        tcol, icol = st.columns([6.8, 3.2], gap="medium")
+                        with tcol:
+                            st.markdown(tbl_html, unsafe_allow_html=True)
+                        with icol:
+                            buckets = _time_buckets(scope_df, period, n)
+                            st.markdown(
+                                f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;"
+                                f"border-left:4px solid {accent};"
+                                f"border-radius:10px;padding:10px 12px;"
+                                f"height:302px;overflow-y:auto;box-sizing:border-box;'>"
+                                f"{_insights(buckets, period, scope_df=scope_df)}</div>",
+                                unsafe_allow_html=True,
+                            )
+                    st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)

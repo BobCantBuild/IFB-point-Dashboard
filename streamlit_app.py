@@ -1394,22 +1394,21 @@ _STATUS_COLORS = {"Contacted": "#16A34A", "Not Contacted": "#DC2626",
 
 
 def _get_allowed_codes(email: str) -> set[str]:
-    """Return IFBpoint_id values assigned to this email in login_mapping.db.
-
-    Checks Regional Email_ID first (widest scope), then Retail Email_ID, then Email_ID.
-    """
+    """Return all IFBpoint_id values assigned to this email across all three
+    email columns in login_mapping.db (union, not first-match)."""
     try:
         _e = email.strip().lower()
         with sqlite3.connect(LOGIN_MAPPING_DB) as _mc:
-            for col in ('"Regional Email_ID"', '"Retail Email_ID"', "Email_ID"):
-                rows = _mc.execute(
-                    f"SELECT IFBpoint_id FROM login_mapping WHERE LOWER({col})=?",
-                    (_e,),
-                ).fetchall()
-                codes = {r[0] for r in rows if r[0]}
-                if codes:
-                    return codes
-        return set()
+            rows = _mc.execute(
+                """
+                SELECT IFBpoint_id FROM login_mapping
+                WHERE LOWER(Email_ID) = ?
+                   OR LOWER("Retail Email_ID") = ?
+                   OR LOWER("Regional Email_ID") = ?
+                """,
+                (_e, _e, _e),
+            ).fetchall()
+        return {r[0] for r in rows if r[0]}
     except Exception:
         return set()
 
